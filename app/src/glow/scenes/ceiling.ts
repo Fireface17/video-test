@@ -52,6 +52,7 @@ export default class Ceiling extends Scene {
   title!: NeonSign;
   artist!: NeonSign;
   hand?: NeonSign;
+  meteors!: GlowPoints;
   bars: number[] = [];
 
   override async init() {
@@ -161,6 +162,9 @@ export default class Ceiling extends Scene {
     this.field.commit();
     S.add(this.field);
 
+    // shooting stars across the sky while the title comes on (trails of points)
+    this.meteors = new GlowPoints(2 * 60, 0.06);
+    S.add(this.meteors);
     // title: the song in neon script, the artist in a thin sans tube
     this.title = new NeonSign('Glowing in the Dark', { font: 'script', size: 0.74, align: 'center', color: col('phosphor', 2.2) });
     this.artist = new NeonSign('FIREFACE17', { font: 'readable', size: 0.24, align: 'center', color: col('cyan', 2.4), tracking: 10 });
@@ -253,6 +257,26 @@ export default class Ceiling extends Scene {
     }
 
     this.camera(t);
+    // two shooting stars in the sky part (intro), each a bright head with a fading tail
+    {
+      const cam = this.st.cam;
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.quaternion);
+      const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
+      const shots = this.outro ? [] : [{ t0: B(9) + 0.3, y: 3.4, dir: 1 }, { t0: B(10) + 0.9, y: 2.8, dir: -1 }];
+      for (let m = 0; m < 2; m++) {
+        const sh = shots[m];
+        for (let j = 0; j < 60; j++) {
+          const i = m * 60 + j;
+          const dt = sh ? t - sh.t0 - j * 0.0035 : -1;
+          if (!sh || dt < 0 || dt > 0.9) { this.meteors.hide(i); continue; }
+          const u = dt / 0.9;
+          const p = cam.position.clone().addScaledVector(fwd, 14).addScaledVector(right, sh.dir * (-7 + u * 14)).addScaledVector(camUp, sh.y - u * 2.2);
+          this.meteors.set(i, p.x, p.y, p.z, col(j < 3 ? 'white' : 'cyan'), (1 - j / 60) * 2.6 * Math.sin(Math.PI * u), j < 3 ? 2.8 : 2.0 - (1.4 * j) / 60);
+        }
+      }
+      this.meteors.commit();
+    }
 
     // title in the sky (intro): words switch on across bars 9-10, the artist after them
     this.title.visible = this.artist.visible = !this.outro && t > B(9) - 0.3;
