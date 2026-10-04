@@ -158,12 +158,12 @@ export default class Cosmos extends Scene {
     const s = (t0: number, t1: number, kind: Kind, o: Record<string, any> = {}, seed = 0): Shot => ({ t0, t1, kind, o, seed: seed || Math.round(t0 * 10) });
     const end = this.ctx.end + 3;
     if (this.n === 2) return [
-      s(this.ctx.start - 1, B(3), 'float'),
+      s(this.ctx.start, B(3), 'float'),
       s(B(3), B(5), 'duet'),
       s(B(5), end, 'rise'),
     ];
     if (this.n === 3) return [
-      s(this.ctx.start - 1, B(2), 'earth'),
+      s(this.ctx.start, B(2), 'earth'),
       s(B(2), B(3), 'tunnel', { styles: [STARJUMP, 0], roll0: 0.3, spin: 1 }),
       s(B(3), B(4), 'giant', { count: 2, styles: [CLAP, 2], th0: -0.25, side: 1, sun: true }),
       s(B(4), B(6), 'field', { styles: [0, STARJUMP, 1, 2] }),
@@ -176,7 +176,7 @@ export default class Cosmos extends Scene {
       s(B(14), end, 'converge'),
     ];
     return [
-      s(this.ctx.start - 1, B(2), 'tunnel', { styles: [0, CLAP], roll0: 0, spin: 1 }),
+      s(this.ctx.start, B(2), 'tunnel', { styles: [0, CLAP], roll0: 0, spin: 1 }),
       s(B(2), B(3), 'giant', { count: 1, styles: [0, 3], th0: -0.3, side: 1 }),
       s(B(3), B(4), 'giant', { count: 2, styles: [STARJUMP, STARJUMP], th0: 0.25, side: -1, low: true }),
       s(B(4), B(6), 'field', { styles: [1, 0, CLAP, 2] }),
@@ -292,7 +292,6 @@ export default class Cosmos extends Scene {
     (sky.glow!.value as THREE.Color).setRGB(0, 0, 0);
     let post: Record<string, any> = {};
 
-    const PT0 = performance.now();
     switch (sh.kind) {
       case 'tunnel': this.tunnel(t, sh); break;
       case 'giant': this.giant(t, sh); break;
@@ -313,8 +312,6 @@ export default class Cosmos extends Scene {
     this.figs.end();
     this.fx.end();
     this.flares.end();
-    (this as any)._pt = ((this as any)._pt ?? 0) + performance.now() - PT0; (this as any)._pn = ((this as any)._pn ?? 0) + 1; (this as any)._pp = Math.max((this as any)._pp ?? 0, this.bank.posed);
-    if ((this as any)._pn % 20 === 0) console.warn(`PERFJS ${sh.kind} ${((this as any)._pt / 20).toFixed(1)}ms posed<=${(this as any)._pp} figs=${this.figs.np / 13 | 0} lines=${this.figs.lines.n + this.fx.n}`), (this as any)._pt = 0, (this as any)._pp = 0;
     this.st.render(this.ctx.renderer, out);
     const k = this.kick, sk = this.shake;
     return {
@@ -377,6 +374,9 @@ export default class Cosmos extends Scene {
         const pose = this.bank.get(i % 2, beat - off, style, 1, 0);
         this.put(pose, p, frame(up, V(0, 0, o.back ? -1 : 1)), sc, i % 2 === 1, { star: L.star, line: L.line, k: fade * (0.85 + 0.9 * this.kick) });
       }
+      // a gate of light round every ring of dancers, flashing on the kick
+      const gk = fade * (0.12 + 0.9 * this.kick * smoothstep(80, 20, dist));
+      ring(this.fx, V(0, 0, z), V(0, 0, 1), R + 2.2 * sc, L.line, gk, 0.05, 72);
     }
     // the light at the end of the tunnel
     const ahead = V(0, 0, o.back ? 1 : -1);
@@ -454,7 +454,6 @@ export default class Cosmos extends Scene {
     const w = p.clone().add(cp);
     this.flares.glow(w, col('#fff6dd', 3), k, 60);
     this.flares.glow(w, col('gold', 1.2), k * 0.45, 260, 1, 3.5);
-    this.flares.glow(w, L.accent, k * 0.12, 900, 1, 3);
     this.flares.glow(w, col('#fff1c8', 1.2), k * 0.12, 90, 12, 6);
     this.skyGlow(p, col('gold', 0.6).multiplyScalar(k));
   }
@@ -495,11 +494,11 @@ export default class Cosmos extends Scene {
         const p = V(x, (hash(i, arm, 4) - 0.5) * 30 * (1.2 - u), z);
         const off = Math.round(u * 3) * 0.08; // the step travels out along the arm
         const pose = this.bank.get(i % 2, beat - off, style, 1, 0);
+        // heads out along the arm, turned to face the camera
         const up = V(x, 0, z).normalize();
-        this.put(pose, p, frame(up, V(0, 1, 0)), 13 + 5 * hash(i, arm, 5) - 6 * u, i % 2 === 1, { star: L.star, line: L.line, k: 0.9 + 0.8 * this.kick });
+        this.put(pose, p, frame(up, pos.clone().sub(p)), 13 + 5 * hash(i, arm, 5) - 6 * u, i % 2 === 1, { star: L.star, line: L.line, k: 0.9 + 0.8 * this.kick });
       }
     }
-    this.flares.glow(V(0, 0, 0), L.star, 0.06 + 0.1 * this.kick, 30, 7, 6);
     this.chopBursts(t, sh, (_tc, kk) => ({ c: V(0, 0, 0), n: V(0, 1, 0), R: Rg * (0.45 + 0.4 * kk) }), 1.2);
   }
 
@@ -596,8 +595,8 @@ export default class Cosmos extends Scene {
     if (jk > 0) {
       this.fx.seg(this.jA[J.haL]!, this.jB[J.haR]!, L.join, (0.8 + 2.5 * pulse(t, T.hand1, 0.3)) * jk, 0.05 * P);
       this.flares.glow(gripW, L.join, 0.45 * jk + 1.1 * pulse(t, T.hand1, 0.2), P * (0.1 + 0.2 * pulse(t, T.hand1, 0.3)));
-      this.flares.glow(gripW, col('#fff6e0', 2), 0.3 * pulse(t, T.hand1, 0.3) + 0.04 * jk, P * 1.2, 10, 6);
-      this.flash = 0.1 * pulse(t, T.hand1, 0.08);
+      this.flares.glow(gripW, col('#fff6e0', 2), 0.16 * pulse(t, T.hand1, 0.25), P * 1.2, 10, 6);
+      this.flash = 0.05 * pulse(t, T.hand1, 0.06);
       if (t - T.hand1 < 0.15) this.shake = 1 - (t - T.hand1) / 0.15;
       const age = t - T.hand1;
       ring(this.fx, gripW, V(0, 0, 1), P * 6 * ease.outExpo(clamp(age / 0.9)), L.join, 2 * Math.pow(0.5, age / 0.35), P * 0.03, 96);
@@ -669,12 +668,12 @@ export default class Cosmos extends Scene {
     const gripW = this.jA[J.haL]!.clone().add(this.jB[J.haR]!).multiplyScalar(0.5);
     this.fx.seg(this.jA[J.haL]!, this.jB[J.haR]!, L.join, 1 + 1.5 * pulse(t, tLink, 0.3), 0.05 * P);
     this.flares.glow(gripW, L.join, 0.45 + 1.0 * pulse(t, tLink, 0.3), P * 0.14);
-    this.flares.glow(gripW, col('#fff6e0', 2), 0.04 + 0.3 * pulse(t, tLink, 0.4), P * 1.2, 10, 6);
+    this.flares.glow(gripW, col('#fff6e0', 2), 0.14 * pulse(t, tLink, 0.3), P * 1.2, 10, 6);
     const radii = this.n === 3 ? [2.5, 4.0, 5.6, 7.3] : [2.5, 4.0, 5.6];
     this.wreath(t, beat, V(0, 0.25 * P, 0), P, radii, tHold, tLink, 0);
     if (t > tLink) {
       this.rip.push({ c: gripW, t0: tLink, v: P * 8, w: P * 1.4, k: 2 });
-      this.flash = 0.1 * pulse(t, tLink, 0.08);
+      this.flash = 0.04 * pulse(t, tLink, 0.06);
       if (t - tLink < 0.12) this.shake = 1 - (t - tLink) / 0.12;
     }
     // camera: straight on, pulling back to show the whole mandala, slowly turning; the last half bar pushes in
@@ -708,7 +707,7 @@ export default class Cosmos extends Scene {
     this.sun(sunDir.clone().multiplyScalar(2400), (0.55 + 0.45 * smoothstep(sh.t0 - 0.3, sh.t0 + 0.4, t)) * (1 + 0.2 * this.kick));
     // people rise from the lit Earth: each a point of light at first, unfolding into a dancing star-figure
     const style = [STARJUMP, 0][Math.floor(Math.max(0, bars) * 2) % 2]!;
-    this.risers(t, beat, { n: 64, t0: sh.t0 - 3, span: sh.t1 - sh.t0 + 2.2, R, from: V(0, h0, 0), speed: 9, scale: 2.6, style, k: 0.85 + 0.8 * this.kick, seed: 3, dmin: 45, dmax: 230 });
+    this.risers(t, beat, { n: 72, t0: sh.t0 - 3, span: sh.t1 - sh.t0 + 2.2, R, from: V(0, h0, 0), speed: 9, scale: 4.4, style, k: 0.85 + 0.8 * this.kick, seed: 3, dmin: 45, dmax: 230 });
     this.chopBursts(t, sh, (_tc, k, i) => ({ c: V((hash(i, 8) - 0.5) * 60, h0 + 10 + hash(i, 9) * 30, pos.z - 90 - hash(i, 10) * 60), n: V(0, 0.3, 1), R: 24 + 12 * k }));
   }
 
@@ -754,6 +753,8 @@ export default class Cosmos extends Scene {
     (au.sun!.value as THREE.Vector3).copy(sun).normalize();
     au.dawn!.value = dawn * 0.6;
     au.k!.value = air;
+    // (the blue shell plus the orange dawn reads pink: at sunrise the air is gold)
+    (au.color!.value as THREE.Color).setRGB(0.12, 0.3, 1.0).lerp(new THREE.Color(1.0, 0.6, 0.22), clamp(dawn) * 0.85);
     // (a thinner shell than the Earth's own: seen this close, 3.5% of the radius reads as a thick band)
     e.air.scale.setScalar(1.012 / 1.035);
     e.time = this.tNow;
