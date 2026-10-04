@@ -13,15 +13,15 @@ import { norm, type Line } from '../../engine/lyrics';
 import { clamp, ease, frameIdx, hash, lerp, mulberry32, noise1, prog, pulse, smoothstep } from '../../engine/util';
 import { Stage, aim } from '../lib/stage';
 import { col } from '../lib/palette';
-import { figureGeometry } from '../lib/shapes';
-import { NeonLine, flickerOn } from '../lib/neon';
+import { NeonLine, flickerOn, splitRows } from '../lib/neon';
 import { GlowPoints } from '../lib/points';
 import {
-  ARM_LEN, Auras, HALL, MOON_L, Shafts, WIN, armGeometry, backWallGeometry, ballMaterial, bodyGeometry, coneGeometry, coneMaterial,
+  ARM_LEN, Auras, HALL, MOON_L, Shafts, WIN, armGeometry, backWallGeometry, ballMaterial, coneGeometry, coneMaterial, ghostFigureGeometry,
   discoDirections, ghostMaterial, haloMaterial, moonAtJS, moonMaterial, mullionGeometry, roomMaterial, skyMaterial, worldUniforms,
 } from './ghosts-gfx';
 
-const DEBUG_SAFE = true; // warn when a lit sign leaves the title-safe area
+/** Debug: in init, log every sign's screen extent over its sung interval (warns outside title-safe). */
+const DEBUG_SAFE = false;
 const EYE = 1.6;
 const N_CROWD = 66;
 const MOON_POS = new THREE.Vector3(-7.9, 13.3, -44);
@@ -67,6 +67,7 @@ export default class Ghosts extends Scene {
   bars: number[] = [];
   // camera
   curve!: THREE.CatmullRomCurve3;
+  curveLen = 1;
   sTab: Float32Array = new Float32Array(0);
   sT0 = 0; sDt = 1 / 120;
   aims: Record<string, THREE.Vector3> = {};
@@ -88,13 +89,11 @@ export default class Ghosts extends Scene {
   shafts!: Shafts;
   panes: { c: THREE.Vector3; w: number; h: number; k: number }[] = [];
   spotCone!: THREE.Mesh;
-  ballBeam!: THREE.Mesh;
   discoBeams!: THREE.Mesh;
   ball!: THREE.Mesh;
   cable!: THREE.Mesh;
   ballMat!: THREE.ShaderMaterial;
   spotSrc = new THREE.Vector3();
-  ballSrc = new THREE.Vector3(-7.5, 8.9, 2.0);
   signs: SignDef[] = [];
 
   override async init() {
@@ -134,6 +133,7 @@ export default class Ghosts extends Scene {
       new THREE.Vector3(5.6, EYE + 0.02, 0.25),
       new THREE.Vector3(5.75, EYE + 0.12, -1.6),
     ], false, 'centripetal');
+    this.curveLen = this.curve.getLength();
     this.buildTiming();
     this.aims = {
       a18: new THREE.Vector3(-5.4, 1.48, -1.9),
@@ -216,8 +216,8 @@ export default class Ghosts extends Scene {
       m.frustumCulled = false;
       return m;
     };
-    this.crowd = mkInst(figureGeometry(0), ghostMat, this.ghosts.length);
-    this.trioBodies = mkInst(bodyGeometry(), ghostMat, 3);
+    this.crowd = mkInst(ghostFigureGeometry(true), ghostMat, this.ghosts.length);
+    this.trioBodies = mkInst(ghostFigureGeometry(false), ghostMat, 3);
     this.trioArms = mkInst(armGeometry(), ghostMaterial(U, cold, true), 6);
     this.auras = new Auras(this.ghosts.length + 3, U);
     S.add(this.auras, this.crowd, this.trioBodies, this.trioArms);
@@ -230,18 +230,15 @@ export default class Ghosts extends Scene {
     for (let i = 0; i < this.dust.n; i++) this.dust0.push(new THREE.Vector3(lerp(-3.5, 9, dr()), lerp(0.25, 4.6, dr()), lerp(-9, 4.8, dr())));
     S.add(this.dust);
 
-    // ---- the light: spotlight cone onto the pool, a beam onto the mirror ball, the ball and its beams
+    // ---- the light: a spotlight cone onto the pool (the mirror ball hangs inside it), the ball and its beams
     this.spotSrc.set(POOL.x + 0.9, HALL.h - 0.15, POOL.z + 0.7);
     const poolC = new THREE.Vector3(POOL.x, 0, POOL.z);
     const dSpot = poolC.clone().sub(this.spotSrc);
     this.spotCone = new THREE.Mesh(coneGeometry(0.12, POOL.r * 0.95, dSpot.length(), 36), coneMaterial(U, col('#ffe6f2', 0.32)));
     this.spotCone.position.copy(this.spotSrc);
     this.spotCone.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dSpot.clone().normalize());
-    const dBall = BALL.clone().sub(this.ballSrc);
-    this.ballBeam = new THREE.Mesh(coneGeometry(0.05, 0.42, dBall.length(), 20), coneMaterial(U, col('#f2f4ff', 0.9)));
-    this.ballBeam.position.copy(this.ballSrc);
-    this.ballBeam.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dBall.clone().normalize());
     this.ballMat = ballMaterial(U);
+    (this.ballMat.uniforms.uSrc!.value as THREE.Vector3).copy(this.spotSrc); // the ball hangs inside the spot cone
     this.ball = new THREE.Mesh(new THREE.SphereGeometry(0.4, 40, 28), this.ballMat);
     this.ball.position.copy(BALL);
     const cable = (this.cable = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, HALL.h - BALL.y), frameMat));
@@ -267,15 +264,6 @@ export default class Ghosts extends Scene {
 
     // ---- the sung lines, as cold neon script hanging in the air
     this.buildSigns();
-    if (DEBUG_SAFE) {
-      const p = new THREE.Vector3(), d = new THREE.Vector3();
-      const rows = [95.2, 96.5, 97.9, 98.5, 99.5, 100.5, 101.5, 102.3, 102.8, 103.4, 104.4, 105.0, 105.5, 106.0, 107.0, 108.0, 108.7].map((t) => {
-        this.camAt(t, p, d);
-        const yaw = (Math.atan2(-d.x, -d.z) * 180) / Math.PI, pitch = (Math.asin(d.y) * 180) / Math.PI;
-        return `${t}: (${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}) yaw ${yaw.toFixed(1)} pitch ${pitch.toFixed(1)}`;
-      });
-      console.warn('[ghosts] camera\n' + rows.join('\n') + '\nT ' + JSON.stringify(this.T));
-    }
   }
 
   // -------------------------------------------------------------------------------------------------
@@ -312,14 +300,14 @@ export default class Ghosts extends Scene {
   /** Camera position and view direction at t (pure). */
   camAt(t: number, pos: THREE.Vector3, dir: THREE.Vector3) {
     const T = this.T, A = this.aims;
-    const u = clamp(this.lookup(this.sTab, t), 0, 1);
-    pos.copy(this.curve.getPointAt(u));
+    const u = this.lookup(this.sTab, t), uc = clamp(u, 0, 1);
+    pos.copy(this.curve.getPointAt(uc)).addScaledVector(this.curve.getTangentAt(uc), (u - uc) * this.curveLen);
     pos.x += noise1(t * 0.35, 3) * 0.04;
     pos.y += noise1(t * 0.3, 5) * 0.025;
     pos.z += noise1(t * 0.33, 8) * 0.04;
     const to = (p: THREE.Vector3) => p.clone().sub(pos).normalize();
     let d = to(A.a18!);
-    d = nlerp(d, to(A.a19!), prog(t, T.e18! + 0.02, T.s19! - 0.04, ease.inOutCubic));
+    d = nlerp(d, to(A.a19!), prog(t, T.e18! - 0.1, T.s19! + 0.1, ease.inOutCubic));
     d = nlerp(d, to(A.a20!), prog(t, T.s20! + 0.02, T.turn! + 0.05, ease.inOutCubic));
     d = nlerp(d, to(A.a21!), prog(t, T.light! - 0.3, T.light! + 1.1, ease.inOutCubic));
     // handheld wander
@@ -381,8 +369,14 @@ export default class Ghosts extends Scene {
     };
     const tints = [col('pink'), col('violet'), col('#ffc4e4'), col('pink'), col('violet'), col('#ffc4e4'), col('cyan')];
     const pts: Ghost[] = [];
-    // two ghosts standing in the spot pool, lit when the light comes on
+    // two ghosts standing in the spot pool, lit when the light comes on; and a few right beside the glide
+    // of the first line, so that figures slide past the edges of the frame
     const fixed: [number, number][] = [[POOL.x - 0.55, POOL.z + 0.25], [POOL.x + 0.6, POOL.z - 0.35]];
+    [[0.3, 1.25], [0.46, -1.15], [0.62, -1.3], [0.8, -1.2]].forEach(([k, side]) => { // (later ones on the left: the camera swings right)
+      this.camAt(lerp(start, this.T.e18!, k!), pos, dir);
+      const r = new THREE.Vector3(-dir.z, 0, dir.x).normalize();
+      fixed.push([pos.x + dir.x * 2.2 + r.x * side!, pos.z + dir.z * 2.2 + r.z * side!]);
+    });
     for (let tries = 0; pts.length < N_CROWD && tries < 6000; tries++) {
       const f = fixed[pts.length];
       const x = f ? f[0] : lerp(-8.5, 9.8, rnd()), z = f ? f[1] : lerp(-10.8, 6.8, rnd());
@@ -409,8 +403,13 @@ export default class Ghosts extends Scene {
   private buildSigns() {
     const T = this.T, S = this.st.scene;
     const cyan = col('cyan', 2.1), ice = col('#8fb8ff', 2.3), pink = col('pink', 2.4);
+    /** Recolour the words of a sign by their text. */
+    const tint = (nl: NeonLine, words: string[], c: THREE.Color) => {
+      for (const { sign, ids } of nl.rows) ids.forEach((wi, k) => { if (words.includes(norm(nl.line.words[wi]!.w))) sign.setColor(k, c); });
+    };
     /** A line in rows, anchored in the world where the camera at `at.t` sees it at screen (sx, sy), distance d. */
     const mk = (line: Line, rows: number[][], color: THREE.Color, at: { t: number; d: number; sx: number; sy: number }, tShow: number, tOff: number, rise: number, name: string, lockUntil?: number) => {
+      if (rows.flat().length !== line.words.length) rows = splitRows(line, 2); // (if the alignment ever re-splits the words)
       const size = 0.052 * at.d, lead = size * 1.08;
       const nl = new NeonLine(line, rows, { font: 'script', size, color, leading: lead });
       S.add(nl);
@@ -423,13 +422,13 @@ export default class Ghosts extends Scene {
     mk(this.L18, [[0, 1, 2], [3, 4, 5, 6]], cyan, { t: (T.s18! + T.e18!) / 2, d: 5.2, sx: -0.3, sy: -0.52 }, T.s18! - 0.3, T.e18! + 0.06, 0.6, 'L18');
     // L19: upper left, in the dark of the hall (the friends below, the moon to the right)
     const s19 = mk(this.L19, [[0, 1, 2, 3, 4], [5, 6, 7]], cyan, { t: T.friends!, d: 5.6, sx: -0.35, sy: 0.45 }, T.s19! - 0.25, T.s20! - 0.02, 0.5, 'L19');
-    s19.rows[0]!.sign.setColor(4, pink); // "friends": the first warm word
+    tint(s19, ['friends'], pink); // the first warm word
     // L20: takes over L19's place at the line change, held steady on screen through the turn to the window
     mk(this.L20, [[0, 1, 2, 3], [4, 5, 6]], ice, { t: T.turn! + 0.5, d: 5.6, sx: -0.4, sy: 0.45 }, T.s20! - 0.02, T.e20!, 0.5, 'L20', T.turn! + 0.05);
     // L21: lower left; the light and the mirror ball take the right
     const s21 = mk(this.L21, [[0, 1, 2], [3, 4, 5]], ice, { t: T.spot! + 0.6, d: 4.6, sx: -0.44, sy: -0.5 }, T.s21! - 0.12, 1e9, 0, 'L21');
-    s21.rows[0]!.sign.setColor(2, col('#ffe9f6', 2.6));
-    for (let k = 0; k < 3; k++) s21.rows[1]!.sign.setColor(k, pink);
+    tint(s21, ['light'], col('#ffe9f6', 2.6));
+    tint(s21, ['up', 'the', 'spot'], pink);
     if (DEBUG_SAFE) this.verifySigns();
   }
 
@@ -532,15 +531,12 @@ export default class Ghosts extends Scene {
     const poolK = ign * (1.2 + 0.9 * pulse(t, T.light!, 0.18) + 0.25 * kick) + 0.35 * full;
     U.uPool.value.w = poolK;
     (this.spotCone.material as THREE.ShaderMaterial).uniforms.uK!.value = ign * (0.75 + 0.15 * kick) + 0.25 * full;
-    (this.ballBeam.material as THREE.ShaderMaterial).uniforms.uK!.value = full * (0.8 + 0.2 * kick);
     U.uDisco.value = ign * 0.3 + full * (0.75 + 0.9 * pulse(t, T.spot!, 0.2) + 0.25 * kick);
     U.uBallRot.value = 0.12 * (t - this.ctx.start) + 0.25 * easedRamp(t, T.light!, 0.5) + 0.35 * easedRamp(t, T.spot!, 1.0);
     this.discoBeams.rotation.y = U.uBallRot.value;
     (this.discoBeams.material as THREE.ShaderMaterial).uniforms.uK!.value = full * (0.8 + 0.3 * kick) + ign * 0.15;
     this.ballMat.uniforms.uLit!.value = Math.min(1, ign * 0.6 + full);
-    (this.ballMat.uniforms.uSrc!.value as THREE.Vector3).copy(full > 0 ? this.ballSrc : this.spotSrc);
     this.ball.rotation.y = U.uBallRot.value;
-    this.ballBeam.visible = full > 0.001;
     this.ball.visible = this.cable.visible = U.uMoonK.value < 0.12 || ign > 0; // unseen in the dark until the moon is gone
     this.spotCone.visible = ign > 0.001;
     this.discoBeams.visible = ign > 0.001;
@@ -613,7 +609,7 @@ export default class Ghosts extends Scene {
     U.uHand0.value.copy(this.hands[0]!);
     U.uHand1.value.copy(this.hands[1]!);
     U.uHandK.value.set(hk[0]! * (1 + 0.5 * dark), hk[1]! * (1 + 0.5 * dark));
-    const warmBody = prog(t, T.got!, T.got! + 0.9, ease.outCubic) * 0.35 + prog(t, T.spot!, T.spot! + 1, ease.outCubic) * 0.4;
+    const warmBody = prog(t, T.got!, T.got! + 0.9, ease.outCubic) * 0.25 + prog(t, T.spot!, T.spot! + 1, ease.outCubic) * 0.45;
     const pink = col('pink'), auraC = new THREE.Color();
     let bi = 0;
     const shoulder = new THREE.Vector3(), hang = new THREE.Vector3(), tgt = new THREE.Vector3(), d = new THREE.Vector3();

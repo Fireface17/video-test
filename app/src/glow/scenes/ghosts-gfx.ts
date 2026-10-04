@@ -346,22 +346,32 @@ export function haloMaterial(U: WorldU) {
 // ---------------------------------------------------------------------------------------------------
 // ghosts
 
-/** Figure without arms (same proportions as toolkit's figureGeometry), feet at y = 0, facing +z. */
-export function bodyGeometry() {
+/**
+ * The toolkit's standing figure (shapes.ts figureGeometry: same parts and proportions, about 1.75 tall,
+ * feet at y = 0, facing +z), tessellated finer so the glowing rims stay round in close-ups.
+ * `arms` false leaves the arms off (they are separate, posable meshes for the three friends).
+ */
+export function ghostFigureGeometry(arms = true) {
   const parts: THREE.BufferGeometry[] = [];
-  const cap = (r: number, len: number, x: number, y: number, z: number) => {
-    const g = new THREE.CapsuleGeometry(r, len, 3, 8);
+  const cap = (r: number, len: number, x: number, y: number, rz = 0) => {
+    const g = new THREE.CapsuleGeometry(r, len, 5, 18);
     g.deleteAttribute('uv');
-    g.translate(x, y, z);
+    g.rotateZ(rz);
+    g.translate(x, y, 0);
     parts.push(g);
   };
-  cap(0.17, 0.42, 0, 1.12, 0);
-  const head = new THREE.SphereGeometry(0.13, 12, 8);
+  cap(0.17, 0.42, 0, 1.12); // torso
+  const head = new THREE.SphereGeometry(0.13, 22, 14);
   head.deleteAttribute('uv');
   head.translate(0, 1.6, 0);
   parts.push(head);
-  cap(0.07, 0.62, -0.1, 0.42, 0);
-  cap(0.07, 0.62, 0.1, 0.42, 0);
+  cap(0.07, 0.62, -0.1, 0.42); // legs
+  cap(0.07, 0.62, 0.1, 0.42);
+  if (arms)
+    for (const sd of [-1, 1]) {
+      const a = 0.12 * sd, L = 0.56;
+      cap(0.055, L, 0.23 * sd + Math.sin(a) * (L / 2 + 0.05), 1.36 - Math.cos(a) * (L / 2 + 0.05), a);
+    }
   const g = mergeGeometries(parts, false)!;
   g.computeVertexNormals();
   return g;
@@ -370,7 +380,7 @@ export function bodyGeometry() {
 /** Arm hanging from its shoulder pivot at the origin along -y (hand at y = -ARM_LEN). */
 export const ARM_LEN = 0.665;
 export function armGeometry() {
-  const g = new THREE.CapsuleGeometry(0.055, 0.56, 3, 8);
+  const g = new THREE.CapsuleGeometry(0.055, 0.56, 5, 18);
   g.deleteAttribute('uv');
   g.translate(0, -(0.28 + 0.05), 0);
   return g;
