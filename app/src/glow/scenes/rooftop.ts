@@ -13,6 +13,7 @@ import { Stage, aim, skyDome } from '../lib/stage';
 import { col } from '../lib/palette';
 import { GlowPoints } from '../lib/points';
 import { City } from '../lib/city';
+import { Landmarks } from '../lib/landmarks';
 import { RealFigure, bend, limbDir, loadBody } from '../lib/people';
 import { LightTrail, lineText, sampleStrokeText } from '../lib/lightpaint';
 import { displayTextGeometry, loadDisplayFont } from '../lib/fonts';
@@ -22,6 +23,8 @@ const ROOF = 48;
 const HERO = new THREE.Vector3(0, ROOF, -10);
 const LANTERN = new THREE.Color(1.0, 0.82, 0.55);
 const GOLD = col('gold', 1.6);
+/** Landmark spots (x, z, clear radius): Empire State, Chrysler, One WTC. */
+const LM: [number, number, number][] = [[-280, -1150, 95], [360, -1480, 60], [820, -2050, 75]];
 
 interface Lantern { from: THREE.Vector3; launch: number; seed: number; tgt: (THREE.Vector3 | null)[]; arrive: number[] }
 
@@ -43,6 +46,7 @@ export default class Rooftop extends Scene {
   hereGo: { grp: THREE.Group; words: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; t0: number }[] }[] = [];
   redLight!: THREE.Mesh;
   roofMat!: THREE.ShaderMaterial;
+  lm!: Landmarks;
 
   override async init() {
     const { lyrics } = this.ctx;
@@ -54,7 +58,7 @@ export default class Rooftop extends Scene {
     this.L.here = lyrics.get('Here we go, here we go');
 
     // sky: a deep blue glow above the city, stars, a thin moon
-    this.sky = skyDome(new THREE.Color(0.002, 0.003, 0.01), new THREE.Color(0.022, 0.026, 0.07), new THREE.Color(0.012, 0.014, 0.04), 6000);
+    this.sky = skyDome(new THREE.Color(0.003, 0.004, 0.012), new THREE.Color(0.045, 0.03, 0.032), new THREE.Color(0.02, 0.014, 0.018), 6000);
     const sr = mulberry32(21);
     for (let i = 0; i < this.stars.n; i++) {
       const a = sr() * Math.PI * 2, u = 0.05 + Math.pow(sr(), 0.7) * 0.95, R = 5000;
@@ -64,8 +68,17 @@ export default class Rooftop extends Scene {
     S.add(this.sky, this.stars);
 
     // the city, his own block left clear
-    this.city = new City({ seed: 11, half: 1700, centre: [80, -950], downtownR: 520, clear: [0, -10, 40], fog: 0.00075 });
+    this.city = new City({ seed: 11, half: 1700, centre: [80, -950], downtownR: 520, clear: [[0, -10, 40], ...LM.map(([x, z, r]) => [x, z, r] as [number, number, number])], fog: 0.00075, clouds: 750 });
     S.add(this.city);
+    // the Empire State, the Chrysler and One World Trade Center on the skyline
+    this.lm = new Landmarks(this.city);
+    this.lm.esb.position.set(LM[0]![0], 0, LM[0]![1]);
+    this.lm.esb.rotation.y = 0.12;
+    this.lm.chrysler.position.set(LM[1]![0], 0, LM[1]![1]);
+    this.lm.chrysler.rotation.y = -0.3;
+    this.lm.wtc.position.set(LM[2]![0], 0, LM[2]![1]);
+    this.lm.wtc.rotation.y = 0.2;
+    S.add(this.lm);
 
     // his roof: a slab with a parapet, a water tank, vents, an antenna with a red light
     // roof membrane: dark gravel with seams, lit only by the city's glow and by him (a pool of light at his feet)
@@ -98,6 +111,7 @@ export default class Rooftop extends Scene {
     const sg = new THREE.BoxGeometry(1, 1, 1);
     sg.translate(0, 0.5, 0);
     sg.setAttribute('aB', new THREE.InstancedBufferAttribute(new Float32Array([42, 0.35, 0.8, 0]), 4));
+    sg.setAttribute('aTop', new THREE.InstancedBufferAttribute(new Float32Array([ROOF]), 1));
     const slab = new THREE.InstancedMesh(sg, this.city.mat, 1);
     slab.setMatrixAt(0, new THREE.Matrix4().makeScale(34, ROOF, 30).setPosition(0, 0, -12));
     slab.frustumCulled = false;
@@ -202,6 +216,8 @@ export default class Rooftop extends Scene {
 
     // ---- city ----
     this.city.update(t, cam.position);
+    // the Empire State's crown: white, then gold on "gold"
+    this.lm.update(t, new THREE.Color(0.9, 0.88, 0.8).lerp(new THREE.Color(1.0, 0.7, 0.25), goldK));
     this.city.gold = goldK > 0 ? 0.9 : 0;
     this.city.goldWave(HERO, goldK > 0 ? lerp(0, 2600, ease.inQuad(prog(t, tGold - 0.05, tGold + 1.6))) : 1e9);
     (this.redLight.material as THREE.MeshBasicMaterial).color.setRGB(3 * (Math.sin(t * Math.PI * 1.25) > 0.6 ? 1 : 0.05), 0.1, 0.05);
