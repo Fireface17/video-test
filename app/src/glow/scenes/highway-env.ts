@@ -1,277 +1,533 @@
-// Highway scene, environment: the night sky (dusk haze, city glow, the surreal sunrise), the wet asphalt
-// (lane markings, headlight pool, coloured reflection streaks of the signs and the sun), and the roadside
-// furniture that streams past (guardrail, median barrier, posts, cat's eyes and reflectors).
-//
-// Two worlds: the "sign world" (gantries, station) is where the camera really is (z = -sSign); the
-// "road world" (asphalt, markings, rail, billboards) streams toward the camera a little faster, by the
-// offset `off` (a road feature at road coordinate u sits at world z = off - u). The signs then read like
-// giant, distant signs while the road rushes underneath.
+// Highway scene, environment: the night sky (gradient, stars, city-lit clouds, the dawn and the sun), the
+// distant city (instanced towers with thousands of lit windows, aviation lights), the hills, and generic
+// helpers (soft light streaks). The road, its furniture and the traffic are in highway-road.ts.
 import * as THREE from 'three';
-import { col } from '../lib/palette';
 import { GlowPoints } from '../lib/points';
 import { mulberry32 } from '../../engine/util';
+import { HU, HW_GLSL } from './highway-common';
 
-/** Road layout (metres, x to the right): three lanes in our direction, shoulders, rail and barrier. */
-export const ROAD = {
-  lane: 3.6,
-  edgeL: -5.4, edgeR: 5.4, // solid edge lines
-  asphaltL: -6.4, asphaltR: 7.9,
-  railX: 8.4, barrierX: -7.0,
-  dashP: 12, dashD: 3, // dash period / length
-} as const;
+// ------------------------------------------------------------------------------------------- sky
 
-/** Sky colour by direction, shared by the dome and the far haze of the road (so they meet seamlessly). */
+export interface SkyState {
+  dawn: number; // 0 night .. 1 golden
+  sunDir: THREE.Vector3;
+  sunK: number; // sun disc brightness
+}
+
 export const SKY_GLSL = /* glsl */ `
-uniform vec3 uTop, uHor, uCity, uSun, uRose, uSunDir;
-uniform float uWarm;
+uniform vec3 sZen, sHor, sCity, sDawnLo, sDawnHi, sSunCol, sSunDir;
+uniform float sDawn, sSunK;
 vec3 skyCol(vec3 d) {
-  float yy = max(d.y, 0.0);
-  vec3 c = mix(uHor, uTop, pow(clamp(yy * 1.8, 0.0, 1.0), 0.55));
-  c += uHor * 0.5 * exp(-yy * 28.0);                            // dusk haze hugging the horizon
-  float az = atan(d.x, -d.z);
-  c += uCity * exp(-az * az * 6.0) * exp(-yy * 16.0);            // the distant city ahead
-  float g = max(dot(d, uSunDir), 0.0);
-  // the sun: a tight gold glow, a wider rose-violet halo fading into the night (no muddy brown)
-  c += uSun * (0.3 * pow(g, 180.0) + 1.0 * pow(g, 1400.0));
-  c += uRose * (0.5 * pow(g, 9.0) + 0.6 * exp(-az * az * 1.4) * exp(-yy * 11.0));
-  c += uSun * uWarm * 0.2 * exp(-az * az * 7.0) * exp(-yy * 34.0); // the horizon turns gold
+  float y = d.y, yy = max(y, 0.0);
+  vec2 h = normalize(d.xz + vec2(1e-6));
+  vec3 c = mix(sHor, sZen, pow(clamp(yy * 1.7, 0.0, 1.0), 0.55));
+  // light pollution of the city ahead (-z): a low sodium dome
+  float city = pow(max(-h.y, 0.0), 8.0);
+  c += sCity * (city * exp(-yy * 16.0) + 0.15 * pow(max(-h.y, 0.0), 2.0) * exp(-yy * 5.0));
+  // dawn: a warm band low on the horizon toward the sun, the whole sky lifting
+  vec2 sa2 = normalize(sSunDir.xz + vec2(1e-6));
+  float sa = max(dot(h, sa2), 0.0);
+  c += sDawnLo * (pow(sa, 2.5) * exp(-yy * 7.0) + 0.35 * exp(-yy * 4.0) * (0.15 + 0.85 * sa * sa)) * sDawn;
+  c += sDawnHi * pow(sa, 1.5) * exp(-yy * 2.2) * sDawn;
+  float g = max(dot(d, sSunDir), 0.0);
+  c += sSunCol * sSunK * (smoothstep(0.99975, 0.99985, g) * 40.0 + pow(g, 900.0) * 6.0 + pow(g, 90.0) * 0.6 + pow(g, 12.0) * 0.12);
+  // below the horizon: dark land haze
+  c = mix(c, sHor * 0.5, smoothstep(0.0, -0.08, y));
   return c;
 }`;
 
-export type SkyU = ReturnType<typeof skyUniforms>;
 export function skyUniforms() {
   return {
-    uTop: { value: col('night') },
-    uHor: { value: col('dusk', 1.05) },
-    uCity: { value: col('blue', 0.05).add(col('violet', 0.02)) },
-    uSun: { value: new THREE.Color(0, 0, 0) },
-    uRose: { value: new THREE.Color(0, 0, 0) },
-    uSunDir: { value: new THREE.Vector3(0, -0.06, -1).normalize() },
-    uWarm: { value: 0 },
+    sZen: { value: new THREE.Color() }, sHor: { value: new THREE.Color() }, sCity: { value: new THREE.Color() },
+    sDawnLo: { value: new THREE.Color() }, sDawnHi: { value: new THREE.Color() }, sSunCol: { value: new THREE.Color() },
+    sSunDir: { value: new THREE.Vector3(0, -0.1, 1).normalize() }, sDawn: { value: 0 }, sSunK: { value: 0 },
   };
 }
+export type SkyU = ReturnType<typeof skyUniforms>;
 
-/** Sky dome centred on the camera (move it with the camera). */
-export function makeSky(u: SkyU, radius = 2400) {
-  const mat = new THREE.ShaderMaterial({
-    side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: u,
-    vertexShader: /* glsl */ `varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: SKY_GLSL + /* glsl */ `
-      varying vec3 vDir;
-      void main(){ gl_FragColor = vec4(skyCol(normalize(vDir)), 1.0); }`,
-  });
-  const m = new THREE.Mesh(new THREE.SphereGeometry(radius, 48, 24), mat);
-  m.renderOrder = -10;
-  m.frustumCulled = false;
-  return m;
-}
+const lerpC = (a: THREE.Color, b: THREE.Color, k: number) => a.clone().lerp(b, k);
+const C = (hex: string, k = 1) => new THREE.Color(hex).multiplyScalar(k);
 
-export const NG = 6; // reflection sources on the wet road
+export class Sky extends THREE.Group {
+  u = skyUniforms();
+  dome: THREE.Mesh;
+  cloudMesh: THREE.Mesh;
+  stars: GlowPoints;
+  cu: Record<string, THREE.IUniform>;
 
-/**
- * The ground: one big plane under the camera, everything procedural from world position (road world for
- * the markings). Wet patches reflect up to NG light sources as long vertical streaks (horizontal segment
- * lights: position, half-width, half-height, colour).
- */
-export class Road extends THREE.Mesh {
-  declare material: THREE.ShaderMaterial;
-  u: Record<string, THREE.IUniform>;
+  constructor(cloudTex: THREE.Texture) {
+    super();
+    const dome = new THREE.ShaderMaterial({
+      side: THREE.BackSide, depthWrite: false, fog: false, uniforms: this.u,
+      vertexShader: /* glsl */ `varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: SKY_GLSL + /* glsl */ `varying vec3 vDir; void main(){ gl_FragColor = vec4(skyCol(normalize(vDir)), 1.0); }`,
+    });
+    this.dome = new THREE.Mesh(new THREE.SphereGeometry(4600, 48, 24), dome);
+    this.dome.renderOrder = -10;
+    this.dome.frustumCulled = false;
 
-  constructor(sky: SkyU) {
-    const u = {
-      ...sky,
-      camPos: { value: new THREE.Vector3() },
-      off: { value: 0 },
-      fogD: { value: 0.013 },
-      headK: { value: 1 },
-      gPos: { value: Array.from({ length: NG }, () => new THREE.Vector3(0, -100, 0)) },
-      gCol: { value: Array.from({ length: NG }, () => new THREE.Color(0, 0, 0)) },
-      gSize: { value: Array.from({ length: NG }, () => new THREE.Vector2(1, 1)) },
-      pool: { value: new THREE.Vector4(0, 0, 1, 0) },
-      poolCol: { value: new THREE.Color(0, 0, 0) },
+    // stars: magnitude-distributed, a faint milky band, hidden by the clouds drawn after them
+    const r = mulberry32(911);
+    const N = 2600;
+    this.stars = new GlowPoints(N, 1);
+    const band = new THREE.Vector3(0.55, 0.62, -0.56).normalize();
+    for (let i = 0; i < N; i++) {
+      let x = r() * 2 - 1, y = r(), z = r() * 2 - 1;
+      // a third of them crowd a band across the sky
+      if (i % 3 === 0) {
+        const t = new THREE.Vector3(x, y, z).normalize();
+        const off = t.dot(band);
+        x -= band.x * off * 0.85; y -= band.y * off * 0.85; z -= band.z * off * 0.85;
+      }
+      const v = new THREE.Vector3(x, Math.abs(y) + 0.02, z).normalize().multiplyScalar(4300);
+      const mag = Math.pow(r(), 5.5);
+      const tint = r();
+      const c = tint < 0.15 ? C('#ffd7b0') : tint < 0.35 ? C('#cfe0ff') : C('#f4f6ff');
+      const el = v.y / 4300;
+      this.stars.set(i, v.x, v.y, v.z, c, (0.1 + 2.2 * mag) * Math.min(1, el * 4), 7 + 16 * mag);
+    }
+    this.stars.commit();
+    this.stars.renderOrder = -9;
+    (this.stars.material as THREE.ShaderMaterial).depthTest = true;
+
+    // the cloud deck: a plane-projected tiling texture, its underside lit by the city's sodium glow
+    this.cu = {
+      ...this.u, tex: { value: cloudTex }, off: { value: new THREE.Vector2() }, cover: { value: 0.55 },
+      litCity: { value: new THREE.Color() }, litAmb: { value: new THREE.Color() }, litSun: { value: new THREE.Color() },
     };
-    const mat = new THREE.ShaderMaterial({
-      uniforms: u,
-      vertexShader: /* glsl */ `
-        varying vec3 vW;
-        void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+    const cm = new THREE.ShaderMaterial({
+      side: THREE.BackSide, depthWrite: false, transparent: true, fog: false, uniforms: this.cu,
+      vertexShader: /* glsl */ `varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: SKY_GLSL + /* glsl */ `
-        #define NG ${NG}
-        uniform vec3 camPos; uniform float off, fogD, headK;
-        uniform vec3 gPos[NG]; uniform vec3 gCol[NG]; uniform vec2 gSize[NG];
-        uniform vec4 pool; uniform vec3 poolCol;
-        varying vec3 vW;
-        float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
-        float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-          return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y); }
-        // box-filtered coverage of a stripe [c - hw, c + hw] over a pixel footprint fw
-        float cov(float x, float fw, float c, float hw) { return clamp((min(x + 0.5 * fw, c + hw) - max(x - 0.5 * fw, c - hw)) / fw, 0.0, 1.0); }
-        float dashI(float u) { return floor(u / ${ROAD.dashP}.0) * ${ROAD.dashD}.0 + min(mod(u, ${ROAD.dashP}.0), ${ROAD.dashD}.0); }
-        float dashCov(float u, float fu) { return clamp((dashI(u + 0.5 * fu) - dashI(u - 0.5 * fu)) / fu, 0.0, 1.0); }
+        uniform sampler2D tex; uniform vec2 off; uniform float cover; uniform vec3 litCity, litAmb, litSun;
+        varying vec3 vDir;
         void main() {
-          vec3 P = vW;
-          vec3 V = P - camPos; float dist = length(V); vec3 vd = V / dist;
-          float x = P.x, u = off - P.z;
-          float fx = max(fwidth(x), 1e-4), fu = max(fwidth(u), 1e-4);
-          float road = cov(x, fx, ${((ROAD.asphaltL + ROAD.asphaltR) / 2).toFixed(2)}, ${((ROAD.asphaltR - ROAD.asphaltL) / 2).toFixed(2)});
-          float dash = dashCov(u, fu);
-          float m = cov(x, fx, ${ROAD.edgeL.toFixed(2)}, 0.1) + cov(x, fx, ${ROAD.edgeR.toFixed(2)}, 0.1)
-                  + (cov(x, fx, ${(-ROAD.lane / 2).toFixed(2)}, 0.075) + cov(x, fx, ${(ROAD.lane / 2).toFixed(2)}, 0.075)) * dash;
-          m = clamp(m, 0.0, 1.0) * road;
-          // asphalt: patchy dark blue-grey with fine grain (faded with distance), the verge darker
-          float n1 = vn(vec2(x * 0.31, u * 0.09)), n2 = vn(vec2(x * 2.7, u * 1.9)), n3 = vn(vec2(x * 0.9 + 7.0, u * 0.35));
-          float grain = exp(-dist * 0.06);
-          vec3 asph = vec3(0.010, 0.011, 0.017) * (0.7 + 0.6 * n1) * (1.0 + 0.5 * (n2 - 0.5) * grain);
-          // tyre-polished lane centres are a touch darker and wetter
-          float lanePos = abs(fract((x + ${(ROAD.lane / 2).toFixed(2)}) / ${ROAD.lane.toFixed(2)}) - 0.5);
-          float track = smoothstep(0.08, 0.2, abs(lanePos - 0.25));
-          asph *= mix(0.85, 1.0, track);
-          vec3 verge = vec3(0.0035, 0.0045, 0.008) * (0.6 + 0.8 * n3);
-          vec3 alb = mix(verge, asph, road);
-          alb = mix(alb, vec3(0.38, 0.40, 0.46), m);
-          // light: sky ambient + a headlight pool ahead of the camera (paint is retroreflective)
-          float ahead = camPos.z - P.z, lat = x - camPos.x;
-          float beam = headK * smoothstep(1.0, 8.0, ahead) * exp(-pow(lat / (0.24 * ahead + 1.7), 2.0)) / (1.0 + pow(ahead / 24.0, 2.0));
-          vec3 light = vec3(0.09, 0.10, 0.16) + vec3(0.85, 0.92, 1.0) * beam * (1.0 + 3.0 * m);
-          float pd = length(vec2(x - pool.x, P.z - pool.y)) / pool.z;
-          light += poolCol * exp(-pd * pd * 1.6);
-          vec3 c = alb * light;
-          // wet reflections: long vertical streaks of every light source
-          float wet = mix(0.08, mix(0.3, 1.0, smoothstep(0.3, 0.75, vn(vec2(x * 0.16 + 3.0, u * 0.045)))) * mix(0.8, 1.0, track), road) * (1.0 - 0.75 * m);
-          // the sheen is streaky: stretched along the road, broken across it
-          float streak = smoothstep(0.2, 0.85, vn(vec2(x * 1.6 + 11.0, u * 0.06))) * (0.75 + 0.25 * vn(vec2(x * 5.0, u * 0.3)));
-          wet *= mix(0.15, 1.0, streak);
-          float fres = 0.03 + 0.97 * pow(1.0 - clamp(-vd.y, 0.0, 1.0), 5.0);
-          float azR = atan(vd.x, -vd.z), elR = asin(clamp(-vd.y, -1.0, 1.0));
-          vec3 refl = vec3(0.0);
-          for (int i = 0; i < NG; i++) {
-            vec3 L = gPos[i] - P;
-            float hz = -L.z;
-            if (hz < 0.05) continue;
-            float a0 = atan(L.x - gSize[i].x, hz), a1 = atan(L.x + gSize[i].x, hz);
-            float da = max(max(a0 - azR, azR - a1), 0.0);
-            float hd = length(L.xz);
-            float e0 = atan(L.y - gSize[i].y, hd), e1 = atan(L.y + gSize[i].y, hd);
-            float de = max(max(e0 - elR, elR - e1), 0.0);
-            refl += gCol[i] * exp(-da * da * 700.0) * exp(-de * de * 34.0);
+          vec3 d = normalize(vDir);
+          if (d.y < 0.004) discard;
+          vec2 p = d.xz / (d.y + 0.045) * 0.11 + off;
+          vec4 a = texture2D(tex, p);
+          vec4 b = texture2D(tex, p * 2.7 + 0.31);
+          float dens = smoothstep(1.0 - cover, 1.0 - cover + 0.45, a.r * 0.75 + b.r * 0.35);
+          float fade = smoothstep(0.004, 0.09, d.y);
+          vec2 h = normalize(d.xz + vec2(1e-6));
+          float city = pow(max(-h.y, 0.0), 2.0);
+          float low = exp(-d.y * 3.5);
+          vec2 sa2 = normalize(sSunDir.xz + vec2(1e-6));
+          float sun = pow(max(dot(h, sa2), 0.0), 3.0);
+          // thicker cloud reads darker on top, brighter rims where thin
+          float thin = 1.0 - smoothstep(0.3, 1.0, a.g);
+          vec3 col = litAmb * (0.6 + 0.4 * b.b) + litCity * (city * 1.4 + 0.25) * low * (0.6 + 0.6 * a.g) + litSun * (sun * 1.6 + 0.2) * (0.4 + 0.9 * thin) * low;
+          float al = dens * fade;
+          gl_FragColor = vec4(col * al, al * 0.92);
+        }`,
+    });
+    cm.blending = THREE.CustomBlending;
+    cm.blendSrc = THREE.OneFactor; cm.blendDst = THREE.OneMinusSrcAlphaFactor;
+    this.cloudMesh = new THREE.Mesh(new THREE.SphereGeometry(4450, 48, 24), cm);
+    this.cloudMesh.renderOrder = -8;
+    this.cloudMesh.frustumCulled = false;
+    this.add(this.dome, this.stars, this.cloudMesh);
+  }
+
+  /** Night → dawn colours, also writes the haze and ambient into the shared lighting uniforms. */
+  update(camPos: THREE.Vector3, t: number, dawn: number, sunDir: THREE.Vector3, sunK: number, cloudDrift: number) {
+    this.position.copy(camPos);
+    const u = this.u;
+    const d = dawn, d2 = Math.min(1, d * 1.6);
+    u.sZen.value.copy(lerpC(C('#03050f', 0.6), C('#1f3a78', 0.75), Math.pow(d, 1.5)));
+    u.sHor.value.copy(lerpC(C('#13204a', 0.6), C('#8ea3c8', 0.6), Math.pow(d, 1.3)));
+    u.sCity.value.copy(C('#ff8a3a', 0.016 * (1 - 0.6 * d)));
+    u.sDawnLo.value.copy(C('#ffa23a', 2.0));
+    u.sDawnHi.value.copy(C('#ffbe6a', 0.32));
+    u.sSunCol.value.copy(lerpC(C('#ff7a2a'), C('#ffd27a'), Math.min(1, sunK)));
+    u.sSunDir.value.copy(sunDir);
+    u.sDawn.value = d;
+    u.sSunK.value = sunK;
+    // clouds
+    this.cu.off!.value.set(cloudDrift * 0.004 + 0.13, cloudDrift * 0.0015 + 0.71);
+    this.cu.litCity!.value.copy(C('#ff7f3f', 0.03 * (1 - 0.5 * d)));
+    this.cu.litAmb!.value.copy(lerpC(C('#1a2140', 0.02), C('#5a6890', 0.45), d));
+    this.cu.litSun!.value.copy(C('#ff9d5c', 1.4 * d2));
+    // haze & ambient (shared with every lit material)
+    HU.uHazeLo.value.copy(u.sHor.value).multiplyScalar(0.8 - 0.25 * d);
+    HU.uHazeCity.value.copy(C('#ff7a30', 0.02 * (1 - 0.6 * d)));
+    HU.uHazeSun.value.copy(C('#ffb050', 1.1 * d * d));
+    HU.uSunAz.value.set(sunDir.x, sunDir.z).normalize();
+    HU.uAmbHi.value.copy(lerpC(C('#2a3870', 0.05), C('#a8b0c8', 0.3), Math.pow(d, 1.2)));
+    HU.uAmbLo.value.copy(lerpC(C('#120f14', 0.03), C('#5a4a40', 0.12), d));
+    HU.uSunDir.value.copy(sunDir);
+    HU.uSunCol.value.copy(C('#ffb060', 1.6 * Math.max(0, sunK - 0.1) * smoothK(sunDir.y)));
+    void t;
+  }
+}
+const smoothK = (y: number) => Math.min(1, Math.max(0, (y + 0.01) / 0.08));
+
+// ------------------------------------------------------------------------------------------- city
+
+export const CITY = { x: -180, z: -1900 };
+
+/** The far city: instanced towers with procedural windows, aviation lights, and the hills around. */
+export class City extends THREE.Group {
+  towers: THREE.InstancedMesh;
+  lights: GlowPoints;
+  hills: THREE.Mesh;
+  hillLights: GlowPoints;
+  avi: { p: THREE.Vector3; phase: number; k: number }[] = [];
+  u = { cDawn: { value: 0 }, cGlow: { value: new THREE.Color() }, cHaze: { value: new THREE.Color() }, cFog: { value: 0.00028 }, cTime: { value: 0 } };
+
+  constructor() {
+    super();
+    const r = mulberry32(4242);
+    const N = 360;
+    const geo = new THREE.BoxGeometry(1, 1, 1);
+    geo.translate(0, 0.5, 0);
+    const mat = new THREE.ShaderMaterial({
+      uniforms: this.u,
+      vertexShader: /* glsl */ `
+        attribute vec4 bInfo; // seed, lit ratio, warmth, crown
+        varying vec3 vW; varying vec2 vF; varying float vFace; varying vec4 vInfo; varying float vY; varying float vH;
+        void main() {
+          mat4 m = modelMatrix * instanceMatrix;
+          vec3 sc = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
+          vec4 w = m * vec4(position, 1.0);
+          vW = w.xyz;
+          vec3 lp = position * sc;
+          vFace = abs(normal.y) > 0.5 ? 2.0 : abs(normal.x) > 0.5 ? 0.0 : 1.0;
+          vF = vec2(vFace < 0.5 ? lp.z * sign(normal.x) : lp.x * sign(normal.z), lp.y);
+          vInfo = bInfo; vY = position.y; vH = sc.y;
+          gl_Position = projectionMatrix * viewMatrix * w;
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform float cDawn, cFog, cTime; uniform vec3 cGlow, cHaze;
+        varying vec3 vW; varying vec2 vF; varying float vFace; varying vec4 vInfo; varying float vY; varying float vH;
+        float h12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+        void main() {
+          float seed = vInfo.x;
+          vec3 base = vec3(0.0015, 0.002, 0.004) + cGlow * (1.0 - vY) * 0.5;
+          base *= vFace > 1.5 ? 0.5 : vFace > 0.5 ? 1.0 : 0.7;
+          vec3 c = base;
+          if (vFace < 1.5) {
+            vec2 cell = vec2(3.0, 3.8);
+            vec2 q = vF / cell;
+            vec2 id = floor(q), f = fract(q);
+            vec2 fw = fwidth(q);
+            float floorLit = step(0.12, h12(vec2(id.y, seed * 91.0)));          // some floors dark
+            float lit = step(h12(id + seed * 37.0), vInfo.y) * floorLit;
+            float warm = step(h12(id * 1.3 + seed * 11.0), vInfo.z);
+            vec3 wc = mix(vec3(0.55, 0.75, 1.0), vec3(1.0, 0.6, 0.26), warm) * (0.12 + 0.35 * h12(id + 3.7));
+            float win = smoothstep(0.08, 0.16, f.x) * smoothstep(0.92, 0.84, f.x) * smoothstep(0.2, 0.3, f.y) * smoothstep(0.86, 0.78, f.y);
+            float ground = step(1.0, id.y);
+            vec3 detail = wc * lit * win * ground;
+            vec3 avg = mix(vec3(0.55, 0.75, 1.0), vec3(1.0, 0.6, 0.26), vInfo.z) * vInfo.y * 0.88 * 0.4 * 0.3;
+            float k = smoothstep(0.5, 1.2, max(fw.x, fw.y));
+            c += mix(detail, avg, k) * (1.0 - 0.75 * cDawn);
+            // a lit crown on a few towers
+            float crown = vInfo.w * smoothstep(vH - 9.0, vH - 7.0, vY * vH) * step(vY * vH, vH - 1.0);
+            c += crown * vec3(0.7, 0.85, 1.0) * 1.2;
           }
-          c += refl * fres * wet;
-          // haze toward the sky's own horizon colour in this direction
-          float f = 1.0 - exp(-fogD * fogD * dist * dist);
-          c = mix(c, skyCol(vd), f);
+          // aerial perspective
+          float d = length(vW - cameraPosition);
+          float f = 1.0 - exp(-d * cFog);
+          c = mix(c, cHaze, f);
           gl_FragColor = vec4(c, 1.0);
         }`,
     });
-    super(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), mat);
-    this.u = u;
-    this.scale.set(1600, 1, 5200);
+    this.towers = new THREE.InstancedMesh(geo, mat, N);
+    const info = new Float32Array(N * 4);
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
+    const tall: THREE.Vector3[] = [];
+    for (let i = 0; i < N; i++) {
+      // downtown core, then sprawl
+      const core = i < 140;
+      const a = r() * Math.PI * 2, rad = core ? Math.pow(r(), 0.8) * 520 : 450 + r() * 1500;
+      const x = CITY.x + Math.cos(a) * rad * (core ? 1.3 : 1.6), z = CITY.z + Math.sin(a) * rad * (core ? 0.5 : 0.45) - (core ? 0 : 200);
+      const hgt = core ? 60 + Math.pow(r(), 1.8) * 260 * (1 - rad / 700) + 30 : 14 + Math.pow(r(), 3) * 70;
+      const w = core ? 26 + r() * 34 : 30 + r() * 60, dd = core ? 24 + r() * 30 : 25 + r() * 50;
+      p.set(x, -2, z); q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (r() - 0.5) * 0.5); s.set(w, hgt, dd);
+      m.compose(p, q, s);
+      this.towers.setMatrixAt(i, m);
+      info[i * 4] = r() * 10; info[i * 4 + 1] = core ? 0.06 + r() * 0.22 : 0.04 + r() * 0.12; info[i * 4 + 2] = core ? 0.25 + r() * 0.4 : 0.75; info[i * 4 + 3] = core && hgt > 200 && r() < 0.5 ? 1 : 0;
+      if (hgt > 150) tall.push(new THREE.Vector3(x, hgt - 2, z));
+    }
+    geo.setAttribute('bInfo', new THREE.InstancedBufferAttribute(info, 4));
+    this.towers.frustumCulled = false;
+
+    // aviation lights (blinking red) on the tall towers and a few masts on the hills
+    this.lights = new GlowPoints(140, 1);
+    for (const t of tall) this.avi.push({ p: t.clone().add(new THREE.Vector3(0, 3, 0)), phase: r(), k: 1 });
+    // hills: a ridge ring around the origin, closer on the sides, far ahead and behind
+    const S = 360;
+    const pos: number[] = [], idx: number[] = [];
+    const ridge = (az: number) => {
+      let h = 0;
+      for (let o = 0; o < 5; o++) h += Math.sin(az * (3 + o * 4.7) + o * 1.9) * (1 / (o + 1)) + Math.sin(az * (7 + o * 9.1) + o) * 0.35 / (o + 1);
+      return 70 + 60 * h;
+    };
+    const radius = (az: number) => 2600 + 1700 * Math.pow(Math.abs(Math.cos(az)), 2);
+    for (let i = 0; i <= S; i++) {
+      const az = (i / S) * Math.PI * 2;
+      const R = radius(az);
+      const x = Math.sin(az) * R, z = -Math.cos(az) * R;
+      let h = ridge(az);
+      // lower in front of the city so the skyline stands clear
+      const ca = Math.atan2(CITY.x, -CITY.z);
+      h *= 0.35 + 0.65 * (1 - Math.exp(-Math.pow((az > Math.PI ? az - Math.PI * 2 : az) - ca, 2) / 0.05));
+      pos.push(x, -30, z, x, h, z);
+      if (i < S) { const k = i * 2; idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); }
+      if (i % 9 === 0 && h > 90) this.avi.push({ p: new THREE.Vector3(x * 0.995, h + 28, z * 0.995), phase: r(), k: 0.7 });
+    }
+    const hg = new THREE.BufferGeometry();
+    hg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    hg.setIndex(idx);
+    this.hills = new THREE.Mesh(hg, new THREE.ShaderMaterial({
+      side: THREE.DoubleSide, uniforms: this.u,
+      vertexShader: /* glsl */ `varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+      fragmentShader: /* glsl */ `uniform vec3 cHaze; uniform float cDawn; varying vec3 vW;
+        void main(){ float k = smoothstep(-30.0, 160.0, vW.y); vec3 c = mix(cHaze * 0.55, cHaze * (0.38 + 0.2 * cDawn), k); gl_FragColor = vec4(c, 1.0); }`,
+    }));
+    this.hills.frustumCulled = false;
+    // scattered house lights on the hillsides
+    this.hillLights = new GlowPoints(700, 1);
+    for (let i = 0; i < 700; i++) {
+      const az = r() * Math.PI * 2;
+      const R = radius(az) * (0.55 + 0.4 * r());
+      const y = Math.max(2, ridge(az) * (R / radius(az)) * r() * 0.5);
+      const c = r() < 0.7 ? C('#ffb066') : C('#dfe8ff');
+      this.hillLights.set(i, Math.sin(az) * R, y, -Math.cos(az) * R, c, 0.25 + r() * 0.5, 2.2 + r() * 2.5);
+    }
+    this.hillLights.commit();
+    this.add(this.towers, this.hills, this.hillLights, this.lights);
+  }
+
+  update(t: number, dawn: number, haze: THREE.Color) {
+    this.u.cDawn.value = dawn;
+    this.u.cGlow.value.copy(C('#ff8a40', 0.02 * (1 - dawn)));
+    this.u.cHaze.value.copy(haze);
+    this.u.cTime.value = t;
+    // aviation lights: 1.5 s cycle, 0.5 s on, a few in sync
+    let n = 0;
+    for (const a of this.avi) {
+      const ph = ((t / 1.5 + a.phase * (n % 3 === 0 ? 0 : 1)) % 1 + 1) % 1;
+      const on = ph < 0.33 ? 1 : 0.03;
+      this.lights.set(n++, a.p.x, a.p.y, a.p.z, C('#ff2a1a'), 2.4 * on * a.k * (1 - 0.6 * dawn), 9);
+      if (n >= this.lights.n) break;
+    }
+    for (let i = n; i < this.lights.n; i++) this.lights.hide(i);
+    this.lights.commit();
+  }
+}
+
+// ------------------------------------------------------------------------------------------- streaks
+
+/**
+ * Soft additive light streaks: camera-facing ribbons between two world points (car light trails, motion
+ * streaks of lamps). Set per frame with set(i, a, b, colour, width) then commit().
+ */
+export class Streaks extends THREE.Mesh {
+  aA: Float32Array; aB: Float32Array; aC: Float32Array; aW: Float32Array;
+  live = 0;
+  declare geometry: THREE.InstancedBufferGeometry;
+
+  constructor(public cap: number) {
+    const g = new THREE.InstancedBufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute([0, -1, 0, 1, -1, 0, 1, 1, 0, 0, 1, 0], 3));
+    g.setIndex([0, 1, 2, 0, 2, 3]);
+    const aA = new Float32Array(cap * 3), aB = new Float32Array(cap * 3), aC = new Float32Array(cap * 3), aW = new Float32Array(cap);
+    g.setAttribute('iA', new THREE.InstancedBufferAttribute(aA, 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('iB', new THREE.InstancedBufferAttribute(aB, 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('iC', new THREE.InstancedBufferAttribute(aC, 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('iW', new THREE.InstancedBufferAttribute(aW, 1).setUsage(THREE.DynamicDrawUsage));
+    const mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      uniforms: { fogD: HU.uFogD },
+      vertexShader: /* glsl */ `
+        attribute vec3 iA, iB, iC; attribute float iW;
+        uniform float fogD;
+        varying vec2 vL; varying vec3 vC; varying float vLen;
+        void main() {
+          vec4 a = viewMatrix * vec4(iA, 1.0), b = viewMatrix * vec4(iB, 1.0);
+          vec3 ax = b.xyz - a.xyz; float L = length(ax);
+          vec3 dir = L > 1e-5 ? ax / L : vec3(1.0, 0.0, 0.0);
+          vec3 mid = mix(a.xyz, b.xyz, position.x);
+          vec3 side = normalize(cross(dir, normalize(mid) + vec3(0.0, 0.0, 1e-4)));
+          vec3 p = mid + side * position.y * iW - dir * iW * (1.0 - 2.0 * position.x);
+          vL = vec2((position.x * (L + 2.0 * iW) - iW) / max(L, 1e-4), position.y);
+          vLen = L / max(iW, 1e-4);
+          float d = length(mid);
+          vC = iC * exp(-pow(d * fogD, 1.35) * 0.8);
+          gl_Position = projectionMatrix * vec4(p, 1.0);
+        }`,
+      fragmentShader: /* glsl */ `
+        varying vec2 vL; varying vec3 vC; varying float vLen;
+        void main() {
+          float across = exp(-vL.y * vL.y * 4.0);
+          float along = smoothstep(-0.5 / max(vLen, 0.5), 0.0, vL.x) * smoothstep(1.0 + 0.5 / max(vLen, 0.5), 1.0, vL.x);
+          // trails fade toward their tail (vL.x = 0)
+          float tail = mix(0.25, 1.0, clamp(vL.x, 0.0, 1.0));
+          gl_FragColor = vec4(vC * across * along * tail, 1.0);
+        }`,
+    });
+    super(g, mat);
+    this.aA = aA; this.aB = aB; this.aC = aC; this.aW = aW;
     this.frustumCulled = false;
   }
 
-  /** Follow the camera (the plane is procedural, only its extent moves). */
-  follow(cam: THREE.Vector3) {
-    this.position.set(cam.x, 0, cam.z - 2400);
-    (this.u.camPos!.value as THREE.Vector3).copy(cam);
+  set(i: number, a: THREE.Vector3Like, b: THREE.Vector3Like, c: THREE.Color, k: number, w: number) {
+    this.aA.set([a.x, a.y, a.z], i * 3); this.aB.set([b.x, b.y, b.z], i * 3);
+    this.aC.set([c.r * k, c.g * k, c.b * k], i * 3); this.aW[i] = w;
   }
+  commit(n: number) {
+    this.live = n;
+    this.geometry.instanceCount = n;
+    for (const k of ['iA', 'iB', 'iC', 'iW']) (this.geometry.getAttribute(k) as THREE.InstancedBufferAttribute).needsUpdate = true;
+  }
+}
 
-  setGlint(i: number, x: number, y: number, z: number, hw: number, hh: number, c: THREE.Color, k = 1) {
-    (this.u.gPos!.value as THREE.Vector3[])[i]!.set(x, y, z);
-    (this.u.gSize!.value as THREE.Vector2[])[i]!.set(hw, hh);
-    (this.u.gCol!.value as THREE.Color[])[i]!.copy(c).multiplyScalar(k);
+// ------------------------------------------------------------------------------------------- landscape
+
+/** Four tree silhouettes (alpha) drawn procedurally: trunk, recursive branches, leaf clumps. */
+function treeAtlas() {
+  const cw = 512, ch = 1024, cv = document.createElement('canvas');
+  cv.width = cw * 4; cv.height = ch;
+  const c = cv.getContext('2d')!;
+  c.clearRect(0, 0, cv.width, cv.height);
+  const r = mulberry32(808);
+  for (let v = 0; v < 4; v++) {
+    const ox = v * cw + cw / 2;
+    c.fillStyle = '#fff'; c.strokeStyle = '#fff'; c.lineCap = 'round';
+    const tips: { x: number; y: number }[] = [];
+    const branch = (x: number, y: number, a: number, len: number, w: number, depth: number) => {
+      const x2 = x + Math.cos(a) * len, y2 = y + Math.sin(a) * len;
+      c.lineWidth = w; c.beginPath(); c.moveTo(x, y); c.lineTo(x2, y2); c.stroke();
+      if (depth <= 0 || len < 12) { tips.push({ x: x2, y: y2 }); return; }
+      const n = 2 + (r() < 0.4 ? 1 : 0);
+      for (let i = 0; i < n; i++) branch(x2, y2, a + (r() - 0.5) * (v === 3 ? 0.7 : 1.3), len * (0.62 + r() * 0.2), w * 0.66, depth - 1);
+    };
+    const conifer = v === 3;
+    branch(ox, ch - 10, -Math.PI / 2 + (r() - 0.5) * 0.08, conifer ? 240 : 300, conifer ? 22 : 30, conifer ? 5 : 6);
+    // leaf clumps around every tip (and a dense crown), soft-edged discs
+    const crown = conifer ? 0.0 : 1.0;
+    for (const t of tips) {
+      const k = 6 + Math.floor(r() * 6);
+      for (let i = 0; i < k; i++) {
+        const rad = (conifer ? 10 : 16) + r() * (conifer ? 18 : 30);
+        c.beginPath(); c.arc(t.x + (r() - 0.5) * 60, t.y + (r() - 0.5) * 50, rad, 0, Math.PI * 2); c.fill();
+      }
+    }
+    if (conifer) {
+      // a spire of drooping tiers
+      for (let y = 140; y < ch - 120; y += 18) {
+        const w = (y - 100) * 0.34 * (0.8 + 0.4 * r());
+        c.beginPath(); c.moveTo(ox, y - 30); c.lineTo(ox - w, y + 24); c.lineTo(ox + w, y + 24); c.closePath(); c.fill();
+      }
+    }
+    void crown;
   }
-  clearGlint(i: number) { (this.u.gCol!.value as THREE.Color[])[i]!.setRGB(0, 0, 0); }
+  const t = new THREE.CanvasTexture(cv);
+  t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.anisotropy = 4;
+  t.needsUpdate = true;
+  return t;
 }
 
 /**
- * Roadside furniture in the road world: a W-beam guardrail on posts (right), a concrete median barrier
- * (left), cat's eyes in the lane lines and on the edges, reflectors on the rail and the barrier.
+ * The land beside the highway: tree lines that stream past (camera-facing silhouettes, looping around the
+ * camera), scattered house and farm lights, and a parallel country road with its own lamps and a few cars.
  */
-export class Roadside extends THREE.Group {
-  rail: THREE.Mesh;
-  barrier: THREE.Mesh;
-  posts: THREE.InstancedMesh;
-  pts: GlowPoints;
-  private m4 = new THREE.Matrix4();
-  static POSTS = 64;
+export class Landscape extends THREE.Group {
+  trees: THREE.InstancedMesh;
+  lights: GlowPoints;
+  cars: GlowPoints;
+  treeData: { x: number; u: number; s: number; v: number }[] = [];
+  exclude: { x: number; u: number; r: number }[] = [];
+  static NT = 300;
+  static LOOP = 760;
 
-  constructor(fogD: number) {
+  constructor() {
     super();
-    const steel = new THREE.MeshStandardMaterial({ color: new THREE.Color('#5a6488'), roughness: 0.45, metalness: 0.55 });
-    const concrete = new THREE.MeshStandardMaterial({ color: new THREE.Color('#3a4160'), roughness: 0.9 });
-    // W-beam: a box with two shallow ribs
-    const beam = new THREE.BoxGeometry(0.06, 0.34, 600);
-    this.rail = new THREE.Mesh(beam, steel);
-    this.rail.position.set(ROAD.railX, 0.62, 0);
-    const bg = new THREE.BoxGeometry(0.55, 0.82, 600);
-    this.barrier = new THREE.Mesh(bg, concrete);
-    this.barrier.position.set(ROAD.barrierX, 0.41, 0);
-    this.posts = new THREE.InstancedMesh(new THREE.BoxGeometry(0.12, 0.8, 0.14), steel, Roadside.POSTS);
-    this.posts.frustumCulled = false;
-    this.pts = new GlowPoints(260, 1, { fogDensity: fogD });
-    this.add(this.rail, this.barrier, this.posts, this.pts);
-  }
-
-  /**
-   * camZ: camera world z; sRoad: road-world travel; off: road offset; k: overall reflector brightness.
-   */
-  update(camZ: number, sRoad: number, off: number, k = 1) {
-    this.rail.position.z = camZ - 250;
-    this.barrier.position.z = camZ - 250;
-    const zOf = (u: number) => off - u; // road coordinate -> world z
-    // posts every 4 m from 6 m behind to ~250 m ahead
-    const p0 = Math.floor((sRoad - 6) / 4) * 4;
-    for (let i = 0; i < Roadside.POSTS; i++) {
-      const u = p0 + i * 4;
-      this.m4.makeTranslation(ROAD.railX + 0.1, 0.4, zOf(u));
-      this.posts.setMatrixAt(i, this.m4);
+    const r = mulberry32(5150);
+    const quad = new THREE.PlaneGeometry(1, 1);
+    quad.translate(0, 0.5, 0);
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { ...HU, atlas: { value: treeAtlas() } },
+      vertexShader: /* glsl */ `
+        attribute float variant;
+        varying vec2 vUv; varying vec3 vW; varying float vH;
+        void main() {
+          vec3 c = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+          float sx = length(instanceMatrix[0].xyz), sy = length(instanceMatrix[1].xyz);
+          vec3 toCam = cameraPosition - c; toCam.y = 0.0;
+          vec3 right = normalize(vec3(toCam.z, 0.0, -toCam.x) + vec3(1e-5, 0.0, 0.0));
+          vec3 w = c + right * position.x * sx * 0.62 + vec3(0.0, position.y * sy, 0.0);
+          vW = w; vH = position.y;
+          vUv = vec2((uv.x + variant) / 4.0, uv.y);
+          gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
+        }`,
+      fragmentShader: HW_GLSL + /* glsl */ `
+        uniform sampler2D atlas;
+        varying vec2 vUv; varying vec3 vW; varying float vH;
+        void main() {
+          float a = texture2D(atlas, vUv).a;
+          if (a < 0.45) discard;
+          vec3 spec;
+          vec3 V = normalize(cameraPosition - vW);
+          vec3 d = hwLight(vW, normalize(V + vec3(0.0, 0.6, 0.0)), V, 0.9, 0.0, spec);
+          vec3 c = vec3(0.016, 0.022, 0.016) * d * (0.55 + 0.45 * vH);
+          gl_FragColor = vec4(hwFog(c, vW, cameraPosition), 1.0);
+        }`,
+    });
+    const variant = new Float32Array(Landscape.NT);
+    for (let i = 0; i < Landscape.NT; i++) {
+      const side = r() < 0.5 ? -1 : 1;
+      const u = r() * Landscape.LOOP;
+      const clump = Math.sin(u * 0.021 + side * 2) * 0.5 + 0.5;
+      const x = side * (21 + Math.pow(r(), 1.6) * 80 + (clump < 0.3 ? 45 : 0));
+      const v = Math.floor(r() * 4);
+      variant[i] = v;
+      this.treeData.push({ x, u, s: (v === 3 ? 13 : 10) * (0.75 + r() * 0.6), v });
     }
-    this.posts.instanceMatrix.needsUpdate = true;
-    // reflectors
-    const P = this.pts;
+    quad.setAttribute('variant', new THREE.InstancedBufferAttribute(variant, 1));
+    this.trees = new THREE.InstancedMesh(quad, mat, Landscape.NT);
+    this.trees.frustumCulled = false;
+    // scattered lights out in the land (static world positions around the route)
+    this.lights = new GlowPoints(900, 1);
     let n = 0;
-    const wht = col('#dff4ff'), pink = col('pink'), cyan = col('cyan');
-    const bright = (u: number) => { const d = u - sRoad; return d < -3 ? 0 : 0.35 + 0.65 / (1 + (d / 20) ** 2); };
-    const c0 = Math.floor((sRoad - 4) / ROAD.dashP) * ROAD.dashP;
-    for (let i = 0; i < 22; i++) {
-      const u = c0 + i * ROAD.dashP;
-      // cat's eyes between the dashes, and on the edge lines
-      for (const x of [-ROAD.lane / 2, ROAD.lane / 2]) if (n < P.n) P.set(n++, x, 0.03, zOf(u + 7.5), wht, 1.5 * k * bright(u + 7.5), 0.12);
-      if (n < P.n) P.set(n++, ROAD.edgeR + 0.22, 0.03, zOf(u + 1.5), pink, 1.3 * k * bright(u + 1.5), 0.12);
-      if (n < P.n) P.set(n++, ROAD.edgeL - 0.22, 0.03, zOf(u + 1.5), cyan, 1.1 * k * bright(u + 1.5), 0.12);
+    for (let i = 0; i < 520; i++) {
+      const side = r() < 0.5 ? -1 : 1;
+      const x = side * (110 + Math.pow(r(), 0.7) * 1400), z = 300 - r() * 2600;
+      const warm = r() < 0.75;
+      this.lights.set(n++, x, 1.5 + r() * 6, z, warm ? C('#ffb36b') : C('#dfe9ff'), 0.25 + Math.pow(r(), 3) * 1.2, 1.4 + r() * 1.4);
     }
-    for (let i = 0; i < 64; i++) {
-      const u = p0 + i * 4;
-      if (n < P.n) P.set(n++, ROAD.railX - 0.06, 0.72, zOf(u), wht, 0.9 * k * bright(u), 0.1);
+    // a parallel road on the right, ~420 m out: a row of sodium lamps
+    for (let i = 0; i < 120; i++) {
+      const z = 300 - i * 24;
+      this.lights.set(n++, 420 + Math.sin(z * 0.002) * 60, 8, z, C('#ff9a3c'), 0.9, 2.6);
     }
-    const b0 = Math.floor((sRoad - 6) / 8) * 8;
-    for (let i = 0; i < 32; i++) {
-      const u = b0 + i * 8 + 2;
-      if (n < P.n) P.set(n++, ROAD.barrierX + 0.2, 0.86, zOf(u), cyan, 0.8 * k * bright(u), 0.1);
-    }
-    for (let i = n; i < P.n; i++) P.hide(i);
-    P.commit();
+    for (let i = n; i < this.lights.n; i++) this.lights.hide(i);
+    this.lights.commit();
+    this.cars = new GlowPoints(24, 1);
+    this.add(this.trees, this.lights, this.cars);
   }
-}
 
-/** Stars and the faint lights of the distant city: points at "infinity" (move them with the camera). */
-export function skyPoints() {
-  const g = new GlowPoints(900, 1);
-  const r = mulberry32(17);
-  let i = 0;
-  for (; i < 620; i++) {
-    const az = (r() * 2 - 1) * Math.PI, el = 0.07 + Math.pow(r(), 0.8) * 1.4;
-    const R = 2000;
-    const c = r() < 0.1 ? col('cyan') : r() < 0.16 ? col('pink') : col('#e8ecff');
-    g.set(i, Math.sin(az) * Math.cos(el) * R, Math.sin(el) * R, -Math.cos(az) * Math.cos(el) * R, c, (0.25 + r() * 0.9) * Math.min(1, (el - 0.07) * 6), (0.7 + Math.pow(r(), 3) * 2.2) * R / 300);
+  update(camU: number, t: number) {
+    const m = new THREE.Matrix4();
+    const L = Landscape.LOOP;
+    this.treeData.forEach((d, i) => {
+      const rel = ((((d.u - camU + 140) % L) + L) % L) - 140;
+      const u = camU + rel;
+      let k = 1;
+      for (const e of this.exclude) if (Math.hypot(d.x - e.x, u - e.u) < e.r) k = 0;
+      m.makeScale(d.s * k, d.s * k, d.s * k).setPosition(d.x, 0, -u);
+      this.trees.setMatrixAt(i, m);
+    });
+    this.trees.instanceMatrix.needsUpdate = true;
+    // cars on the parallel road
+    for (let i = 0; i < 12; i++) {
+      const dir = i % 2 ? 1 : -1;
+      const z = ((((i * 211 + dir * t * 22) % 2800) + 2800) % 2800) - 2500;
+      const x = 420 + Math.sin(z * 0.002) * 60 + dir * 3;
+      this.cars.set(i * 2, x, 1, z, dir > 0 ? C('#ff2a1a') : C('#fff2dd'), dir > 0 ? 0.6 : 1.2, 1.6);
+      this.cars.set(i * 2 + 1, x + 1.4, 1, z, dir > 0 ? C('#ff2a1a') : C('#fff2dd'), dir > 0 ? 0.6 : 1.2, 1.6);
+    }
+    this.cars.commit();
   }
-  // city: a low band of tiny lights straight ahead, denser in the middle
-  for (; i < g.n; i++) {
-    const az = (r() + r() + r() - 1.5) * 0.42, el = Math.pow(r(), 2.2) * 0.012 + 0.0015;
-    const R = 1900;
-    const c = r() < 0.55 ? col('#cfe0ff') : r() < 0.5 ? col('cyan') : r() < 0.5 ? col('violet') : col('pink');
-    g.set(i, Math.sin(az) * R, Math.sin(el) * R, -Math.cos(az) * R, c, 0.18 + r() * 0.5, (0.35 + r() * 0.5) * R / 300);
-  }
-  g.commit();
-  return g;
 }

@@ -1,410 +1,572 @@
-// Verse 1, "Night drive": a low camera over a wet night highway, lane dashes and cat's eyes streaming
-// toward us, a dusk-blue haze and the glow of a far city on the horizon. Each sung line is a modest neon
-// sign; the props of each line carry the picture:
-//   L00 "We were running on an empty tank"   we start in the car: the fuel needle sinks to E, the
-//                                             low-fuel lamp blinks amber on the beat; the sign is on a
-//                                             gantry ahead; at the end we fly out of the car under it
-//   L01 "Painting smiles on the days…"       calendar billboards (MON, TUE, WED) pass on both sides, a
-//                                             smiley painted on each in phosphor as the words are sung
-//   L02 "Now the sun's coming up where it sank"  the horizon turns gold and the sun rises ahead, its
-//                                             gold path on the wet asphalt (the only gold of the scene)
-//   L03 "And I'd pay any cost"               we drift right toward a gas station; the pylon's price
-//                                             drums roll on "pay" and stop on ANY / COST as they're sung
-// The sign gantries live in the "sign world" the camera travels through slowly while a line is sung
-// (so the sign stays readable) and fast between lines (each sign sweeps overhead); the road streams by
-// a steady 11.5 m/s faster (highway-env.ts).
+// Verse 1, "Night drive": a fast drive on a wet night highway toward a far city, until the sun comes up
+// behind us. One continuous world (highway-road.ts, highway-env.ts) seen through cuts and snaps on the beat:
+//   A  dive    the whip down out of the night sky onto the highway; a drone chases low over the lanes and
+//              "WE WERE RUNNING ON AN EMPTY TANK" is painted across them as huge road lettering, word by
+//              word as it is sung, rushing under the camera
+//   B  gauge   (downbeat) macro on the fuel gauge: the needle sinks to E, the low-fuel lamp blinks
+//   C  boards  low POV: calendar billboards (MONDAY, TUESDAY, WEDNESDAY) on both sides; the camera whips
+//              from one to the next, the words brush-painted on in glowing paint, a smile on each day
+//   D  mirror  inside the car: the dawn appears in the rear-view mirror with "NOW THE SUN'S"
+//   E  sun     (whip around on "coming") the sun rises over the road behind us, the words fly out of it
+//              onto an arc; the sky turns gold
+//   F  station a filling station: the pylon spells AND I'D PAY, its price drums spin and land on
+//              ANY / COST; the camera turns into the sun, which flares into the lens on the last beat
 import * as THREE from 'three';
 import { Scene, type Frame } from '../../engine/scene';
 import type { Line } from '../../engine/lyrics';
-import { clamp, ease, hash, lerp, noise1, prog, pulse, smoothstep, springStep } from '../../engine/util';
-import { Stage, aim } from '../lib/stage';
-import { col } from '../lib/palette';
-import { flickerOn } from '../lib/neon';
-import { ROAD, Road, Roadside, makeSky, skyPoints, skyUniforms, type SkyU } from './highway-env';
-import { Billboard, Dashboard, Gantry, Station, makeSun } from './highway-props';
+import { clamp, ease, frameIdx, hash, lerp, noise1, prog, pulse, smoothstep, springStep } from '../../engine/util';
+import { HU, ROAD, litMat } from './highway-common';
+import { bakeTextures, type HwTextures } from './highway-tex';
+import { City, Landscape, Sky } from './highway-env';
+import { Furniture, Gantry, NWORDS, Reflection, RoadSurface, Streetlights, Traffic, wordAtlas } from './highway-road';
+import { Gauge } from './highway-gauge';
+import { BOARD_W, CalendarBoard } from './highway-boards';
+import { Interior, SunArc } from './highway-props';
+import { Station } from './highway-station';
+import { makeRT } from '../../engine/gl';
+import { LensFlare } from './highway-flare';
 
-const FOG = 0.013;
-const EYE = 1.1;
-const V_BASE = 2.0; // sign-world speed while a line is sung (m/s)
-const V_ROAD = 15; // the road world streams this much faster
-const FOV = 40;
+const C = (hex: string, k = 1) => new THREE.Color(hex).multiplyScalar(k);
 const DEG = Math.PI / 180;
-const DASH_PITCH = 3.6 * DEG; // camera pitch the dashboard was laid out for
 
-interface Whoosh { t0: number; t1: number; A: number }
-interface Board { b: Billboard; u: number; side: number; strokes: [number, number][] }
+type Shot = 'dive' | 'gauge' | 'boards' | 'mirror' | 'sun' | 'station' | 'pylon' | 'reveal' | 'flare';
+interface Cam { pos: THREE.Vector3; yaw: number; pitch: number; roll: number; fov: number }
+interface WordRow { words: number[]; u: number; len: number }
 
 export default class Highway extends Scene {
-  st = new Stage(FOV, 0.05, 4000);
-  sky!: SkyU;
-  skyMesh!: THREE.Mesh;
-  stars!: THREE.Points;
-  road!: Road;
-  side!: Roadside;
-  lines: Line[] = [];
+  scene = new THREE.Scene();
+  cam = new THREE.PerspectiveCamera(50, 16 / 9, 0.05, 12000);
+  backCam = new THREE.PerspectiveCamera(12, 3.75, 0.5, 12000);
+  tex!: HwTextures;
+  sky!: Sky;
+  city!: City;
+  road!: RoadSurface;
+  refl!: Reflection;
+  furn!: Furniture;
+  lamps!: Streetlights;
   gantries: Gantry[] = [];
-  /** sign-world positions (distance along the road) of the gantries and the pylon */
-  S: number[] = [];
-  tw: number[] = []; // whoosh start per line
-  ta: number[] = []; // arrival (next line's start)
-  downbeats: number[] = [];
-  whooshes: Whoosh[] = [];
-  // travel tables
-  private T0 = 0;
-  private DT = 1 / 1000;
-  private sTab = new Float32Array(0);
-  dash!: Dashboard;
-  boards: Board[] = [];
+  gantryU: number[] = [];
+  traffic!: Traffic;
+  land!: Landscape;
+  noRefl: THREE.Object3D[] = [];
+  gauge!: Gauge;
+  boards: { b: CalendarBoard; u: number; x: number; side: number; focus: [number, number] }[] = [];
   station!: Station;
-  sun!: THREE.Mesh;
-  spill!: THREE.PointLight;
-  hemi!: THREE.HemisphereLight;
-  pylonX = 10.2;
-  stationLine!: Line;
+  stationU = 0;
+  arc!: SunArc;
+  interior!: Interior;
+  mirrorRT = makeRT(768, 205);
+  flare = new LensFlare();
+
+  L: Line[] = [];
+  S0 = 0; S1 = 0; W0 = 0; W1 = 0; lab = false;
+  T = { gauge: 0, l1: 0, l2: 0, whip: 0, l3: 0, pylon: 0, reveal: 0, flare: 0 };
+  downs: number[] = [];
+  rows: WordRow[] = [];
+  slots: { rect: THREE.Vector4; atlas: THREE.Vector4; word: number }[] = [];
+  // travel table
+  private tT0 = 0; private tDT = 1 / 500; private sTab = new Float32Array(0);
+  private vDrone = 34;
 
   override async init() {
-    const { lyrics, audio, start, end } = this.ctx;
-    const S = this.st.scene;
-    this.lines = [lyrics.get('We were running'), lyrics.get('Painting smiles'), lyrics.get('Now the sun'), lyrics.get('And I’d pay')];
-    this.stationLine = this.lines[3]!;
-    this.downbeats = audio.downbeats.filter((d) => d > start + 0.2 && d < end);
-    // whoosh windows: from when the line's last word has lit (or near the line's end) to the next line
-    for (let i = 0; i < 4; i++) {
-      const l = this.lines[i]!, last = l.words[l.words.length - 1]!;
-      this.tw.push(Math.max(last.start + 0.38, l.end - 0.5));
-      // (the last one runs on through the burn-out transition into the pre-chorus)
-      this.ta.push(i < 3 ? this.lines[i + 1]!.start - 0.03 : end + 0.4);
-    }
+    const { renderer, lyrics, audio } = this.ctx;
+    // ---- timing
+    this.lab = this.ctx.id === 'lab';
+    const sec = (n: string) => audio.sections.find((s) => s.name === n)!.start;
+    this.S0 = this.lab ? sec('verse1') : this.ctx.start;
+    this.S1 = this.lab ? sec('pre1') : this.ctx.end;
+    this.W0 = this.S0 - 0.25; this.W1 = this.S1 + 0.35;
+    this.L = [lyrics.get('We were running'), lyrics.get('Painting smiles'), lyrics.get('Now the sun'), lyrics.get('And I’d pay')];
+    const [L0, L1, L2, L3] = this.L as [Line, Line, Line, Line];
+    const beatBefore = (t: number) => audio.timeOfBeat(Math.floor(audio.beatAt(t + 0.03)));
+    const nearestBeat = (t: number) => audio.timeOfBeat(Math.round(audio.beatAt(t)));
+    this.downs = audio.downbeats.filter((d) => d > this.W0 && d < this.W1 + 0.5);
+    const nextDown = (t: number) => this.downs.find((d) => d > t) ?? t + 1;
+    const T = this.T;
+    T.gauge = nextDown(L0.words[6]!.start + 0.2);
+    T.l1 = beatBefore(L1.start);
+    T.l2 = beatBefore(L2.start);
+    T.whip = nearestBeat(L2.words[3]!.start);
+    T.l3 = beatBefore(L3.start);
+    T.pylon = nextDown(L3.words[2]!.start - 0.1);
+    T.flare = nearestBeat(this.S1 - 0.42);
+    T.reveal = (() => { const d = this.downs.find((x) => x > L3.words[4]!.start + 0.2); return d && T.flare - d > 0.5 ? d : T.flare; })();
 
-    this.st.bg.copy(col('night'));
-    this.st.fog(col('dusk', 1.45), FOG);
-    S.add(this.st.cam);
-    this.sky = skyUniforms();
-    this.skyMesh = makeSky(this.sky);
-    this.stars = skyPoints();
-    this.road = new Road(this.sky);
-    this.road.u.fogD!.value = FOG;
-    this.side = new Roadside(FOG);
-    S.add(this.skyMesh, this.stars, this.road, this.side);
-    this.hemi = new THREE.HemisphereLight(new THREE.Color('#4a5cb0'), new THREE.Color('#0a0c1a'), 1.1);
-    this.spill = new THREE.PointLight(col('pink'), 0, 24, 1.6);
-    S.add(this.hemi, this.spill);
-
-    const steel = new THREE.MeshStandardMaterial({ color: new THREE.Color('#2e3658'), roughness: 0.5, metalness: 0.45 });
-    const panel = new THREE.MeshStandardMaterial({ color: new THREE.Color('#0c1028'), roughness: 0.85 });
-    const board = new THREE.MeshStandardMaterial({ color: new THREE.Color('#151b3a'), roughness: 0.8 });
-    const slab = new THREE.MeshStandardMaterial({ color: new THREE.Color('#1c2238'), roughness: 0.95 });
-
-    // the three sign gantries
-    const specs = [
-      { rows: [[0, 1, 2], [3, 4, 5, 6]], color: col('pink', 2.3), inkWidth: 10.2, centerY: 5.4 },
-      { rows: [[0, 1, 2], [3, 4, 5, 6, 7]], color: col('phosphor', 2.0), inkWidth: 10.8, centerY: 6.3 },
-      { rows: [[0, 1, 2, 3], [4, 5, 6, 7]], color: col('cyan', 2.3), inkWidth: 11.0, centerY: 5.9 },
+    // ---- world
+    this.tex = bakeTextures(renderer);
+    this.sky = new Sky(this.tex.clouds);
+    this.city = new City();
+    this.refl = new Reflection();
+    const atlasWords = L0.words.map((w) => w.w);
+    const atlas = wordAtlas(atlasWords);
+    this.road = new RoadSurface(this.tex, this.refl, atlas.tex);
+    this.furn = new Furniture(this.tex);
+    this.lamps = new Streetlights();
+    this.traffic = new Traffic();
+    const steel = litMat({ color: C('#8a929c', 0.5), rough: 0.45, metal: 0.7, spec: 0.9, grime: 0.5 });
+    this.gantries = [
+      new Gantry([{ text: 'City Centre', sub: 'Harbour', arrow: 'up' }, { text: 'Airport', sub: 'Exit 24', arrow: 'right', exit: '24' }], steel),
+      new Gantry([{ text: 'Riverside', sub: 'Old Town', arrow: 'up' }, { text: 'East', sub: 'Exit 25', arrow: 'right', exit: '25' }], steel),
     ];
-    specs.forEach((sp, i) => {
-      const g = new Gantry(this.lines[i]!, { ...sp, sx: 0.88, font: 'script' }, steel, panel);
-      this.gantries.push(g);
-      S.add(g);
-    });
+    this.land = new Landscape();
+    this.scene.add(this.sky, this.city, this.road, this.furn, this.lamps, this.traffic, this.land, ...this.gantries);
+    this.scene.add(this.cam);
+    // dark verticals smear into ghostly figures in the blurred reflection: keep them out of it
+    this.noRefl = [this.lamps.poles, this.furn.posts, ...this.gantries.map((g) => g.children[0]!)];
+    HU.uLampCol.value.copy(C('#ff9a3c', 115));
 
+    // ---- travel (the car), then everything placed along it
     this.buildTravel();
-    this.gantries.forEach((g, i) => (g.position.z = -this.S[i]!));
+    this.buildRows(atlas.slots);
+    // one gantry over the drone's run, one seen ahead through the windscreen at dawn
+    this.gantryU = [this.sAt(this.W0 + 0.6) + 95, this.sAt(T.l3) + 160];
 
-    // dashboard (in the car for the first line)
-    this.dash = new Dashboard(0.17);
-    this.st.cam.add(this.dash);
+    this.gauge = new Gauge();
 
-    // calendar billboards, in the road world, painted on the words of L01
-    const l1 = this.lines[1]!, w = l1.words;
-    const plan: { day: string; side: number; strokes: [number, number][] }[] = [
-      { day: 'MON', side: 1, strokes: [[w[0]!.start, w[0]!.end], [w[1]!.start, w[1]!.start + 0.12], [w[1]!.start + 0.1, w[1]!.start + 0.22], [w[1]!.start + 0.22, w[1]!.end]] },
-      { day: 'TUE', side: -1, strokes: [[w[2]!.start, w[3]!.end], [w[4]!.start, w[4]!.start + 0.07], [w[4]!.start + 0.06, w[4]!.start + 0.13], [w[4]!.start + 0.13, w[4]!.end]] },
-      { day: 'WED', side: 1, strokes: [[w[5]!.start, w[6]!.end], [w[7]!.start, w[7]!.start + 0.1], [w[7]!.start + 0.09, w[7]!.start + 0.19], [w[7]!.start + 0.19, w[7]!.start + 0.6]] },
-      { day: 'THU', side: -1, strokes: [] },
+    // calendar billboards
+    const w1 = L1.words;
+    const specs = [
+      { day: 'MONDAY', date: '13', words: [[0], [1]], smile: w1[1]!, side: 1, focus: [T.l1, nearestBeat(w1[2]!.start)] as [number, number], D: 40 },
+      { day: 'TUESDAY', date: '14', words: [[2, 3], [4, 5]], smile: w1[4]!, side: -1, focus: [nearestBeat(w1[2]!.start), nearestBeat(w1[6]!.start)] as [number, number], D: 33 },
+      { day: 'WEDNESDAY', date: '15', words: [[6, 7]], smile: w1[7]!, side: 1, focus: [nearestBeat(w1[6]!.start), T.l2 + 0.3] as [number, number], D: 36 },
     ];
-    plan.forEach((p, i) => {
-      const b = new Billboard(p.day, 31 + i * 7, { board, steel });
-      const t0 = p.strokes[0]?.[0] ?? w[7]!.start;
-      // the board is ~40 m ahead when its first stroke starts (the last, unpainted one trails WED)
-      const u = this.sRoad(t0) + 40 + (i === 3 ? 22 : 0);
-      b.rotation.y = -p.side * 0.4;
-      b.scale.setScalar(1.25);
-      S.add(b);
-      this.boards.push({ b, u, side: p.side, strokes: p.strokes });
+    specs.forEach((s, i) => {
+      const lines = s.words.map((row) => row.map((wi) => ({ text: w1[wi]!.w, t0: w1[wi]!.start, t1: Math.min(w1[wi]!.end, w1[wi]!.start + 0.55) })));
+      const b = new CalendarBoard({ day: s.day, date: s.date, month: 'OCTOBER', lines, smile: [s.smile.start + 0.05, s.smile.start + 0.5], seed: 11 + i * 17 });
+      const first = Math.min(...lines.flat().map((w) => w.t0));
+      const u = this.sAt(first) + s.D;
+      const x = s.side > 0 ? 21 : -18.5;
+      b.position.set(x, 0, -u);
+      b.rotation.y = s.side > 0 ? 0.5 : -0.5;
+      this.scene.add(b);
+      this.boards.push({ b, u, x, side: s.side, focus: s.focus });
+      this.land.exclude.push({ x, u, r: 26 });
     });
 
-    // gas station: pylon at the right roadside, the canopy behind it
-    this.station = new Station(this.stationLine, { steel, board, slab });
-    this.station.position.set(this.pylonX, 0, -this.S[3]!);
-    this.station.canopy.position.set(12.5, 0, -15);
-    S.add(this.station);
+    // the station: the pylon by the right shoulder, ~70 m ahead when "And" is sung
+    this.station = new Station();
+    this.stationU = this.sAt(L3.words[0]!.start) + 74;
+    this.station.position.set(18.2, 0, -this.stationU);
+    this.station.rotation.y = 0.35;
+    this.scene.add(this.station);
+    this.land.exclude.push({ x: 40, u: this.stationU + 20, r: 50 });
 
-    this.sun = makeSun();
-    S.add(this.sun);
+    // the sun's words and the car interior (camera space)
+    this.arc = new SunArc(L2);
+    await this.arc.build();
+    this.scene.add(this.arc);
+    this.interior = new Interior(this.mirrorRT.texture);
+    this.cam.add(this.interior);
+    this.backCam.layers.enableAll();
   }
 
-  // ---------------------------------------------------------------- travel
+  // ------------------------------------------------------------------------------------------- travel
 
-  /** Sign-world speed without whooshes: cruise plus a lunge on every downbeat. */
-  private vBase(t: number) {
-    let v = V_BASE;
-    for (const d of this.downbeats) {
+  /** Car speed (m/s) at t: the drone chase, cruising, lunges on the downbeats, braking for the station. */
+  private speed(t: number) {
+    const T = this.T;
+    let v = t < T.gauge ? this.vDrone : t < T.l2 ? 27 : t < T.l3 ? 31 : lerp(26, 9, prog(t, T.l3 + 0.2, T.pylon + 0.6, ease.inOutCubic));
+    for (const d of this.downs) {
       const dt = t - d;
-      if (dt > -0.03 && dt < 1.5) v += 3.2 * Math.exp(-Math.max(0, dt) / 0.22) * smoothstep(-0.03, 0.04, dt);
+      if (dt > -0.02 && dt < 1.2 && t < T.l3) v += 5 * Math.exp(-Math.max(0, dt) / 0.25) * smoothstep(-0.02, 0.03, dt);
     }
     return v;
   }
 
-  private vSign(t: number) {
-    let v = this.vBase(t);
-    for (const w of this.whooshes) {
-      if (t > w.t0 && t < w.t1) {
-        const u = (t - w.t0) / (w.t1 - w.t0);
-        v += w.A * Math.pow(u, 1.6) * Math.pow(1 - u, 2.2);
-      }
-    }
-    return v;
-  }
-
-  private integrate() {
-    const n = this.sTab.length;
+  private buildTravel() {
+    this.tT0 = this.W0 - 1;
+    const n = Math.ceil((this.W1 + 2 - this.tT0) / this.tDT) + 2;
+    this.sTab = new Float32Array(n);
     let s = 0;
-    this.sTab[0] = 0;
     for (let i = 1; i < n; i++) {
-      const t = this.T0 + i * this.DT;
-      s += 0.5 * (this.vSign(t - this.DT) + this.vSign(t)) * this.DT;
+      const t = this.tT0 + i * this.tDT;
+      s += 0.5 * (this.speed(t - this.tDT) + this.speed(t)) * this.tDT;
       this.sTab[i] = s;
     }
   }
 
-  /** Sign-world travel at t. */
-  sSign(t: number) {
-    const x = (t - this.T0) / this.DT, n = this.sTab.length;
-    if (x <= 0) return this.sTab[0]! + (t - this.T0) * V_BASE;
-    if (x >= n - 1) return this.sTab[n - 1]! + (t - (this.T0 + (n - 1) * this.DT)) * V_BASE;
+  /** Car travel (road coordinate) at t. */
+  sAt(t: number) {
+    const x = (t - this.tT0) / this.tDT, n = this.sTab.length;
+    if (x <= 0) return this.sTab[0]! + (t - this.tT0) * this.speed(this.tT0);
+    if (x >= n - 1) return this.sTab[n - 1]! + (t - this.tT0 - (n - 1) * this.tDT) * this.speed(t);
     const i = Math.floor(x), f = x - i;
     return this.sTab[i]! * (1 - f) + this.sTab[i + 1]! * f;
   }
-  /** Road-world travel at t. */
-  sRoad(t: number) { return this.sSign(t) + this.off(t); }
-  off(t: number) { return V_ROAD * (t - this.ctx.start); }
 
-  private buildTravel() {
-    const { start, end } = this.ctx;
-    this.T0 = start - 1;
-    this.sTab = new Float32Array(Math.ceil((end + 1.5 - this.T0) / this.DT) + 2);
-    const D0 = [28, 28, 28, 26];
-    const PASS = 3.5;
-    const bellInt = (() => { let s = 0; const N = 2000; for (let i = 0; i < N; i++) { const u = (i + 0.5) / N; s += Math.pow(u, 1.6) * Math.pow(1 - u, 2.2) / N; } return s; })();
-    this.integrate();
-    for (let i = 0; i < 4; i++) {
-      this.S[i] = this.sSign(this.lines[i]!.start) + D0[i]!;
-      // how far the whoosh must carry us: past this sign (or, for the pylon, alongside it)
-      const target = i < 3 ? this.S[i]! + PASS : this.S[i]! + 1.5;
-      const need = target - this.sSign(this.ta[i]!);
-      const T = this.ta[i]! - this.tw[i]!;
-      this.whooshes.push({ t0: this.tw[i]!, t1: this.ta[i]!, A: Math.max(0, need) / (bellInt * T) });
-      this.integrate();
-    }
-  }
-
-  /** Index of the line whose stretch of road we're on (0..3). */
-  private seg(t: number) {
-    for (let i = 0; i < 3; i++) if (t < this.ta[i]!) return i;
-    return 3;
-  }
-
-  // ---------------------------------------------------------------- camera
-
-  private camera(t: number, f: Frame) {
-    const sS = this.sSign(t);
-    const i = this.seg(t);
-    // lateral: gentle sway, a lane drift in each whoosh, and a move to the right lane for the station
-    const toStation = prog(t, this.tw[2]! - 0.1, this.lines[3]!.start + 0.9, ease.inOutCubic);
-    let x = noise1(t * 0.23, 3) * 0.35 + toStation * ROAD.lane;
-    for (let k = 0; k < 2; k++) {
-      const p = prog(t, this.tw[k]!, this.ta[k]! + 0.4, ease.inOutCubic);
-      x += Math.sin(p * Math.PI) * (k % 2 ? -0.7 : 0.7);
-    }
-    // vertical: road bumps on the kicks, a dip under each sign
-    let y = EYE - 0.018 * f.a.kick + noise1(t * 1.7, 5) * 0.012;
-    for (let k = 0; k < 3; k++) y -= 0.12 * Math.sin(prog(t, this.tw[k]!, this.ta[k]!) * Math.PI);
-    const pos = new THREE.Vector3(x, y, -sS);
-
-    // pitch follows the current sign (rising as it comes overhead), then hands over to the next one
-    const pitchFor = (k: number) => {
-      if (k >= 3) {
-        const d = Math.max(this.S[3]! - sS, 4);
-        return clamp(Math.atan2(this.station.panelY + 0.6 - y, d) * 0.5, 3 * DEG, 9 * DEG);
+  /** The first line painted across the carriageway: rows of words, each painted when sung. */
+  private buildRows(slots: { atlas: THREE.Vector4 }[]) {
+    const ws = this.L[0]!.words;
+    const groups = [[0, 1], [2], [3, 4], [5], [6]];
+    const LEN = 11, PITCH = 14, DSTAR = 20;
+    const tVis0 = this.W0 + 0.6;
+    for (let iter = 0; iter < 6; iter++) {
+      this.rows = [];
+      let prev = -1e9;
+      for (const g of groups) {
+        const tv = Math.max(ws[g[0]!]!.start, tVis0);
+        const u = Math.max(prev + PITCH, this.sAt(tv) + DSTAR);
+        this.rows.push({ words: g, u, len: LEN });
+        prev = u;
       }
-      const g = this.gantries[k]!, d = Math.max(this.S[k]! - sS, 3);
-      return clamp(Math.atan2(g.cy - y, d) * 0.42, 2.5 * DEG, 12 * DEG);
-    };
-    let pitch = pitchFor(i);
-    if (i < 3) pitch = lerp(pitch, pitchFor(i + 1), smoothstep(this.tw[i]! + 0.55 * (this.ta[i]! - this.tw[i]!), this.ta[i]! + 0.08, t));
-    // the opening: the camera tilts down out of the night sky onto the road
-    pitch += 40 * DEG * (1 - prog(t, this.ctx.start - 0.26, this.lines[0]!.start + 0.04, ease.outCubic));
-    // yaw: a glance toward the board being painted (L01), toward the pylon (L03)
-    let yaw = noise1(t * 0.17, 8) * 0.012;
-    for (const bd of this.boards) {
-      if (!bd.strokes.length) continue;
-      const k = smoothstep(bd.strokes[0]![0] - 0.25, bd.strokes[0]![0] + 0.25, t) * (1 - smoothstep(bd.strokes[3]![1] - 0.1, bd.strokes[3]![1] + 0.35, t));
-      yaw += bd.side * 0.045 * k;
+      // speed the drone up if the line runs away from it (a late cut into the verse)
+      const last = this.rows[this.rows.length - 1]!;
+      const lag = last.u - (this.sAt(ws[g6(groups)]!.start) + DSTAR);
+      if (lag < 4 || this.vDrone > 52) break;
+      this.vDrone += Math.min(8, lag / 1.2);
+      this.buildTravel();
     }
-    const dP = this.S[3]! - sS;
-    const yP = Math.atan2(this.pylonX - x, Math.max(dP, 2));
-    yaw += toStation * clamp(yP * 0.6, 0, 0.5) * (1 - smoothstep(this.tw[3]!, this.ctx.end + 0.3, t) * 0.5);
-    // roll: a slow lean that swings with the bars (the car breathing with the music), a lean through
-    // each whoosh, a kick on downbeats
-    let roll = noise1(t * 0.31, 11) * 0.006 + 0.008 * Math.sin(Math.PI * f.bar);
-    for (let k = 0; k < 3; k++) roll += (k % 2 ? 1 : -1) * 0.035 * Math.sin(prog(t, this.tw[k]!, this.ta[k]! + 0.2, ease.inOutQuad) * Math.PI);
-    for (const d of this.downbeats) if (t > d && t < d + 1) roll += 0.006 * Math.sin((t - d) * 18) * Math.exp(-(t - d) * 5) * (hash(d, 3) > 0.5 ? 1 : -1);
-    const dir = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
-    aim(this.st.cam, pos, pos.clone().add(dir), roll);
-    this.dash.rotation.set(DASH_PITCH - pitch, 0, roll, 'ZXY');
-    // lens: widen with speed, a small punch on kicks
-    const speed = this.vSign(t);
-    this.st.cam.fov = FOV + clamp((speed - 6) / 60, 0, 1) * 9 - 0.6 * f.a.kick;
-    this.st.cam.updateProjectionMatrix();
-    return { pos, sS, i, speed };
+    // slots: x extents per word across the carriageway (two-word rows split by letter count)
+    const x0 = ROAD.inner + 0.7, x1 = ROAD.outer - 0.7;
+    for (const r of this.rows) {
+      const n = r.words.map((wi) => ws[wi]!.w.length);
+      const gap = 0.9, total = n.reduce((a, b) => a + b, 0);
+      let x = x0;
+      r.words.forEach((wi, k) => {
+        const w = ((x1 - x0 - gap * (n.length - 1)) * n[k]!) / total;
+        this.slots.push({ rect: new THREE.Vector4(x, r.u, x + w, r.u + r.len), atlas: slots[wi]!.atlas, word: wi });
+        x += w + gap;
+      });
+    }
+    this.slots.forEach((s, i) => {
+      if (i >= NWORDS) return;
+      (this.road.u.wRect!.value as THREE.Vector4[])[i]!.copy(s.rect);
+      (this.road.u.wAtlas!.value as THREE.Vector4[])[i]!.copy(s.atlas);
+    });
   }
 
-  // ---------------------------------------------------------------- frame
+  // ------------------------------------------------------------------------------------------- shots
+
+  private shotAt(t: number): Shot {
+    const T = this.T;
+    if (t < T.gauge) return 'dive';
+    if (t < T.l1) return 'gauge';
+    if (t < T.l2) return 'boards';
+    if (t < T.whip) return 'mirror';
+    if (t < T.l3) return 'sun';
+    if (t < T.pylon) return 'station';
+    if (t < T.reveal) return 'pylon';
+    if (t < T.flare) return 'reveal';
+    return 'flare';
+  }
+
+  private camera(t: number, shot: Shot, f: Frame): Cam {
+    const T = this.T, s = this.sAt(t);
+    const kick = f.a.kick;
+    const sway = (k: number, seed: number) => noise1(t * k, seed);
+    switch (shot) {
+      case 'dive': {
+        const t0 = this.W0;
+        const dive = prog(t, t0, t0 + 0.68, ease.inOutQuad);
+        const tE = this.L[0]!.words[5]!.start;
+        const low = prog(t, tE - 0.1, T.gauge, ease.inOutCubic);
+        const h = lerp(lerp(20, 8.4, dive), 2.4, low);
+        const pitch = lerp(lerp(64, -25, dive), -9, low) * DEG + 0.012 * kick;
+        const pos = new THREE.Vector3(ROAD.laneX(1) + 0.6 * sway(0.3, 2) - 1.2 * low, h + 0.15 * sway(0.7, 3), -s);
+        return { pos, yaw: 0.02 * sway(0.25, 4) - 0.03 * low, pitch, roll: 0.025 * sway(0.4, 5) + 0.04 * low * Math.sin(t * 2.1), fov: 54 + 6 * low };
+      }
+      case 'boards': {
+        // lane changes toward the board being read (left lane for Tuesday)
+        const bTue = this.boards[1]!, bWed = this.boards[2]!;
+        const toL = prog(t, bTue.focus[0] - 0.45, bTue.focus[0] + 0.25, ease.inOutCubic) - prog(t, bWed.focus[0] - 0.1, bWed.focus[0] + 0.5, ease.inOutCubic);
+        const x = lerp(ROAD.laneX(2), ROAD.laneX(0), toL);
+        const pos = new THREE.Vector3(x + 0.1 * sway(0.5, 6), 1.05 + 0.02 * sway(3, 7) - 0.01 * kick, -s);
+        // look at the board in focus; whip between boards on the beat
+        let yaw = 0, pitch = 0;
+        const aimAt = (b: (typeof this.boards)[number]) => {
+          const dz = Math.max(4, b.u - s), dx = b.x - pos.x;
+          const yw = clamp(Math.atan2(dx, dz), -1.1, 1.1);
+          const pt = clamp(Math.atan2(8.2 - pos.y, Math.hypot(dx, dz)), 0, 0.5);
+          return [yw, pt] as const;
+        };
+        const ws = this.boards.map((b) => prog(t, b.focus[0] - 0.13, b.focus[0] + 0.13, ease.inOutCubic) * (1 - prog(t, b.focus[1] - 0.13, b.focus[1] + 0.13, ease.inOutCubic)));
+        const sum = ws.reduce((a, b) => a + b, 0) || 1;
+        this.boards.forEach((b, i) => { const [yw, pt] = aimAt(b); yaw += yw * ws[i]! / sum; pitch += pt * ws[i]! / sum; });
+        // the whip: a little overshoot
+        for (const b of this.boards.slice(1)) {
+          const ph = t - b.focus[0];
+          if (ph > 0 && ph < 0.6) yaw += b.side * 0.06 * Math.sin(ph * 14) * Math.exp(-ph * 7);
+        }
+        // the lens racks in as each board comes close enough to read
+        const near = this.boards.reduce((a, b, i) => a + ws[i]! / sum * clamp((b.u - s) / 40), 0);
+        return { pos, yaw, pitch, roll: -yaw * 0.08 + 0.01 * sway(0.6, 8), fov: lerp(36, 24, near) };
+      }
+      case 'mirror': {
+        const p = prog(t, T.l2, T.whip, ease.inOutCubic);
+        const pos = new THREE.Vector3(ROAD.laneX(1) - 0.35, 1.18 + 0.006 * sway(4, 9), -s);
+        return { pos, yaw: 0.06 + 0.01 * sway(0.4, 10), pitch: 0.035, roll: 0.006 * sway(0.5, 11), fov: lerp(40, 33, p) };
+      }
+      case 'sun': {
+        const w = prog(t, T.whip, T.whip + 0.34, ease.inOutCubic);
+        const pos = new THREE.Vector3(ROAD.laneX(1) - 0.35 + 0.3 * w, lerp(1.18, 1.65, w), -s);
+        const settle = (1 - w) * 0 + springStep(t - T.whip - 0.34, 2.2, 0.5) - 1;
+        const yaw = 0.06 * (1 - w) + w * (Math.PI - 0.12) + 0.04 * settle * (t > T.whip + 0.34 ? 1 : 0);
+        return { pos, yaw, pitch: lerp(0.035, 0.07, w), roll: 0.12 * Math.sin(w * Math.PI) + 0.006 * sway(0.5, 12), fov: lerp(33, 50, w) };
+      }
+      case 'station': {
+        const pos = new THREE.Vector3(ROAD.laneX(2) - 0.4, 1.15 + 0.01 * sway(2, 13), -s);
+        const dz = Math.max(6, this.stationU - s), dx = 18.2 - pos.x;
+        const yaw = clamp(Math.atan2(dx, dz) * 0.6, 0, 0.5);
+        const pitch = clamp(Math.atan2(this.station.panelY - pos.y, Math.hypot(dx, dz)) * 0.65, 0.02, 0.3);
+        return { pos, yaw, pitch, roll: 0.01 * sway(0.5, 14), fov: 44 };
+      }
+      case 'pylon': {
+        // low by the shoulder, a long lens on the price windows; a slow push and a punch on each landing
+        const p = prog(t, T.pylon, T.reveal, ease.linear);
+        const base = new THREE.Vector3(18.2, 0, -this.stationU);
+        const pos = new THREE.Vector3(base.x - 6.5 + 0.8 * p, 1.4 + 0.5 * p, base.z + 13 - 3 * p);
+        const tgt = new THREE.Vector3(base.x + 0.3, this.station.panelY - 0.9, base.z);
+        const d = tgt.clone().sub(pos);
+        const w = this.L[3]!.words;
+        const punch = 1.6 * (pulse(t, w[3]!.start, 0.12) + pulse(t, w[4]!.start, 0.12));
+        return { pos, yaw: Math.atan2(d.x, -d.z), pitch: Math.atan2(d.y, Math.hypot(d.x, d.z)), roll: 0.035 + 0.01 * sway(0.4, 15), fov: lerp(30, 24, p) - punch };
+      }
+      case 'reveal': {
+        // a drone climbing over the station, looking back down the highway into the sunrise
+        const p = prog(t, T.reveal, T.flare, ease.inOutCubic);
+        const base = new THREE.Vector3(18.2, 0, -this.stationU);
+        const pos = new THREE.Vector3(lerp(9, 4, p), lerp(14, 34, p), base.z - lerp(30, 60, p));
+        return { pos, yaw: Math.PI - 0.1, pitch: lerp(-0.2, -0.3, p), roll: 0.02 * Math.sin(p * 3), fov: 50 };
+      }
+      case 'flare': {
+        // behind the pylon, looking into the sun: the camera slides so the sun bursts past the panel's edge
+        const p = prog(t, T.flare, this.S1 + 0.05, ease.inOutCubic);
+        const sd = this.sunDir(t);
+        const pyl = new THREE.Vector3(18.2, 0, -this.stationU);
+        const side = new THREE.Vector3().crossVectors(sd, new THREE.Vector3(0, 1, 0)).normalize();
+        const q = pyl.clone().add(new THREE.Vector3(0, this.station.panelY + 1.2, 0)).addScaledVector(side, lerp(-0.4, 2.35, p));
+        const pos = q.clone().addScaledVector(sd, -17);
+        const yaw = Math.atan2(sd.x, -sd.z) + lerp(0.05, -0.02, p);
+        return { pos, yaw, pitch: Math.asin(sd.y) + 0.02, roll: lerp(-0.05, 0.03, p), fov: lerp(34, 40, p) };
+      }
+      default:
+        return { pos: new THREE.Vector3(ROAD.laneX(1), 1.2, -s), yaw: 0, pitch: 0, roll: 0, fov: 50 };
+    }
+  }
+
+  /** The sun: rises where it sank (behind us, +z), rim on "sun's", up on "coming up", higher by the end. */
+  sunDir(t: number) {
+    const L2 = this.L[2]!;
+    const tSun = L2.words[2]!.start, tUp = L2.words[4]!.start;
+    const el = t < tSun ? -1.6 * DEG + 0.4 * DEG * prog(t, this.T.l2, tSun)
+      : lerp(-0.9, 0.7, prog(t, tSun, tUp + 0.3, ease.inOutCubic)) * DEG + 1.8 * DEG * prog(t, tUp + 0.3, this.T.l3, ease.outQuad) + 3.5 * DEG * prog(t, this.T.l3, this.W1, ease.inOutQuad);
+    return new THREE.Vector3(0.1, Math.sin(el), 1).normalize();
+  }
+
+  private applyCam(c: Cam) {
+    this.cam.position.copy(c.pos);
+    this.cam.rotation.set(c.pitch, -c.yaw, c.roll, 'YXZ');
+    this.cam.fov = c.fov;
+    this.cam.updateProjectionMatrix();
+    this.cam.updateMatrixWorld(true);
+  }
+
+  // ------------------------------------------------------------------------------------------- frame
 
   render(f: Frame, out: THREE.WebGLRenderTarget) {
-    const t = f.t, { audio } = this.ctx;
-    const { pos, sS, i: seg, speed } = this.camera(t, f);
-    const sR = this.sRoad(t), off = this.off(t);
-    const cam = this.st.cam;
-    const fogAt = (d: number) => Math.exp(-((FOG * d) ** 2));
+    const t = f.t, { renderer, audio } = this.ctx;
+    const T = this.T;
+    const shot = this.shotAt(t);
+    const L2 = this.L[2]!, L3 = this.L[3]!;
+    const ws0 = this.L[0]!.words;
 
-    // sky, stars, road
-    this.skyMesh.position.copy(pos);
-    this.stars.position.copy(pos);
+    // ---- dawn and the sun (behind us: +z)
+    const tSun = L2.words[2]!.start;
+    const dawn = clamp(0.16 * prog(t, T.l2 - 0.4, tSun, ease.inOutQuad) + 0.44 * prog(t, tSun, L2.end, ease.inOutCubic) + 0.4 * prog(t, L2.end, this.S1, ease.linear));
+    const sunDir = this.sunDir(t);
+    const sunK = clamp(0.25 + 0.75 * prog(t, tSun - 0.3, tUp, ease.inOutQuad)) * (t > T.l2 - 0.5 ? 1 : 0) + 3.5 * prog(t, T.flare + 0.15, this.W1, ease.inQuad);
+
+    if (shot === 'gauge') return this.renderGauge(t, f, out);
+
+    // ---- camera
+    const cam = this.camera(t, shot, f);
+    this.applyCam(cam);
+    const pos = cam.pos;
+    const s = this.sAt(t), v = this.speed(t);
+
+    // ---- world state
+    this.sky.update(pos, t, dawn, sunDir, sunK, t);
+    this.city.update(t, dawn, HU.uHazeLo.value);
+    HU.uTime.value = t;
+    const pov = shot !== 'dive' && shot !== 'reveal' && shot !== 'pylon';
+    HU.uHeadOn.value = pov ? 1 - dawn * 0.6 : 0;
+    HU.uHeadPos.value.set(pos.x + 0.35, 0.65, -s - 1.2);
+    HU.uLampCol.value.copy(C('#ff9a3c', 115 * (1 - 0.55 * dawn)));
+    // the streetlights switch off at dawn, a wave running toward the city
+    HU.uLampOffU.value = -1e5;
     this.road.follow(pos);
-    this.road.u.off!.value = off;
-    this.side.update(pos.z, sR, off, 1);
+    this.furn.update(Math.max(s, -pos.z), pos.x, t, HU.uHeadOn.value, 1);
+    const camU = -pos.z;
+    this.lamps.update(camU, HU.uLampCol.value, -1e5, 1 - 0.7 * dawn);
+    this.traffic.update(t, camU, shot === 'dive' ? this.vDrone : v, shot === 'pylon' || shot === 'reveal' ? 0.5 : 1);
+    this.land.update(camU, t);
+    this.gantries.forEach((g, i) => (g.position.z = -this.gantryU[i]!));
 
-    // ---- the sun (L02 onward): rises where it sank, the horizon turns gold
-    const l2 = this.lines[2]!, w2 = l2.words;
-    const warm = smoothstep(w2[0]!.start, w2[2]!.start + 0.6, t) * 0.75 + smoothstep(w2[4]!.start, l2.end, t) * 0.25;
-    const rise = keysRise(t, w2[2]!.start, w2[3]!.start, w2[4]!.end, l2.end, this.ctx.end);
-    const SUN_R = 0.06; // angular radius
-    const sunEl = (rise - 1) * SUN_R; // centre elevation: -R (hidden) .. above
-    const sunDir = new THREE.Vector3(0, Math.sin(sunEl), -Math.cos(sunEl));
-    (this.sky.uSunDir.value as THREE.Vector3).copy(sunDir);
-    this.sky.uSun.value.copy(col('gold', 1.25 * warm)).lerp(col('ember', 1.25 * warm), 0.35);
-    this.sky.uRose.value.copy(col('pink', 0.05 * warm)).lerp(col('violet', 0.05 * warm), 0.55);
-    this.sky.uWarm.value = warm;
-    this.sun.visible = rise > 0.001;
-    if (this.sun.visible) {
-      const D = 1500;
-      this.sun.position.copy(pos).addScaledVector(sunDir, D);
-      this.sun.quaternion.copy(cam.quaternion);
-      this.sun.scale.setScalar(Math.tan(SUN_R) * D);
-      (this.sun.material as THREE.ShaderMaterial).uniforms.k!.value = smoothstep(0, 0.25, rise);
-    }
-    this.road.setGlint(2, pos.x, Math.max(sunEl, 0.004) * 1500, pos.z - 1500, SUN_R * 1500, SUN_R * 1500 * 0.6, col('gold'), 1.5 * warm * smoothstep(0.0, 0.5, rise) + 0.25 * warm);
-    // the far city: a broad faint bluish sheen
-    this.road.setGlint(3, pos.x, 6, pos.z - 1500, 360, 6, col('blue'), 0.07);
-    // headlights: on in the car, a little softer once we fly free
-    this.road.u.headK!.value = 1.15 - 0.35 * smoothstep(this.tw[0]!, this.ta[0]!, t);
-
-    // ---- gantries: karaoke, spill light, reflections on the wet road
-    this.spill.intensity = 0;
-    this.road.clearGlint(0);
-    this.gantries.forEach((g, k) => {
-      const d = this.S[k]! - sS;
-      g.visible = d > -8 && d < 260;
-      if (!g.visible) return;
-      const lit = g.update(t, fogAt(d));
-      if (k === seg) {
-        // the sign of the line being sung lights the wet road and its own bridge
-        const c = g.sign.rows[0]!.sign.words[0]!.mat.uniforms.color!.value as THREE.Color;
-        this.road.setGlint(0, 0, g.cy, g.position.z + 0.9, g.inkW * 0.3, g.inkH / 2, c, 0.22 * lit * fogAt(Math.max(d, 0)));
-        this.spill.color.copy(c).multiplyScalar(1 / Math.max(c.r, c.g, c.b));
-        this.spill.position.set(0, g.cy - 0.4, g.position.z + 4.5);
-        this.spill.intensity = 22 * lit;
-      }
+    // ---- the first line on the road
+    const wR = this.road.u.wState!.value as THREE.Vector4[];
+    this.slots.forEach((sl, i) => {
+      if (i >= NWORDS) return;
+      const st = ws0[sl.word]!.start;
+      wR[i]!.set(t >= st ? 0.02 + prog(t, st, st + 0.16, ease.outQuad) : 0, 1.1 * pulse(t, st, 0.12) + 0.08, 0, 0);
     });
 
-    // ---- L00: the dashboard (we're in the car until the first sign flies over us)
-    const l0 = this.lines[0]!, w0 = l0.words;
-    const exit = prog(t, this.tw[0]! + 0.05, this.tw[0]! + 0.42, ease.inCubic);
-    this.dash.visible = exit < 1;
-    if (this.dash.visible) {
-      const tEmpty = w0[5]!.start, tTank = w0[6]!.start;
-      let fuel = 0.36 - 0.08 * prog(t, w0[0]!.start, tEmpty, ease.inOutQuad);
-      fuel -= 0.2 * springStep(t - tEmpty, 2.0, 0.45);
-      fuel -= 0.085 * springStep(t - tTank, 2.6, 0.38);
-      fuel += 0.006 * f.a.kick * Math.sin(t * 40);
-      const ph = audio.beatAt(t) % 1;
-      const lamp = t < tEmpty ? 0 : t < tEmpty + 0.12 ? flickerOn(t, tEmpty, 5) : ph < 0.55 ? 1 : 0.1;
-      this.dash.update(fuel, lamp, 1);
-      this.dash.position.set(0, -0.8 * exit + 0.004 * noise1(t * 6, 2), 0.6 * exit);
+    // ---- boards
+    for (const b of this.boards) {
+      const d = b.u - camU;
+      b.b.visible = shot === 'boards' && d > -40 && d < 400;
+      if (b.b.visible) b.b.update(t);
     }
-
-    // ---- L01: calendar billboards pass on both sides, smiles painted on the words
-    for (const bd of this.boards) {
-      const z = off - bd.u, d = bd.u - sR;
-      bd.b.visible = d > -10 && d < 200;
-      if (!bd.b.visible) continue;
-      bd.b.position.set(bd.side * 13.6, 0, z);
-      const p = bd.strokes.map(([a, b]) => prog(t, a, b, ease.inOutQuad)) as number[];
-      while (p.length < 4) p.push(0);
-      bd.b.update(fogAt(Math.max(d, 0)) * (0.9 + 0.1 * noise1(t * 7, bd.u)), p as [number, number, number, number], 1);
-    }
-    // the painted smile currently in progress reflects on the road
-    const painting = this.boards.find((bd) => bd.strokes.length && t > bd.strokes[0]![0] && t < bd.strokes[3]![1] + 0.8);
-    if (painting) this.road.setGlint(5, painting.b.position.x, 3.2, painting.b.position.z, 1.6, 1.6, col('phosphor'), 0.05);
-    else this.road.clearGlint(5);
-
-    // ---- L03: the gas station
-    const dP = this.S[3]! - sS;
-    this.station.visible = dP > -30 && dP < 300;
+    // ---- station
+    const dSt = this.stationU - camU;
+    this.station.visible = (shot === 'station' || shot === 'pylon' || shot === 'reveal' || shot === 'flare') && dSt > -80 && dSt < 600;
     if (this.station.visible) {
-      const l3 = this.stationLine, w3 = l3.words;
-      const on = this.tw[2]! + 0.12;
-      const power = flickerOn(t, on, 41) * (0.55 + 0.45 * smoothstep(on, on + 0.35, t));
-      this.station.update(t, (k) => flickerOn(t, w3[k]!.start, k * 7 + l3.i), w3[2]!.start, [w3[3]!.start, w3[4]!.start], power);
-      this.station.fascia.color.copy(col('cyan', 1.7 * power));
-      this.station.under.color.copy(col('#9fc8f0', 0.22 * power));
-      this.station.spots.color.copy(col('#e8f6ff', 2.4 * power));
-      this.station.pumpScreens.forEach((m, k) => m.color.copy(col(k % 2 ? 'cyan' : 'pink', 1.4 * power)));
-      this.station.light.intensity = 140 * power;
-      const cz = this.station.position.z + this.station.canopy.position.z;
-      this.road.setGlint(4, this.pylonX + 12.5, 5.9, cz + 9.5, 7.5, 0.5, col('cyan'), 0.35 * power * fogAt(Math.max(dP, 0)));
-      this.road.u.pool!.value.set(this.pylonX + 12.5, cz, 14, 0);
-      this.road.u.poolCol!.value.copy(col('#cfe9ff', 2.2 * power));
-      const hd = this.station.header.words.reduce((s, w) => s + (w.mat.uniforms.on!.value as number), 0) / 3;
-      this.road.setGlint(1, this.pylonX, this.station.panelY + 3.3, this.station.position.z + 0.3, 3.8, 1.0, col('pink'), 0.4 * hd * fogAt(Math.max(dP, 0)));
-    } else {
-      this.road.clearGlint(4);
-      this.road.u.poolCol!.value.setRGB(0, 0, 0);
+      this.station.updateMatrixWorld(true);
+      this.updateStation(t);
+      this.station.pool(1);
+    } else HU.uPoolCol.value.setRGB(0, 0, 0);
+
+    // ---- sun words
+    this.arc.visible = shot === 'sun' || shot === 'mirror' || shot === 'flare' || shot === 'reveal';
+    const arcCenter = (from: THREE.Vector3) => from.clone().add(new THREE.Vector3(sunDir.x, 0, sunDir.z).normalize().multiplyScalar(900));
+    // ---- interior
+    this.interior.visible = shot === 'mirror' || (shot === 'sun' && t < T.whip + 0.1);
+
+    // ---- passes: the wet road's reflection, the rear-view mirror, the frame
+    const hideStars = this.sky.stars.visible;
+    if (this.interior.visible) {
+      // the view behind, for the mirror
+      this.backCam.position.set(pos.x, 1.3, pos.z);
+      this.backCam.rotation.set(0.05, Math.PI, 0, 'YXZ');
+      this.backCam.updateMatrixWorld(true);
+      this.backCam.updateProjectionMatrix();
+      this.arc.update(t, arcCenter(this.backCam.position).add(new THREE.Vector3(0, 30, 0)), this.backCam, 1, true, 0.42);
+      const iv = this.interior.visible;
+      this.interior.visible = false;
+      this.road.u.reflK!.value = 0.8;
+      this.refl.render(renderer, this.hideFor(() => this.scene), this.backCam);
+      this.unhide();
+      renderer.setRenderTarget(this.mirrorRT);
+      renderer.setClearColor(0x000000, 1);
+      renderer.clear(true, true, true);
+      renderer.render(this.scene, this.backCam);
+      this.interior.visible = iv;
+      this.interior.glassU.sweep!.value = ((s / ROAD.lampP) % 1 + 1) % 1;
     }
+    this.arc.update(t, arcCenter(pos), this.cam, 1, false);
+    this.road.u.reflK!.value = 1;
+    const iv2 = this.interior.visible;
+    this.interior.visible = false;
+    this.refl.render(renderer, this.hideFor(() => this.scene), this.cam);
+    this.unhide();
+    this.sky.stars.visible = hideStars;
+    this.interior.visible = iv2;
+    renderer.setRenderTarget(out);
+    renderer.setClearColor(0x000000, 1);
+    renderer.clear(true, true, true);
+    renderer.render(this.scene, this.cam);
 
-    this.st.render(this.ctx.renderer, out);
+    // ---- the sun's lens flare (once it is up and in view)
+    let flareK = 0;
+    if (shot === 'sun') flareK = 0.25 * prog(t, L2.words[3]!.start, L2.words[4]!.start + 0.3);
+    else if (shot === 'reveal') flareK = 0.3;
+    else if (shot === 'flare') {
+      this.station.updateMatrixWorld(true);
+      const vis = this.station.sunVisible(pos, sunDir, 0.02);
+      flareK = 0.12 + 1.1 * vis + 1.5 * prog(t, this.S1 - 0.1, this.W1, ease.inQuad);
+    }
+    if (flareK > 0) this.flare.render(renderer, out, this.cam, sunDir, flareK * clamp(sunK), 0.4 + 0.15 * (-pos.x * 0.05));
 
-    // ---- post: hits on downbeats, a rush in the whooshes
+    // ---- post
     let shake: [number, number] = [0, 0];
-    for (const d of this.downbeats) {
-      const k = pulse(t, d, 0.07);
-      if (k > 0.01) shake = [shake[0] + (hash(d, 1) - 0.5) * 7 * k, shake[1] + (hash(d, 2) - 0.5) * 7 * k];
+    for (const d of this.downs) {
+      const k = pulse(t, d, 0.06) * (shot === 'boards' || shot === 'station' ? 1 : 0.6);
+      if (k > 0.01) shake = [shake[0] + (hash(d, 1) - 0.5) * 8 * k, shake[1] + (hash(d, 2) - 0.5) * 8 * k];
     }
-    const rush = clamp((speed - 8) / 70, 0, 1);
+    const flare = prog(t, T.flare + 0.1, this.W1, ease.inQuad);
+    const rush = clamp((v - 26) / 20, 0, 1) * (shot === 'dive' ? 1 : 0.5);
+    void audio; void frameIdx; void L3; void BOARD_W;
     return {
-      bloom: 0.9, bloomThreshold: 0.8, bloomRadius: 0.85 - 0.12 * warm, halation: 0.12 - 0.06 * warm,
-      vignette: 0.45 + 0.1 * rush, grain: 0.05, ca: 0.8 + 2.2 * rush,
-      zoom: 1 + 0.012 * f.a.kick + 0.02 * rush, shake,
+      bloom: 0.85 + 0.6 * flare, bloomThreshold: 0.8 - 0.2 * flare, bloomRadius: 0.8, halation: 0.14 + 0.1 * dawn,
+      vignette: 0.42 - 0.2 * flare, grain: 0.045, ca: 0.7 + 1.5 * rush, exposure: 1 + 1.2 * flare,
+      zoom: 1 + 0.01 * f.a.kick, shake, flash: 0.9 * prog(t, this.S1 - 0.12, this.W1, ease.inQuad),
     };
+  }
+
+  /** Hide what the reflection must not see (the road itself, the stars). */
+  private hideFor(fn: () => THREE.Scene) {
+    this.road.visible = false;
+    this.sky.stars.visible = false;
+    for (const o of this.noRefl) o.visible = false;
+    return fn();
+  }
+  private unhide() { for (const o of this.noRefl) o.visible = true; this.road.visible = true; }
+
+  private updateStation(t: number) {
+    const w = this.L[3]!.words;
+    const st = this.station;
+    // marquee: AND I'D PAY, each word switching on when sung (a quick left-to-right wipe)
+    const text = 'AND I’D PAY ';
+    const wordOfChar = [0, 0, 0, -1, 1, 1, 1, -1, 2, 2, 2, -1];
+    Array.from(text).forEach((_, i) => {
+      const wi = wordOfChar[i]!;
+      if (wi < 0) { st.marquee.on[i] = 0; return; }
+      const ci = i - [0, 4, 8][wi]!;
+      st.marquee.on[i] = t >= w[wi]!.start + ci * 0.035 ? 1 : 0;
+    });
+    // the price drums: spin from "pay", land row 0 on ANY, row 1 on COST
+    const tSpin = w[2]!.start;
+    const lands = [w[3]!.start, w[4]!.start];
+    const from = ['3.89', '4.05'], to = ['ANY ', 'COST'];
+    const NG = 40;
+    st.rows.forEach((row, r) => {
+      for (let i = 0; i < 4; i++) {
+        const g0 = glyph(from[r]![i]!), g1 = glyph(to[r]![i]!);
+        const land = lands[r]! + i * 0.045;
+        let p: number;
+        if (t < tSpin) p = g0;
+        else if (t < land) {
+          // spinning (a fixed rate, flicking a whole glyph at a time)
+          const turns = (t - tSpin) * (14 + 3 * i);
+          p = g0 + Math.floor(turns * 4) / 4;
+          // last approach: decelerate into the target
+          const tot = (land - tSpin) * (14 + 3 * i);
+          const target = g1 + NG * Math.ceil((g0 + tot - g1) / NG);
+          const k = prog(t, land - 0.28, land, ease.outCubic);
+          p = lerp(p, target - 0.6, k);
+        } else {
+          const tot = (land - tSpin) * (14 + 3 * i);
+          const target = g1 + NG * Math.ceil((g0 + tot - g1) / NG);
+          p = target - 0.6 * (1 - springStep(t - land, 3.5, 0.45));
+        }
+        row.pos[i] = p;
+        row.on[i] = 1;
+      }
+    });
+    const hit = (lt: number) => pulse(t, lt, 0.1);
+    st.rows.forEach((row, r) => (row.material.uniforms.k!.value = 1 + 1.8 * hit(lands[r]!)));
+    st.marquee.material.uniforms.k!.value = 1;
+  }
+
+  private renderGauge(t: number, f: Frame, out: THREE.WebGLRenderTarget) {
+    const T = this.T, audio = this.ctx.audio;
+    const w = this.L[0]!.words;
+    const tEmpty = w[5]!.start;
+    // the needle: already low, slams to E on the cut's downbeat with a spring, trembles on the kicks
+    const settle = springStep(t - T.gauge, 2.4, 0.32);
+    let fuel = lerp(0.16, 0.0, settle) + 0.004 * f.a.kick * Math.sin(t * 50);
+    fuel = Math.max(-0.02, fuel);
+    // low-fuel lamp: on since "empty", blinking with the beat
+    const ph = audio.beatAt(t) % 1;
+    const lamp = t < tEmpty ? 0 : ph < 0.5 ? 1 : 0.12;
+    const sweep = ((t - T.gauge) / 0.62) % 1;
+    const push = prog(t, T.gauge, T.l1, ease.outCubic);
+    const sh = pulse(t, T.gauge, 0.05);
+    this.gauge.update(fuel, lamp, sweep, push, [0.03 * sh * (hash(T.gauge, 1) - 0.5), 0.03 * sh], 0.04 + 0.02 * noise1(t, 3));
+    this.gauge.render(this.ctx.renderer, out);
+    void frameIdx;
+    return { bloom: 1.0, bloomThreshold: 0.75, bloomRadius: 0.75, halation: 0.2, vignette: 0.55, grain: 0.05, ca: 1.2, zoom: 1 + 0.015 * f.a.kick };
   }
 }
 
-/** Sun rise 0 (hidden) .. 1 (centre on the horizon) .. ~1.75: rim at "sun's", up on "coming up", slow after. */
-function keysRise(t: number, tSun: number, tComing: number, tUpEnd: number, tLineEnd: number, tEnd: number) {
-  if (t < tSun) return 0;
-  if (t < tComing) return 0.3 * prog(t, tSun, tComing, ease.outQuad);
-  if (t < tUpEnd + 0.15) return lerp(0.3, 1.05, prog(t, tComing, tUpEnd + 0.15, ease.inOutCubic));
-  if (t < tLineEnd) return lerp(1.05, 1.4, prog(t, tUpEnd + 0.15, tLineEnd, ease.outQuad));
-  return lerp(1.4, 1.65, prog(t, tLineEnd, tEnd, ease.linear));
-}
+const glyph = (ch: string) => '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ.’ $'.indexOf(ch);
+const g6 = (groups: number[][]) => groups[groups.length - 1]![0]!;
