@@ -47,6 +47,54 @@ export function glowCard(c: THREE.Color, round = 0.6) {
   });
 }
 
+// ------------------------------------------------------------------ neon glass that can stay hidden
+
+/**
+ * The toolkit's neon look (lib/neon.ts neonMaterial) plus `glassK`, the visibility of the unlit glass:
+ * a line's dark tubes fade in only shortly before it is sung (the karaoke shows a line dimly at most
+ * ~0.5 s ahead), instead of reading as grey script from far away.
+ */
+export function hidingNeonMaterial(color: THREE.Color, glass = new THREE.Color(0.018, 0.02, 0.035)) {
+  return new THREE.ShaderMaterial({
+    fog: true,
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
+      color: { value: color.clone() }, glass: { value: glass }, on: { value: 0 }, glassK: { value: 1 },
+    }]),
+    vertexShader: /* glsl */ `
+      #include <fog_pars_vertex>
+      varying vec3 vN; varying vec3 vV;
+      void main() {
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        vN = normalize(normalMatrix * normal); vV = normalize(-mvPosition.xyz);
+        gl_Position = projectionMatrix * mvPosition;
+        #include <fog_vertex>
+      }`,
+    fragmentShader: /* glsl */ `
+      #include <fog_pars_fragment>
+      uniform vec3 color, glass; uniform float on, glassK;
+      varying vec3 vN; varying vec3 vV;
+      void main() {
+        float f = abs(dot(normalize(vN + vec3(0.0, 0.0, 1e-5)), normalize(vV)));
+        vec3 dark = (glass * (0.35 + 1.6 * pow(1.0 - f, 3.0)) + vec3(0.05) * pow(f, 40.0)) * glassK;
+        float lum = max(max(color.r, color.g), color.b);
+        vec3 lit = color * (0.55 + 1.1 * pow(f, 1.4)) + vec3(lum) * 0.9 * pow(f, 7.0);
+        gl_FragColor = vec4(mix(dark, lit * max(on, 0.0), clamp(on, 0.0, 1.0)), 1.0);
+        #include <fog_fragment>
+      }`,
+  });
+}
+
+/** Swap a sign's word materials for hiding ones (setLevel/sing keep working through word.mat). */
+export function useHidingGlass(sign: NeonSign) {
+  for (const w of sign.words) {
+    const m = hidingNeonMaterial(w.mat.uniforms.color!.value as THREE.Color);
+    w.mat.dispose();
+    w.mat = m;
+    w.mesh.material = m;
+  }
+}
+export function setGlass(sign: NeonSign, k: number) { for (const w of sign.words) w.mat.uniforms.glassK!.value = k; }
+
 // ------------------------------------------------------------------ gantry with a neon lyric line
 
 export interface GantryOpts {
@@ -78,12 +126,12 @@ export class Gantry extends THREE.Group {
   /** height of the lettering's centre */
   cy: number;
 
-  constructor(public line: Line, o: GantryOpts, steel: THREE.Material, panelMat: THREE.Material) {
+  constructor(public line: Line, o: GantryOpts, steel: THREE.Material, raceway: THREE.Material) {
     super();
     this.cy = o.centerY;
     const font = o.font ?? 'script';
     // em size from the widest row
-    const probe = new NeonLine(line, o.rows, { font, size: 1, align: 'center' } as any);
+    const probe = new NeonLine(line, o.rows, { font, size: 1 });
     const widest = Math.max(...probe.rows.map((r) => r.sign.width));
     probe.dispose();
     const em = o.inkWidth / (widest * o.sx);
@@ -91,6 +139,7 @@ export class Gantry extends THREE.Group {
     const lead = em * 1.08;
     this.sign = new NeonLine(line, o.rows, { font, size: em, color: o.color, leading: lead, radius: em * 0.02 });
     this.sign.scale.x = o.sx;
+    for (const r of this.sign.rows) useHidingGlass(r.sign);
     const nr = o.rows.length;
     // vertical extent of the ink: descenders of the bottom row (-0.42 em) to ascenders of the top (+0.72 em)
     const top = (nr - 1) * lead + 0.72 * em, bot = -0.42 * em;
@@ -111,7 +160,7 @@ export class Gantry extends THREE.Group {
     const ys = this.sign.rows.map(({ sign }) => baseY + sign.position.y + em * 0.17);
     const yTop = o.centerY + this.panelH / 2 + 0.55;
     for (const x of [-0.3, 0.3]) box(rw, 0.05, yTop - Math.min(...ys), 0.05, x * o.inkWidth, (yTop + Math.min(...ys)) / 2, this.signZ - 0.14);
-    this.add(new THREE.Mesh(merged(rw), panelMat));
+    this.add(new THREE.Mesh(merged(rw), raceway));
     // word glows on the panel (the neon lighting its own board)
     for (const { sign, ids } of this.sign.rows) {
       sign.words.forEach((w, k) => {
@@ -155,6 +204,8 @@ export class Gantry extends THREE.Group {
   /** Light each word at its sung start; glows follow the words. Returns the lit fraction (0..1). */
   update(t: number, fog = 1, gain = 1) {
     this.sign.sing(t, gain);
+    const glass = smoothstep(this.line.start - 0.6, this.line.start - 0.1, t);
+    for (const r of this.sign.rows) setGlass(r.sign, glass);
     let lit = 0;
     for (const g of this.glows) {
       const r = this.sign.rows.find((r) => r.ids.includes(g.wi))!;
@@ -294,7 +345,7 @@ export class Dashboard extends THREE.Group {
     this.ring.color.copy(col('cyan', 0.5 * power));
     this.ticks.forEach((m, i) => m.color.copy(i <= 1 ? col('pink', 1.8 * power) : col('cyan', 1.6 * power)));
     this.letters.forEach((L) => L.setAll(power));
-    this.glow.uniforms.k!.value = 0.06 * power + 0.05 * lamp;
+    this.glow.uniforms.k!.value = 0.02 * power + 0.03 * lamp;
     this.light.intensity = 0.35 * power + 0.25 * lamp;
     this.light.color.copy(col('#7fb8ff')).lerp(col('#ff9a1f'), 0.5 * lamp);
   }
@@ -513,9 +564,11 @@ export class Station extends THREE.Group {
   panelW = 7.6;
   panelH = 8.4;
   canopy: THREE.Group;
+  headerFrom: number;
 
   constructor(line: Line, mats: { steel: THREE.Material; board: THREE.Material; slab: THREE.Material }) {
     super();
+    this.headerFrom = line.start;
     const { panelW: PW, panelH: PH } = this;
     const pole = 2.7;
     this.panelY = pole + PH / 2;
@@ -537,6 +590,7 @@ export class Station extends THREE.Group {
     const words = line.words.map((w) => w.w);
     this.header = new NeonSign(words.slice(0, 3).join(' '), { font: 'script', size: 1.28, align: 'center', color: col('pink', 2.1), radius: 0.03 });
     this.header.scale.x = 0.9;
+    useHidingGlass(this.header);
     this.header.position.set(0, this.panelY + PH / 2 - 1.85, 0.22);
     this.add(this.header);
     this.frameGlow = glowCard(col('pink'), 0.5);
@@ -624,6 +678,7 @@ export class Station extends THREE.Group {
    */
   update(t: number, sing: (i: number) => number, roll0: number, lands: number[], power = 1) {
     for (let i = 0; i < 3; i++) this.header.setLevel(i, sing(i));
+    setGlass(this.header, smoothstep(this.headerFrom - 0.6, this.headerFrom - 0.1, t));
     const hl = this.header.words.reduce((s, w) => s + (w.mat.uniforms.on!.value as number), 0) / 3;
     this.frameGlow.uniforms.k!.value = 0.12 * hl;
     this.frame.uniforms.on!.value = 0.35 * power + 0.25 * hl;

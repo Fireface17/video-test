@@ -334,7 +334,8 @@ export class Engine {
       const tin = prev ? Math.min(1, (t - ws) / Math.max(1e-3, this.win(prev)[1] - ws)) : 1;
       const tout = next ? Math.max(0, (t - this.win(next)[0]) / Math.max(1e-3, we - this.win(next)[0])) : 0;
       if (!rec?.scene) {
-        clearRT(r, rt, [0.25, 0.0, 0.0]);
+        // not loaded (left out by ?only=): black; failed to load: red
+        clearRT(r, rt, rec ? [0.25, 0.0, 0.0] : [0, 0, 0]);
         under = rt.texture; outTex = rt.texture;
         return;
       }
