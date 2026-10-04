@@ -280,6 +280,8 @@ export class Stardust extends THREE.Group {
       const need = (s0 * 1.75 * this.proj * 540) / Math.max(d, 1e-3) / 520 * (1 + (look.shatter ?? 0) * 2);
       while (level < LEVELS.length - 1 && LEVELS[level + 1]! >= need) level++;
     }
+    // a full level passes the figure on to the next, coarser one (drawn with fewer, brighter stars)
+    while (level < LEVELS.length - 1 && this.clouds[bi]![level]!.n >= this.clouds[bi]![level]!.cap) level++;
     const C = this.clouds[bi]![level]!;
     if (C.n >= C.cap) return;
     const D = C.data, o = C.n * COLS * 4;

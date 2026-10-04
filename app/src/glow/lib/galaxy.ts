@@ -219,12 +219,13 @@ function glowTexture() {
 function diskMaterial(R: number, r0: number, pitch: number, arms: number) {
   return new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-    uniforms: { R: { value: R }, r0: { value: r0 }, cotP: { value: 1 / Math.tan(pitch) }, arms: { value: arms }, gain: { value: 1 } },
+    uniforms: { R: { value: R }, r0: { value: r0 }, cotP: { value: 1 / Math.tan(pitch) }, arms: { value: arms }, gain: { value: 1 }, warm: { value: new THREE.Vector3(1.0, 0.72, 0.42) }, blue: { value: new THREE.Vector3(0.45, 0.62, 1.0) } },
     vertexShader: /* glsl */ `
       varying vec2 vP;
       void main() { vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: /* glsl */ `
       uniform float R, r0, cotP, arms, gain;
+      uniform vec3 warm, blue; // the core's and the arms' colours
       varying vec2 vP;
       float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -237,7 +238,6 @@ function diskMaterial(R: number, r0: number, pitch: number, arms: number) {
         float n = vnoise(q * 0.08) * 0.6 + vnoise(q * 0.21) * 0.4;
         float disk = exp(-r / (R * 0.32));
         float bulge = exp(-r * r / (R * R * 0.012));
-        vec3 warm = vec3(1.0, 0.72, 0.42), blue = vec3(0.45, 0.62, 1.0);
         vec3 c = warm * bulge * 0.9 + mix(warm, blue, smoothstep(0.08, 0.45, r / R)) * disk * (0.08 + 0.55 * arm * (0.5 + n));
         c *= smoothstep(R * 1.25, R * 0.7, r) * gain;
         gl_FragColor = vec4(c * 0.55, 1.0);
