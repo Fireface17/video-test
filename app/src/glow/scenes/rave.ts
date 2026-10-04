@@ -13,6 +13,7 @@ import { glowStickGeometry, figureGeometry } from '../lib/shapes';
 import { BlockText } from '../lib/extrude';
 import { NeonLine, splitRows } from '../lib/neon';
 import { GlowPoints } from '../lib/points';
+import { Beams } from './chorus-dancers';
 
 const N_STICKS = 460;
 const N_PEOPLE = 150;
@@ -35,6 +36,8 @@ export default class Rave extends Scene {
   chops: Chop[] = [];
   phrases: number[] = []; // phrase start times (every 2 bars)
   hands: NeonLine[] = [];
+  beams!: Beams;
+  lasers!: THREE.InstancedMesh;
   private m = new THREE.Matrix4();
   private q = new THREE.Quaternion();
   private c = new THREE.Color();
@@ -83,6 +86,14 @@ export default class Rave extends Scene {
         spin: new THREE.Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).normalize().multiplyScalar(4 + rnd() * 8), c: col(sc, 2.2 + rnd() * 0.8),
       });
     }
+    // the rig: beams sweeping through the haze, two fans of lasers from the back
+    this.beams = new Beams(8, STICKS.map((k) => col(k, 1.2)), 20);
+    S.add(this.beams);
+    const lg = new THREE.CylinderGeometry(0.03, 0.03, 1, 6, 1, true);
+    lg.translate(0, 0.5, 0);
+    this.lasers = new THREE.InstancedMesh(lg, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: true }), 24);
+    this.lasers.frustumCulled = false;
+    S.add(this.lasers);
     // stars for the end of the big drop (the sticks become them)
     this.stars = new GlowPoints(N_STICKS, 0.09);
     S.add(this.stars);
@@ -207,6 +218,22 @@ export default class Rave extends Scene {
       L.intensity = (n === 2 ? 18 : 30) * (0.6 + 0.6 * audio.env('low', t));
     });
 
+    // beams and lasers: lasers fan on the drop's phrases, off in the floating break
+    this.beams.pose(beatT, (n === 2 ? 0.6 : 1) * (0.6 + 0.6 * audio.env('rms', t)), 16);
+    const laserOn = n === 2 ? 0 : (0.5 + 0.5 * audio.env('high', t)) * (1 - ascend);
+    for (let i = 0; i < 24; i++) {
+      const fan = i < 12 ? -1 : 1, j = i % 12;
+      const spread = (j / 11 - 0.5) * 1.6 + Math.sin(beatT * Math.PI * 0.5 + fan) * 0.5;
+      const tilt = 0.35 + 0.25 * Math.sin(beatT * Math.PI * 0.25 + j * 0.3);
+      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2 + tilt, 0, spread * fan + fan * 0.3, 'YXZ'));
+      this.m.compose(new THREE.Vector3(fan * 10, 9, -22), q, new THREE.Vector3(1, 60, 1));
+      this.lasers.setMatrixAt(i, this.m);
+      const on = laserOn * (hash(i, Math.floor(beatT)) > 0.35 ? 1 : 0.15);
+      this.lasers.setColorAt(i, this.c.copy(col(i % 2 ? 'cyan' : 'pink', 3.5 * on)));
+    }
+    this.lasers.instanceMatrix.needsUpdate = true;
+    this.lasers.instanceColor!.needsUpdate = true;
+
     this.camera(t, phrase, pp);
     if (ascend > 0) {
       // tilt up after the sticks
@@ -231,7 +258,7 @@ export default class Rave extends Scene {
         const ck = inPhrase[k]!;
         const hit = pulse(t, ck.t, 0.12);
         piece.visible = true;
-        const dist = 7.2;
+        const dist = 9.2;
         piece.position.copy(S.cam.position).addScaledVector(fwd, dist).addScaledVector(camRight, (piece.userData.x as number) * 1.05).addScaledVector(camUp, 0.25);
         piece.quaternion.copy(S.cam.quaternion);
         piece.scale.setScalar((1 + hit * 0.25) * fade);

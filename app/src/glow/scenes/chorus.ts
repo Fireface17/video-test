@@ -21,6 +21,7 @@ import { hash } from '../../engine/util';
 import { makeRT } from '../../engine/gl';
 import { Transitions, type TransitionSpec } from '../../engine/transitions';
 import { lin } from '../lib/palette';
+import { Dancers, Beams } from './chorus-dancers';
 
 /** How each sub-scene comes in from the previous one. */
 const INTO: Partial<Record<Part, TransitionSpec>> = {
@@ -48,6 +49,8 @@ export default class Chorus extends Scene {
   slams = new Map<Line, SlamLine>();
   rings!: THREE.Group;
   dust!: GlowPoints;
+  dancers!: Dancers;
+  beams!: Beams;
   ringA!: THREE.Mesh;
   ringB!: THREE.Mesh;
   shatter?: Shatter;
@@ -92,8 +95,8 @@ export default class Chorus extends Scene {
           while (on.length < parts.length) on.push(audio.timeOfBeat(audio.beatAt(on[on.length - 1] ?? w.start) + 1));
           pieces.set(wi, parts.map((p, i) => ({ text: i < parts.length - 1 ? `${p}-` : p, start: on[i]!, end: i + 1 < parts.length ? on[i + 1]! : w.end })));
         });
-        const sl = new SlamLine(l, rows, { size: rows.length > 2 ? 0.95 : 1.15, leading: 1.08, face: k ? face2 : face, side: k ? side2 : side, maxWidth: pieces.size ? 9.6 : 8.6, pieces });
-        sl.position.z = k * 1.6;
+        const sl = new SlamLine(l, rows, { size: rows.length > 2 ? 0.8 : 0.95, leading: 1.08, face: k ? face2 : face, side: k ? side2 : side, maxWidth: pieces.size ? 7.6 : 6.6, pieces });
+        sl.position.z = -1.2 + k * 1.4;
         S.add(sl);
         sl.updateMatrixWorld(true);
         sl.userData.centre = new THREE.Box3().setFromObject(sl).getCenter(new THREE.Vector3());
@@ -107,6 +110,18 @@ export default class Chorus extends Scene {
     this.ringB = new THREE.Mesh(torus, new THREE.MeshBasicMaterial({ color: col('cyan', 2.2), fog: true }));
     this.rings.add(this.ringA, this.ringB);
     S.add(this.rings);
+    // dancers made of light around and in front of the letters, beams from the rig above
+    // the letters stand at x in [-3.5, 3.5], z ~ -1: dancers fill the sides and the back, never between
+    // the camera (z ~ 9-13) and the letters
+    const spots: { x: number; z: number }[] = [];
+    for (let i = 0; i < 14; i++) { // two side groups
+      const side = i % 2 ? 1 : -1;
+      spots.push({ x: side * (4.6 + hash(i, 1) * 4.2), z: -5 + hash(i, 2) * 10.5 });
+    }
+    for (let i = 0; i < 12; i++) spots.push({ x: (i / 11 - 0.5) * 15 + (hash(i, 3) - 0.5) * 0.8, z: -3.4 - hash(i, 4) * 4.5 }); // back rows
+    this.dancers = new Dancers(spots, sc.floor.map((k) => col(k, 1.4)));
+    this.beams = new Beams(6, sc.floor.map((k) => col(k, 1)));
+    S.add(this.dancers, this.beams);
     // dust in the air above the floor, catching the light
     this.dust = new GlowPoints(160, 0.035);
     S.add(this.dust);
@@ -188,6 +203,9 @@ export default class Chorus extends Scene {
       this.dust.set(i, x + Math.sin(t * 0.5 + i) * 0.3, y, z, c, 0.5 + 0.8 * audio.hit('kick', t, 0.15), 0.6 + hash(i, 5));
     }
     this.dust.commit();
+    const moves = 0.5 + 0.5 * audio.env('rms', t);
+    this.dancers.pose(beat, moves, 1 + 1.2 * flood);
+    this.beams.pose(beat, moves * (1 + flood));
 
     // bracelets: fly in from both sides and link on "hand" (A's second line)
     const hand = !isD && l1 ? l1.words.find((w) => /hand/i.test(w.w)) : undefined;
@@ -196,7 +214,7 @@ export default class Chorus extends Scene {
     if (hand && take && this.rings.visible) {
       const k = ease.outExpo(clamp((t - (take.start - 0.4)) / (hand.start - take.start + 0.4), 0, 1));
       const spin = (t - hand.start) * 1.4;
-      this.rings.position.set(0, 4.35, 2.6);
+      this.rings.position.set(2.9, 2.5, 2.4);
       this.ringA.position.set(lerp(-7, -0.45, k), 0, 0);
       this.ringB.position.set(lerp(7, 0.45, k), 0, 0);
       this.ringA.rotation.set(0, -0.5, 0);
