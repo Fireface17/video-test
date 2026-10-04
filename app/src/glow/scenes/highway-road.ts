@@ -639,7 +639,7 @@ export class Traffic extends THREE.Group {
       const front = -u - c.dir * 2.35 * len; // world z of the nose
       const rear = -u + c.dir * 2.35 * len;
       // relative motion for the trails (what the camera sees move during the exposure)
-      const rel = (c.dir * c.v - camSpeed) * dt;
+      const rel = (c.dir * c.v - camSpeed) * dt * (c.dir < 0 ? 2.2 : 1);
       for (const sx of [-0.68, 0.68]) {
         const hx = x + sx * (c.truck ? 1.25 : 1);
         if (c.dir < 0) {

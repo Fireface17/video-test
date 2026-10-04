@@ -153,7 +153,7 @@ export default class Highway extends Scene {
     this.station.position.set(18.2, 0, -this.stationU);
     this.station.rotation.y = 0.35;
     this.scene.add(this.station);
-    this.land.exclude.push({ x: 40, u: this.stationU + 20, r: 50 });
+    this.land.exclude.push({ x: 45, u: this.stationU + 35, r: 60 });
     // the overhead message sign that spells the first half of the line on the approach
     this.vms = new VmsGantry('AND I’D PAY', steel);
     this.vmsU = this.sAt(L3.words[0]!.start) + 46;
@@ -345,14 +345,14 @@ export default class Highway extends Scene {
       }
       case 'flare': {
         // behind the pylon, looking into the sun: the camera slides so the sun bursts past the panel's edge
-        const p = prog(t, T.flare, this.S1 - 0.04, ease.inOutCubic);
+        const p = Math.pow(prog(t, T.flare, this.S1 - 0.02, ease.linear), 1.8);
         const sd = this.sunDir(t);
         const pyl = new THREE.Vector3(18.2, 0, -this.stationU);
         const side = new THREE.Vector3().crossVectors(sd, new THREE.Vector3(0, 1, 0)).normalize();
-        const q = pyl.clone().add(new THREE.Vector3(0, this.station.panelY + 1.2, 0)).addScaledVector(side, lerp(-0.4, 2.35, p));
-        const pos = q.clone().addScaledVector(sd, -17);
+        const q = pyl.clone().add(new THREE.Vector3(0, this.station.panelY + 1.2, 0)).addScaledVector(side, lerp(-0.4, 2.2, p));
+        const pos = q.clone().addScaledVector(sd, -13.5);
         const yaw = Math.atan2(sd.x, -sd.z) + lerp(0.05, -0.02, p);
-        return { pos, yaw, pitch: Math.asin(sd.y) + 0.02, roll: lerp(-0.05, 0.03, p), fov: lerp(34, 40, p) };
+        return { pos, yaw, pitch: Math.asin(sd.y) - 0.075, roll: lerp(-0.05, 0.03, p), fov: lerp(43, 47, p) };
       }
       default:
         return { pos: new THREE.Vector3(ROAD.laneX(1), 1.2, -s), yaw: 0, pitch: 0, roll: 0, fov: 50 };
@@ -390,7 +390,7 @@ export default class Highway extends Scene {
     const tSun = L2.words[2]!.start, tUp = L2.words[4]!.start;
     const dawn = clamp(0.16 * prog(t, T.l2 - 0.4, tSun, ease.inOutQuad) + 0.44 * prog(t, tSun, L2.end, ease.inOutCubic) + 0.4 * prog(t, L2.end, this.S1, ease.linear));
     const sunDir = this.sunDir(t);
-    const sunK = clamp(0.25 + 0.75 * prog(t, tSun - 0.3, tUp, ease.inOutQuad)) * (t > T.l2 - 0.5 ? 1 : 0) + 2.0 * prog(t, T.flare + 0.15, this.W1, ease.inQuad);
+    const sunK = clamp(0.25 + 0.75 * prog(t, tSun - 0.3, tUp, ease.inOutQuad)) * (t > T.l2 - 0.5 ? 1 : 0) + 2.0 * prog(t, Math.max(T.flare + 0.15, this.S1 - 0.45), this.W1, ease.inQuad);
 
     if (shot === 'gauge') return this.renderGauge(t, f, out);
 
@@ -528,7 +528,7 @@ export default class Highway extends Scene {
       const k = pulse(t, d, 0.06) * (shot === 'boards' || shot === 'station' ? 1 : 0.6);
       if (k > 0.01) shake = [shake[0] + (hash(d, 1) - 0.5) * 8 * k, shake[1] + (hash(d, 2) - 0.5) * 8 * k];
     }
-    const flare = prog(t, T.flare + 0.1, this.W1, ease.inQuad);
+    const flare = prog(t, Math.max(T.flare + 0.1, this.S1 - 0.45), this.W1, ease.inQuad);
     const rush = clamp((v - 26) / 20, 0, 1) * (shot === 'dive' ? 1 : 0.5);
     void audio; void frameIdx; void L3; void BOARD_W;
     return {

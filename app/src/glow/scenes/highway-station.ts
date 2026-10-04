@@ -219,7 +219,7 @@ export class Station extends THREE.Group {
     }
     canopy.add(new THREE.Mesh(merge(pumpBodies), litMat({ color: C('#c9ced6', 0.5), rough: 0.4, spec: 0.8 })));
     canopy.add(new THREE.Mesh(merge(screens), this.pumpMat));
-    canopy.position.set(16, 0, -14);
+    canopy.position.set(24, 0, -30);
     this.add(canopy);
     // the shop: a low box with a lit window band
     this.shopMat = new THREE.MeshBasicMaterial({ color: C('#ffe2b8', 1.1) });
@@ -228,7 +228,7 @@ export class Station extends THREE.Group {
     const win = new THREE.Mesh(new THREE.PlaneGeometry(16, 2.2), this.shopMat);
     win.position.set(0, 1.6, 5.01);
     shop.add(win);
-    shop.position.set(22, 0, -40);
+    shop.position.set(30, 0, -56);
     shop.rotation.y = -0.15;
     this.add(shop);
   }
@@ -254,7 +254,7 @@ export class Station extends THREE.Group {
 
   /** Canopy pool for the shared lighting (world coordinates), scaled by k. */
   pool(k: number) {
-    const p = new THREE.Vector3(16, 5.4, -14).applyMatrix4(this.matrixWorld);
+    const p = new THREE.Vector3(24, 5.4, -30).applyMatrix4(this.matrixWorld);
     HU.uPoolPos.value.copy(p);
     HU.uPoolCol.value.copy(C('#e6f2ff', 1.6 * k));
     HU.uPoolR.value = 16;
