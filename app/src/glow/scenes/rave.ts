@@ -262,7 +262,7 @@ export default class Rave extends Scene {
     (skyU.horizon!.value as THREE.Color).copy(col('dusk', 0.8)).lerp(col('violet', 0.12), n === 2 ? 0.5 : 0.15 + 0.15 * audio.env('low', t));
     S.render(this.ctx.renderer, out);
     const kick = audio.hit('kick', t, 0.08);
-    const start = pulse(t, this.ctx.start, 0.12) * (n === 2 ? 0.3 : 1.0);
+    const start = 0; // (the drops come in through the shatter transition)
     return {
       bloom: 1.0, bloomThreshold: 0.78, bloomRadius: 0.85, halation: 0.12, vignette: 0.42, grain: 0.05, ca: 1.0 + kick,
       flash: start, zoom: 1 + 0.012 * kick,

@@ -18,6 +18,17 @@ import { Town } from './chorus-town';
 import { Finale } from './chorus-finale';
 import { GlowPoints } from '../lib/points';
 import { hash } from '../../engine/util';
+import { makeRT } from '../../engine/gl';
+import { Transitions, type TransitionSpec } from '../../engine/transitions';
+import { lin } from '../lib/palette';
+
+/** How each sub-scene comes in from the previous one. */
+const INTO: Partial<Record<Part, TransitionSpec>> = {
+  B: { kind: 'whip', dur: 0.42, dir: [-1, 0] },
+  C: { kind: 'whip', dur: 0.5, dir: [0, 1] }, // tilt down from the constellation to the town
+  D: { kind: 'zoom', dur: 0.5, centre: [0.5, 0.55] },
+  E: { kind: 'light', dur: 0.5, color: lin('gold', 1.2) },
+};
 
 type Part = 'A' | 'B' | 'C' | 'D' | 'E';
 interface Seg { part: Part; start: number; end: number; lines: Line[] }
@@ -42,6 +53,9 @@ export default class Chorus extends Scene {
   shatter?: Shatter;
   town?: Town;
   finale?: Finale;
+  tr = new Transitions();
+  rtA = makeRT();
+  rtB = makeRT();
 
   override async init() {
     const { lyrics, audio, params, start, end } = this.ctx;
@@ -106,18 +120,29 @@ export default class Chorus extends Scene {
     await Promise.all([this.shatter?.init(), this.town?.init(), this.finale?.init()]);
   }
 
+  private renderSeg(f: Frame, seg: Seg, out: THREE.WebGLRenderTarget): Record<string, any> {
+    if (seg.part === 'A' || seg.part === 'D') return this.renderFloor(f, seg, out);
+    if (seg.part === 'B') return this.shatter!.render(f, seg.start, seg.end, out);
+    if (seg.part === 'C') return this.town!.render(f, seg.start, seg.end, out);
+    return this.finale!.render(f, seg.start, seg.end, out);
+  }
+
   render(f: Frame, out: THREE.WebGLRenderTarget) {
     const t = f.t;
+    const i = Math.max(0, this.segs.findIndex((s) => t >= s.start && t < s.end));
     const seg = this.segs.find((s) => t >= s.start && t < s.end) ?? this.segs[this.segs.length - 1]!;
+    // around a cut between sub-scenes, render both and composite them with the sub-scene's transition
+    const near = [this.segs[i]!, this.segs[i + 1]].find((s) => s && INTO[s.part] && s.start > this.ctx.start + 0.01 && Math.abs(t - s.start) < INTO[s.part]!.dur / 2);
     let post: Record<string, any> = {};
-    if (seg.part === 'A' || seg.part === 'D') post = this.renderFloor(f, seg, out);
-    else if (seg.part === 'B') post = this.shatter!.render(f, seg.start, seg.end, out);
-    else if (seg.part === 'C') post = this.town!.render(f, seg.start, seg.end, out);
-    else post = this.finale!.render(f, seg.start, seg.end, out);
+    if (near) {
+      const spec = INTO[near.part]!, prev = this.segs[this.segs.indexOf(near) - 1]!;
+      this.renderSeg(f, prev, this.rtA);
+      post = this.renderSeg(f, near, this.rtB);
+      this.tr.render(this.ctx.renderer, spec, this.rtA.texture, this.rtB.texture, (t - (near.start - spec.dur / 2)) / spec.dur, out);
+    } else post = this.renderSeg(f, seg, out);
     // the snap's white-out carries over the first frames of the chorus
     const inFlash = this.n === 3 ? 0 : Math.pow(0.5, Math.max(0, t - this.ctx.start) / 0.09) * (t - this.ctx.start < 0.6 ? 1 : 0);
-    // each cut between sub-scenes lands with a short flash
-    const cutFlash = seg.start > this.ctx.start + 0.01 ? Math.pow(0.5, Math.max(0, t - seg.start) / 0.035) * 0.12 : 0;
+    const cutFlash = 0; // (sub-scene cuts have their own transitions)
     return {
       bloom: 0.95, bloomThreshold: 0.78, bloomRadius: 0.85, halation: 0.12, vignette: 0.42, grain: 0.05, ca: 0.9,
       ...post,
@@ -209,7 +234,7 @@ export default class Chorus extends Scene {
     S.cam.updateProjectionMatrix();
     S.render(this.ctx.renderer, out);
     // D ends in a white-out into the drop
-    const outFlash = isD ? smoothstep(this.ctx.end - 0.35, this.ctx.end, t) * 1.4 : 0;
+    const outFlash = isD ? smoothstep(this.ctx.end - 0.35, this.ctx.end, t) * 0.25 : 0; // (the shatter transition takes it from here)
     return { flash: outFlash, shake: [noise1(t * 50, 1) * 6 * shake, noise1(t * 50, 2) * 6 * shake] as [number, number] };
   }
 

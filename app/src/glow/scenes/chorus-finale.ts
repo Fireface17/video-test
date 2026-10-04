@@ -101,7 +101,7 @@ export class Finale {
     aim(S.cam, pos, new THREE.Vector3(0, 2.7, -6), noise1(t * 0.3, 3) * 0.03);
     S.render(this.ctx.renderer, out);
     return {
-      flash: smoothstep(segEnd - 0.3, segEnd, t) * 1.6,
+      flash: smoothstep(segEnd - 0.3, segEnd, t) * 0.3,
       shake: [noise1(t * 50, 1) * 6 * shake, noise1(t * 50, 2) * 6 * shake] as [number, number],
       halation: 0.3,
     };

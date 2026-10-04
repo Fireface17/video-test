@@ -1,6 +1,8 @@
 // The edit of "Glowing In The Dark": which scene plays when. Boundaries come from the aligned lyrics
 // (data/glow/lyrics.json) and the beat grid / sections (data/glow/audio.json), never typed-in times.
 import type { TimelineEntry } from '../engine/engine';
+import type { TransitionSpec } from '../engine/transitions';
+import { lin } from './lib/palette';
 import type { SceneClass } from '../engine/scene';
 import type { Lyrics } from '../engine/lyrics';
 import type { AudioData } from '../engine/audio';
@@ -41,20 +43,29 @@ export function makeTimeline(ly: Lyrics, au: AudioData): TimelineEntry[] {
 
   const E = (id: string, file: string, start: number, end: number, extra: Partial<TimelineEntry> = {}): TimelineEntry =>
     ({ id, load: scene(file), start, end, ...extra });
+  // how each scene comes in (engine/transitions.ts); the overlap is centred on the cut
+  const X = (kind: TransitionSpec['kind'], dur: number, o: Partial<TransitionSpec> = {}): { transition: TransitionSpec } => ({ transition: { kind, dur, ...o } });
 
   return [
     E('intro', 'ceiling', 0, b.verse1, { params: { mode: 'intro' } }),
-    E('highway', 'highway', b.verse1, b.pre1),
-    E('snap1', 'snap', b.pre1, b.chorus1, { params: { n: 1 } }),
-    E('chorus1', 'chorus', b.chorus1, b.drop1, { params: { n: 1 } }),
-    E('drop1', 'rave', b.drop1, b.verse2, { params: { n: 1 } }),
-    E('ghosts', 'ghosts', b.verse2, b.build2),
-    E('snap2', 'snap', b.build2, b.chorus2, { params: { n: 2 } }),
-    E('chorus2', 'chorus', b.chorus2, b.break2, { params: { n: 2 } }),
-    E('break2', 'rave', b.break2, b.bridge, { params: { n: 2 } }),
-    E('bridge', 'fall', b.bridge, b.chorus3),
-    E('chorus3', 'chorus', b.chorus3, b.drop3, { params: { n: 3 } }),
-    E('drop3', 'rave', b.drop3, b.outro, { params: { n: 3 } }),
-    E('outro', 'ceiling', b.outro, b.end, { params: { mode: 'outro' } }),
+    // the camera tilts down out of the sky onto the road
+    E('highway', 'highway', b.verse1, b.pre1, X('whip', 0.5, { dir: [0, 1] })),
+    // the night drive burns away in embers, leaving the dark and one glow stick
+    E('snap1', 'snap', b.pre1, b.chorus1, { params: { n: 1 }, ...X('sparks', 0.7, { color: lin('ember', 1.4), seed: 3 }) }),
+    // the stick snaps: light
+    E('chorus1', 'chorus', b.chorus1, b.drop1, { params: { n: 1 }, ...X('light', 0.36) }),
+    // the drop breaks the chorus like glass
+    E('drop1', 'rave', b.drop1, b.verse2, { params: { n: 1 }, ...X('shatter', 0.9, { color: lin('cyan', 1.2), centre: [0.5, 0.45] }) }),
+    E('ghosts', 'ghosts', b.verse2, b.build2, X('glitch', 0.4, { seed: 7 })),
+    E('snap2', 'snap', b.build2, b.chorus2, { params: { n: 2 }, ...X('whip', 0.45, { dir: [1, 0] }) }),
+    E('chorus2', 'chorus', b.chorus2, b.break2, { params: { n: 2 }, ...X('light', 0.36) }),
+    E('break2', 'rave', b.break2, b.bridge, { params: { n: 2 }, ...X('shatter', 0.9, { color: lin('violet', 1.4), centre: [0.5, 0.5] }) }),
+    // up and through, into space
+    E('bridge', 'fall', b.bridge, b.chorus3, X('zoom', 0.9, { centre: [0.5, 0.62], color: lin('blue', 1.2) })),
+    // a golden star opens onto the final chorus
+    E('chorus3', 'chorus', b.chorus3, b.drop3, { params: { n: 3 }, ...X('iris', 0.75, { color: lin('gold', 1.6), centre: [0.5, 0.5], seed: 0.3 }) }),
+    E('drop3', 'rave', b.drop3, b.outro, { params: { n: 3 }, ...X('shatter', 0.9, { color: lin('gold', 1.4), centre: [0.5, 0.42] }) }),
+    // stars to stars
+    E('outro', 'ceiling', b.outro, b.end, { params: { mode: 'outro' }, ...X('crossfade', 1.2) }),
   ];
 }

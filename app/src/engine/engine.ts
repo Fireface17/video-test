@@ -9,6 +9,7 @@ import { Hud, PDoom, type Caption } from './hud';
 import type { Frame, Scene, SceneClass, SceneCtx, PostOverrides } from './scene';
 import { loadFonts } from './type';
 import { loadStrokeFonts } from './stroke';
+import { Transitions, type TransitionSpec } from './transitions';
 
 export interface TimelineEntry {
   id: string;
@@ -24,6 +25,12 @@ export interface TimelineEntry {
   params?: Record<string, any>;
   /** Cap on adaptive motion-blur sub-frames while this entry is on screen (for noise that converges slowly). */
   maxSamples?: number;
+  /**
+   * How this entry comes in from the previous one (see transitions.ts). Both entries are then rendered for
+   * `dur` seconds centred on the cut (each scene still gets its nominal start/end) and composited by the
+   * effect; without one, touching entries hard-cut and overlapping ones crossfade.
+   */
+  transition?: TransitionSpec;
 }
 
 interface Loaded { entry: TimelineEntry; scene: Scene | null; error?: string; lastT: number }
@@ -57,9 +64,12 @@ export class Engine {
   hud!: Hud;
   post!: Post;
   comp = new Compositor();
+  transitions = new Transitions();
+  /** Each entry's active window: its nominal window padded by half of the transitions at either end. */
+  private wins = new Map<TimelineEntry, [number, number]>();
   loaded = new Map<string, Loaded>();
   private rts = [makeRT(), makeRT(), makeRT()];
-  private mixRT = makeRT(W, H, { depthBuffer: false });
+  private mixRT = makeRT(W, H); // (with depth: the shatter transition draws 3D shards)
   // motion-blur sub-frame sums (float: up to hundreds of sub-frames), their average, and the error estimate
   private sumRT = makeRT(W, H, { depthBuffer: false, type: THREE.FloatType });
   private newRT = makeRT(W, H, { depthBuffer: false, type: THREE.FloatType });
@@ -142,6 +152,10 @@ export class Engine {
   async init(only?: (e: TimelineEntry) => boolean, dataDir = 'data') {
     [this.audio, this.lyrics] = await Promise.all([AudioData.load(dataDir), Lyrics.load(dataDir), loadFonts(), loadStrokeFonts()]) as [AudioData, Lyrics, void, void];
     this.timeline = this.makeTimeline(this.lyrics, this.audio);
+    this.timeline.forEach((e, i) => {
+      const next = this.timeline[i + 1];
+      this.wins.set(e, [e.start - (e.transition?.dur ?? 0) / 2, e.end + (next?.transition && next.start <= e.end + 1e-6 ? next.transition.dur / 2 : 0)]);
+    });
     this.ctx = { renderer: this.renderer, audio: this.audio, lyrics: this.lyrics, comp: this.comp, W, H, id: '', params: {}, start: 0, end: 0 };
     this.post = new Post();
     const captions: Caption[] = this.timeline.filter((e) => e.caption).map((e) => {
@@ -178,6 +192,9 @@ export class Engine {
   }
 
   get duration() { return this.audio.duration; }
+
+  /** Active window of an entry (nominal window padded for transitions). */
+  win(e: TimelineEntry): [number, number] { return this.wins.get(e) ?? [e.start, e.end]; }
 
   private frameFor(e: TimelineEntry, t: number, dt: number, seeked: boolean, preroll: boolean, under: THREE.Texture | null, tin: number, tout: number): Frame {
     const beat = this.audio.beatAt(t), bar = this.audio.barAt(t);
@@ -218,7 +235,7 @@ export class Engine {
       if (adaptive) {
         // sub-frames are rendered out of time order: fine for pure functions of t, not for scenes that integrate state
         const w = dt * shutter;
-        const on = this.timeline.filter((e) => t + w / 2 >= e.start && t - w / 2 < e.end);
+        const on = this.timeline.filter((e) => t + w / 2 >= this.win(e)[0] && t - w / 2 < this.win(e)[1]);
         const st = on.find((e) => this.loaded.get(e.id)?.scene?.stateful);
         if (st) throw new Error(`adaptive sampling needs stateless scenes; '${st.id}' is stateful (use a fixed --samples)`);
         for (const e of on) if (e.maxSamples) maxAdaptive = Math.min(maxAdaptive, e.maxSamples);
@@ -304,7 +321,7 @@ export class Engine {
   private composite(t: number, dt: number, seeked: boolean): { outTex: THREE.Texture; post: PostParams } {
     const r = this.renderer;
 
-    const active = this.timeline.filter((e) => t >= e.start && t < e.end).sort((a, b) => a.start - b.start);
+    const active = this.timeline.filter((e) => t >= this.win(e)[0] && t < this.win(e)[1]).sort((a, b) => a.start - b.start);
     let post: PostParams = { ...DEFAULT_POST };
     let under: THREE.Texture | null = null;
     let outTex: THREE.Texture | null = null;
@@ -313,8 +330,9 @@ export class Engine {
       const rec = this.loaded.get(e.id);
       const rt = this.rts[idx % this.rts.length]!;
       const prev = active[idx - 1], next = active[idx + 1];
-      const tin = prev ? Math.min(1, (t - e.start) / Math.max(1e-3, prev.end - e.start)) : 1;
-      const tout = next ? Math.max(0, (t - next.start) / Math.max(1e-3, e.end - next.start)) : 0;
+      const [ws, we] = this.win(e);
+      const tin = prev ? Math.min(1, (t - ws) / Math.max(1e-3, this.win(prev)[1] - ws)) : 1;
+      const tout = next ? Math.max(0, (t - this.win(next)[0]) / Math.max(1e-3, we - this.win(next)[0])) : 0;
       if (!rec?.scene) {
         clearRT(r, rt, [0.25, 0.0, 0.0]);
         under = rt.texture; outTex = rt.texture;
@@ -342,7 +360,10 @@ export class Engine {
       }
       rec.lastT = t;
       post = { ...post, ...(e.post ?? {}), ...(ov ?? {}) };
-      if (idx > 0 && !s.handlesTransition && under) {
+      if (idx > 0 && !s.handlesTransition && under && e.transition) {
+        this.transitions.render(r, e.transition, under, rt.texture, tin, this.mixRT);
+        outTex = this.mixRT.texture;
+      } else if (idx > 0 && !s.handlesTransition && under) {
         // default: crossfade from the previous scene over the overlap
         this.xfade.u.a!.value = under;
         this.xfade.u.b!.value = rt.texture;
