@@ -87,7 +87,7 @@ export class PaperLantern extends THREE.Group {
     const g = new THREE.LatheGeometry(prof, 48);
     this.paper = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-      uniforms: { lit: { value: 0 }, warm: { value: col('gold', 1.6).lerp(col('ember', 1.6), 0.25) }, paperC: { value: col('white', 0.05).lerp(col('pink', 0.05), 0.3) } },
+      uniforms: { lit: { value: 0 }, warm: { value: col('gold', 1.6).lerp(col('ember', 1.6), 0.25) }, paperC: { value: col('white', 0.07).lerp(col('pink', 0.07), 0.3) } },
       vertexShader: /* glsl */ `varying vec3 vP; varying vec3 vN; varying vec3 vV;
         void main() { vP = position; vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
       fragmentShader: /* glsl */ `uniform float lit; uniform vec3 warm, paperC; varying vec3 vP; varying vec3 vN; varying vec3 vV;
@@ -97,7 +97,8 @@ export class PaperLantern extends THREE.Group {
           float h = vP.y / ${(r * 1.1).toFixed(4)};
           float core = exp(-h * h * 1.8);
           float f = abs(dot(normalize(vN), normalize(vV)));
-          vec3 c = paperC * (0.6 + 0.4 * f) + warm * lit * rib * (0.35 + 0.65 * core) * (0.55 + 0.45 * f);
+          // unlit: pale paper, its ribs and its rim catching light; lit: the flame through the paper
+          vec3 c = paperC * rib * (0.35 + 1.1 * pow(1.0 - f, 2.0)) + warm * lit * rib * (0.35 + 0.65 * core) * (0.55 + 0.45 * f);
           gl_FragColor = vec4(c, 1.0);
         }`,
     });
