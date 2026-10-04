@@ -10,6 +10,8 @@ import { Stage, aim } from '../lib/stage';
 import { col } from '../lib/palette';
 import { NeonLine } from '../lib/neon';
 import { GlowPoints } from '../lib/points';
+import { makeRT } from '../../engine/gl';
+import { Dancers, Beams } from './chorus-dancers';
 
 const MW = 4.6, MH = 2.9, MY = 0.75; // mirror size and centre height
 
@@ -34,6 +36,14 @@ export class Shatter {
   lookHow?: NeonLine;
   weAre?: NeonLine;
   tb = 0; // break time ("broken")
+  // the reflection: what is in front of the mirror (dancers of light behind the camera, beams, the lyric),
+  // rendered from the camera mirrored in the mirror's plane; each piece keeps its part when it flies
+  reflRT = makeRT(960, 540);
+  reflCam = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 300);
+  texMatrix = new THREE.Matrix4();
+  shardMesh!: THREE.Mesh;
+  dancers!: Dancers;
+  beams!: Beams;
   beautiful?: { start: number; end: number };
 
   constructor(private ctx: SceneCtx, private lines10: Line[], private n: number) {}
@@ -73,12 +83,47 @@ export class Shatter {
     this.colr = new Float32Array(N * 9);
     this.geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
     this.geo.setAttribute('color', new THREE.BufferAttribute(this.colr, 3).setUsage(THREE.DynamicDrawUsage));
-    const mesh = new THREE.Mesh(this.geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, fog: true }));
+    const orig = new Float32Array(N * 9);
+    this.shards.forEach((sh, i) => [sh.a, sh.b, sh.c].forEach((v, k) => orig.set([v.x, v.y, v.z], i * 9 + k * 3)));
+    this.geo.setAttribute('orig', new THREE.BufferAttribute(orig, 3));
+    const mesh = new THREE.Mesh(this.geo, new THREE.ShaderMaterial({
+      side: THREE.DoubleSide, fog: true,
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { tRefl: { value: null }, texMatrix: { value: new THREE.Matrix4() }, reflK: { value: 1 } }]),
+      vertexShader: /* glsl */ `
+        #include <fog_pars_vertex>
+        attribute vec3 color; attribute vec3 orig;
+        uniform mat4 texMatrix;
+        varying vec3 vC; varying vec4 vR;
+        void main() {
+          vC = color; vR = texMatrix * vec4(orig, 1.0);
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+          #include <fog_vertex>
+        }`,
+      fragmentShader: /* glsl */ `
+        #include <fog_pars_fragment>
+        uniform sampler2D tRefl; uniform float reflK;
+        varying vec3 vC; varying vec4 vR;
+        void main() {
+          vec3 r = texture2D(tRefl, vR.xy / vR.w).rgb;
+          gl_FragColor = vec4(vC + r * reflK * 0.8, 1.0);
+          #include <fog_fragment>
+        }`,
+    }));
     mesh.frustumCulled = false;
+    this.shardMesh = mesh;
+    // the room in front of the mirror, behind the camera: only ever seen in the reflection
+    const spots: { x: number; z: number }[] = [];
+    for (let i = 0; i < 18; i++) spots.push({ x: (i / 17 - 0.5) * 16 + (i % 2 ? 0.6 : -0.6), z: 11 + (i % 3) * 1.8 });
+    this.dancers = new Dancers(spots, [this.n === 2 ? 'violet' : this.n === 3 ? 'gold' : 'pink', 'cyan', 'phosphor'].map((k) => col(k, 1.3)));
+    this.dancers.rotation.y = 0;
+    this.beams = new Beams(5, ['pink', 'cyan', 'violet'].map((k) => col(k, 1)), 12);
+    this.beams.position.z = 12;
+    S.add(this.dancers, this.beams);
     const eg = new THREE.BufferGeometry();
     this.epos = new Float32Array(N * 18);
     eg.setAttribute('position', new THREE.BufferAttribute(this.epos, 3).setUsage(THREE.DynamicDrawUsage));
-    this.edges = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: accent.clone().multiplyScalar(3), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    this.edges = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: accent.clone().multiplyScalar(1.1), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
     this.edges.frustumCulled = false;
     // the frame
     this.frameMat = new THREE.MeshBasicMaterial({ color: accent.clone().multiplyScalar(1.8), fog: true });
@@ -211,7 +256,7 @@ export class Shatter {
     (this.geo.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
     (this.edges.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     const em = this.edges.material as THREE.LineBasicMaterial;
-    em.opacity = clamp(crack * 1.2 + smoothstep(this.tb - 0.06, this.tb, t) * (1 - smoothstep(this.tb + 0.05, this.tb + 0.5, t)) * 0.8, 0, 1);
+    em.opacity = clamp(crack * 0.8 + smoothstep(this.tb - 0.06, this.tb, t) * (1 - smoothstep(this.tb + 0.05, this.tb + 0.35, t)) * 0.5, 0, 1);
     this.edges.visible = em.opacity > 0.01;
     this.stars.commit();
     const frameK = t < this.tb ? 1 : 1 - smoothstep(this.tb + 0.2, this.tb + 1.6, t);
@@ -259,6 +304,38 @@ export class Shatter {
     const pos = new THREE.Vector3(side * lerp(-0.6, 0.5, p) + noise1(t * 30, 4) * 0.08 * shake, lerp(lerp(0.3, 0.55, p), 0.4, up), lerp(lerp(8.2, 6.8, ease.outCubic(prog(t, segStart, this.tb))), 11.5, up) + smoothstep(this.tb, this.tb + 0.5, t) * 0.8 * (1 - up));
     const tgt = new THREE.Vector3(0, lerp(MY - 0.35, 3.3, up), lerp(0, -3.5, up));
     aim(S.cam, pos, tgt, noise1(t * 0.3, 9) * 0.03);
+    // the reflection: mirror the camera in the plane z = 0, render everything but the glass
+    const beat = this.ctx.audio.beatAt(t);
+    this.dancers.pose(beat, 0.8, 1);
+    this.dancers.spots.forEach((sp) => (sp.ry = Math.PI)); // facing the mirror
+    this.beams.pose(beat, 0.8, 9);
+    const reflOn = t < this.tb + 2.0;
+    this.dancers.visible = this.beams.visible = reflOn;
+    if (reflOn) {
+      const cam = S.cam;
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+      const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
+      const mirror = (v: THREE.Vector3) => new THREE.Vector3(v.x, v.y, -v.z);
+      const target = cam.position.clone().add(fwd);
+      aim(this.reflCam, mirror(cam.position), mirror(target), 0, mirror(camUp));
+      this.reflCam.fov = cam.fov;
+      this.reflCam.updateProjectionMatrix();
+      this.shardMesh.visible = false;
+      this.edges.visible = false;
+      const r = this.ctx.renderer;
+      r.setRenderTarget(this.reflRT);
+      r.setClearColor(S.bg, 1);
+      r.clear(true, true, true);
+      r.render(S.scene, this.reflCam);
+      this.shardMesh.visible = true;
+      this.edges.visible = em.opacity > 0.01;
+      this.texMatrix.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1).multiply(this.reflCam.projectionMatrix).multiply(this.reflCam.matrixWorldInverse);
+    }
+    const su = (this.shardMesh.material as THREE.ShaderMaterial).uniforms;
+    su.tRefl!.value = this.reflRT.texture;
+    (su.texMatrix!.value as THREE.Matrix4).copy(this.texMatrix);
+    su.reflK!.value = reflOn ? 1 - smoothstep(this.tb + 0.3, this.tb + 1.6, t) : 0;
+    this.dancers.visible = this.beams.visible = false; // (they only exist in the mirror)
     S.render(this.ctx.renderer, out);
     return { shake: [noise1(t * 50, 1) * 7 * shake, noise1(t * 50, 2) * 7 * shake] as [number, number], flash: crack * 0.08 };
   }
