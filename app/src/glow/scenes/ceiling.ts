@@ -200,7 +200,8 @@ export default class Ceiling extends Scene {
     // lamp: on until the first downbeat of the intro; back on at the last downbeat of the outro
     const lampOn = this.outro ? (t >= lastBar ? 1 : 0) : (t < B(1) ? 1 : 0);
     this.lamp.intensity = 4 * lampOn;
-    this.lampMat.color.copy(col('#ffd9a0', lampOn ? 1.2 : 0.002));
+    if (lampOn) this.lampMat.color.copy(col('#ffd9a0', 1.2));
+    else this.lampMat.color.copy(col('ink', 0.18));
     this.hemi.intensity = lampOn ? 0.35 : 0.5;
     (this.moon.material as THREE.ShaderMaterial).uniforms.k!.value = 1 - lampOn;
 
@@ -275,7 +276,9 @@ export default class Ceiling extends Scene {
       const l = (this.hand as any).line;
       const a = this.stickers.find((s) => (s as any).pair === 1)!;
       this.hand.position.set(a.x, CEIL - 0.02, a.z + 0.38);
-      this.hand.rotation.set(Math.PI / 2, Math.PI, 0); // facing down, upright for a camera looking up with -z on top
+      // facing down at a camera that looks up with -z at the top of the frame: text runs along -x, up is -z
+      this.hand.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, 0, -1), new THREE.Vector3(0, -1, 0)));
+      this.hand.visible = t > l.start - 0.5 && t < a.tOut;
       this.hand.sing(l, t, 1 - smoothstep(a.tOut - 1.5, a.tOut, t));
     }
 

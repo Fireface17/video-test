@@ -1,5 +1,7 @@
 # I'm Upping My P(doom) — music video
 
+> **This repository now also holds a second video: "Glowing In The Dark" by Fireface17**, a 3D clip built on the same engine. It is the app's default song (P(doom) is `?song=pdoom` / `--song pdoom`). How to watch and render it: [`docs/glow/README.md`](docs/glow/README.md).
+
 A generative, code-rendered music video with word-synced karaoke typography. Every frame is a deterministic function of song time, so the live preview in the browser and the offline 1080p60 (or 4K60) export are identical.
 
 **Watch it in 4K on YouTube:** https://www.youtube.com/watch?v=5EoO5413dBY
