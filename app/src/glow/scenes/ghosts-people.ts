@@ -339,9 +339,9 @@ ${GLSL_WORLD}
 uniform vec3 uCold;
 /** Light falling on a person: the moon, the warm light around, the friends' hands, a phone screen. */
 vec3 personEnv(vec3 wp, vec3 N, vec3 phoneP, float phoneK) {
-  vec3 e = uMoonCol * moonAt(wp) * uMoonK * (0.15 + 0.85 * max(dot(N, uMoonL), 0.0));
-  e += mapAt(wp) * 0.55 + uFill * 0.35;
-  e += handGlow(wp, N) * 1.2;
+  vec3 e = mapAt(wp) * 0.55 + uFill * 0.35;
+  if (uMoonK > 0.002) e += uMoonCol * moonAt(wp) * uMoonK * (0.15 + 0.85 * max(dot(N, uMoonL), 0.0));
+  if (uHandK.x + uHandK.y > 0.0) e += handGlow(wp, N) * 1.2;
   if (phoneK > 0.0) {
     vec3 d = phoneP - wp; float l = length(d);
     e += vec3(0.62, 0.78, 1.0) * phoneK * (0.25 + 0.75 * max(dot(N, d / max(l, 1e-4)), 0.0)) / (1.0 + 90.0 * l * l) * 1.6;
@@ -356,18 +356,22 @@ vec3 personEnv(vec3 wp, vec3 N, vec3 phoneP, float phoneK) {
 vec3 personShade(vec3 N, vec3 V, vec3 wp, float tint, float lightK, float band, vec3 warmC, float seed, vec3 env) {
   float f = clamp(abs(dot(N, V)), 0.0, 1.0), rim = 1.0 - f;
   float r2 = rim * rim, r4 = r2 * r2;
-  float h = wp.y;
   float nz = vn3(wp * vec3(3.0, 2.2, 3.0) + vec3(0.0, -uTime * mix(0.5, 1.1, lightK), seed * 13.0));
   float mist = 0.55 + 0.75 * nz;
-  float feet = 0.3 + 0.7 * smoothstep(0.0, 0.95, h);
-  vec3 gc = mix(uCold, warmC * 0.7, tint);
-  vec3 ghost = gc * (0.03 + 0.42 * pow(rim, 1.6) + 0.95 * r4) * mist * feet;
-  float lum = max(warmC.r, max(warmC.g, warmC.b));
-  float bands = smoothstep(0.55, 0.9, nz);
-  float glint = step(0.991, h13(floor(wp * 210.0) + floor(uTime * 8.0))) * f;
-  vec3 lightC = warmC * (0.07 + 0.35 * bands + 0.9 * r2 + 2.2 * r4 * r2) + mix(warmC, vec3(lum), 0.6) * 1.6 * r4 * r4
-    + vec3(lum) * (0.12 * f * f * f * f * f * f * f * f + 1.5 * glint);
-  vec3 c = mix(ghost, lightC, lightK);
+  float feet = 0.3 + 0.7 * smoothstep(0.0, 0.95, wp.y);
+  vec3 c = vec3(0.0);
+  if (lightK < 0.999) {
+    vec3 gc = mix(uCold, warmC * 0.7, tint);
+    c += gc * (0.03 + 0.42 * pow(rim, 1.6) + 0.95 * r4) * mist * feet * (1.0 - lightK);
+  }
+  if (lightK > 0.001) {
+    float lum = max(warmC.r, max(warmC.g, warmC.b));
+    float bands = smoothstep(0.55, 0.9, nz);
+    float glint = step(0.991, h13(floor(wp * 210.0) + floor(uTime * 8.0))) * f;
+    float f2 = f * f, f4 = f2 * f2;
+    c += (warmC * (0.07 + 0.35 * bands + 0.9 * r2 + 2.2 * r4 * r2) + mix(warmC, vec3(lum), 0.6) * 1.6 * r4 * r4
+      + vec3(lum) * (0.12 * f4 * f4 + 1.5 * glint)) * lightK;
+  }
   c += warmC * band * (0.7 + 2.2 * rim);
   c += env * (0.1 + 0.9 * rim) * mix(feet * mist, 1.0, lightK);
   return c;
@@ -491,59 +495,68 @@ export function heroMaterial(U: WorldU, cold: THREE.Color, warm: THREE.Color, se
 
 export interface CrowdSlot { body: number; pose: Lonely }
 
-/** All the baked people: one InstancedMesh (+ depth twin) per (body, lonely pose). */
+/**
+ * All the baked people: one InstancedMesh (+ depth twin) per (body, lonely pose, level of detail). Each frame
+ * every person is put into the near or the far version of their mesh (`begin`, `set`, `commit`).
+ */
 export class Crowd extends THREE.Group {
-  groups: { mesh: THREE.InstancedMesh; depth: THREE.InstancedMesh; mat: THREE.ShaderMaterial; attrs: Record<string, THREE.InstancedBufferAttribute>; ids: number[] }[] = [];
-  /** person -> [group, slot in it] */
-  where: [number, number][] = [];
+  groups: { mesh: THREE.InstancedMesh; depth: THREE.InstancedMesh; mat: THREE.ShaderMaterial; attrs: Record<string, THREE.InstancedBufferAttribute>; n: number }[] = [];
+  /** person -> group index per level of detail */
+  where: number[][] = [];
   phones: ({ p: THREE.Vector3; n: THREE.Vector3 } | null)[] = [];
 
-  constructor(bakes: BodyBake[], slots: CrowdSlot[], U: WorldU, cold: THREE.Color) {
+  /** `lods[l][body]`: the bakes of each body at each level of detail (0 = finest). */
+  constructor(lods: BodyBake[][], slots: CrowdSlot[], U: WorldU, cold: THREE.Color) {
     super();
     const depthMat = crowdDepthMaterial(U);
     const keyOf = (s: CrowdSlot) => `${s.body}:${s.pose}`;
     const keys = [...new Set(slots.map(keyOf))];
-    for (const key of keys) {
-      const ids = slots.map((s, i) => (keyOf(s) === key ? i : -1)).filter((i) => i >= 0);
-      const s0 = slots[ids[0]!]!, bk = bakes[s0.body]!, A = bk.A.get(s0.pose)!;
-      const g = new THREE.BufferGeometry();
-      g.setIndex(bk.index);
-      g.setAttribute('position', A.pos);
-      g.setAttribute('normal', A.nor);
-      g.setAttribute('posB', bk.B.pos);
-      g.setAttribute('norB', bk.B.nor);
-      g.setAttribute('posC', bk.C.pos);
-      g.setAttribute('norC', bk.C.nor);
-      g.setAttribute('arm', bk.arm);
-      g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1, 0), 2);
-      const n = ids.length;
-      const attrs: Record<string, THREE.InstancedBufferAttribute> = {};
-      for (const nm of ['aMorph', 'aState', 'aWarm']) {
-        attrs[nm] = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4).setUsage(THREE.DynamicDrawUsage);
-        g.setAttribute(nm, attrs[nm]!);
+    slots.forEach((_, i) => (this.where[i] = []));
+    lods.forEach((bakes, lod) => {
+      for (const key of keys) {
+        const ids = slots.map((s, i) => (keyOf(s) === key ? i : -1)).filter((i) => i >= 0);
+        const s0 = slots[ids[0]!]!, bk = bakes[s0.body]!, A = bk.A.get(s0.pose)!;
+        const g = new THREE.BufferGeometry();
+        g.setIndex(bk.index);
+        g.setAttribute('position', A.pos);
+        g.setAttribute('normal', A.nor);
+        g.setAttribute('posB', bk.B.pos);
+        g.setAttribute('norB', bk.B.nor);
+        g.setAttribute('posC', bk.C.pos);
+        g.setAttribute('norC', bk.C.nor);
+        g.setAttribute('arm', bk.arm);
+        g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1, 0), 2);
+        const n = ids.length;
+        const attrs: Record<string, THREE.InstancedBufferAttribute> = {};
+        for (const nm of ['aMorph', 'aState', 'aWarm']) {
+          attrs[nm] = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4).setUsage(THREE.DynamicDrawUsage);
+          g.setAttribute(nm, attrs[nm]!);
+        }
+        const mat = crowdMaterial(U, cold);
+        if (A.phone) mat.uniforms.uPhone!.value.set(A.phone.p.x, A.phone.p.y, A.phone.p.z, 1);
+        const mesh = new THREE.InstancedMesh(g, mat, n);
+        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        mesh.frustumCulled = false;
+        const dm = depthMat.clone();
+        dm.uniforms.uTime = U.uTime;
+        dm.uniforms.uPhone = mat.uniforms.uPhone!;
+        const depth = new THREE.InstancedMesh(g, dm, n);
+        depth.instanceMatrix = mesh.instanceMatrix;
+        depth.frustumCulled = false;
+        depth.renderOrder = -10;
+        this.add(depth, mesh);
+        const gi = this.groups.length;
+        ids.forEach((pid) => { this.where[pid]![lod] = gi; if (lod === 0) this.phones[pid] = A.phone; });
+        this.groups.push({ mesh, depth, mat, attrs, n: 0 });
       }
-      const mat = crowdMaterial(U, cold);
-      if (A.phone) mat.uniforms.uPhone!.value.set(A.phone.p.x, A.phone.p.y, A.phone.p.z, 1);
-      const mesh = new THREE.InstancedMesh(g, mat, n);
-      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      mesh.frustumCulled = false;
-      const dm = depthMat.clone();
-      dm.uniforms.uTime = U.uTime;
-      dm.uniforms.uPhone = mat.uniforms.uPhone!;
-      const depth = new THREE.InstancedMesh(g, dm, n);
-      depth.instanceMatrix = mesh.instanceMatrix;
-      depth.frustumCulled = false;
-      depth.renderOrder = -10;
-      this.add(depth, mesh);
-      const gi = this.groups.length;
-      ids.forEach((pid, k) => { this.where[pid] = [gi, k]; this.phones[pid] = A.phone; });
-      this.groups.push({ mesh, depth, mat, attrs, ids });
-    }
+    });
   }
 
-  set(i: number, m: THREE.Matrix4, morph: [number, number, number, number], state: [number, number, number, number], warm: THREE.Color, near: number) {
-    const [gi, k] = this.where[i]!;
-    const G = this.groups[gi]!;
+  begin() { for (const G of this.groups) G.n = 0; }
+
+  set(i: number, lod: number, m: THREE.Matrix4, morph: [number, number, number, number], state: [number, number, number, number], warm: THREE.Color, near: number) {
+    const W = this.where[i]!;
+    const G = this.groups[W[Math.min(lod, W.length - 1)]!]!, k = G.n++;
     G.mesh.setMatrixAt(k, m);
     G.attrs.aMorph!.array.set(morph, k * 4);
     G.attrs.aState!.array.set(state, k * 4);
@@ -552,6 +565,8 @@ export class Crowd extends THREE.Group {
 
   commit() {
     for (const G of this.groups) {
+      G.mesh.count = G.depth.count = G.n;
+      G.mesh.visible = G.depth.visible = G.n > 0;
       G.mesh.instanceMatrix.needsUpdate = true;
       for (const a of Object.values(G.attrs)) a.needsUpdate = true;
     }

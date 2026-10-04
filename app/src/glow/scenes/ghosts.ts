@@ -25,7 +25,7 @@ import {
   moonAtJS, moonMaterial, mullionGeometry, roomMaterial, skyMaterial, worldUniforms,
 } from './ghosts-gfx';
 import {
-  Crowd, LINK, LONELY, Phones, RAISE, SPACING, bakeBody, floorPt, heroMaterial, lighten, poseLinked, poseLonely, restLegs, type BodyBake, type Lonely,
+  Crowd, LINK, LONELY, Phones, RAISE, SPACING, bakeBody, heroMaterial, lighten, poseLonely, restLegs, type BodyBake, type Lonely,
 } from './ghosts-people';
 import { arcText, frostText, lightLetters, subLine } from './ghosts-text';
 
@@ -35,6 +35,8 @@ const DEBUG_CLEAR = false;
 const O = new THREE.Vector3(0, 0, -2.5);
 /** Gap between the turns of the double spiral (m). */
 const GAP = 1.5;
+/** People farther than this from the camera use the coarser crowd mesh. */
+const LOD_FAR = 6.5;
 /** How much of Michelle's hair buns is kept (1 = the model as is). */
 const HAIR = 0.4;
 const SPIRAL_R = 7.3;
@@ -72,6 +74,7 @@ export default class Ghosts extends Scene {
   crowd!: Crowd;
   phones!: Phones;
   phoneIds: number[] = [];
+  heroPhone = new Phones(1);
   heroes: Hero[] = [];
   /** The chain, in order: ('p', i) a crowd person, ('h', i) a friend. */
   chain: ['p' | 'h', number][] = [];
@@ -103,6 +106,7 @@ export default class Ghosts extends Scene {
   letterPts: { x: number; y: number; t: number; seed: number }[] = [];
   letterGrp = new THREE.Group();
   letterBox = { x0: 1e9, x1: -1e9, y0: 1e9, y1: -1e9 };
+  letterHeld: { pos: THREE.Vector3; q: THREE.Quaternion; s: number } | null = null;
   pens!: GlowPoints;
   hereGo: { grp: THREE.Group; words: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; t0: number }[] }[] = [];
 
@@ -221,11 +225,12 @@ export default class Ghosts extends Scene {
 
     // ---- people
     const [rpm, mi] = await Promise.all([loadBody('rpm'), loadBody('michelle')]);
-    const bakes: BodyBake[] = [
-      bakeBody(new RealFigure(rpm, 'rpm', col('white')), false, 0.3),
-      bakeBody(new RealFigure(rpm, 'rpm', col('white'), undefined, { hat: true }), true, 0.7),
-      bakeBody(new RealFigure(mi, 'michelle', col('white')), false, 0.6, 0.016, HAIR),
-    ];
+    // two levels of detail: near (1.6 cm clusters) and far (3.4 cm), so software rendering keeps up
+    const bakes: BodyBake[][] = [0.016, 0.034].map((cell) => [
+      bakeBody(new RealFigure(rpm, 'rpm', col('white')), false, 0.3, cell),
+      bakeBody(new RealFigure(rpm, 'rpm', col('white'), undefined, { hat: true }), true, 0.7, cell),
+      bakeBody(new RealFigure(mi, 'michelle', col('white')), false, 0.6, cell, HAIR),
+    ]);
     // the three friends: a man (A), a woman (B, in the middle), a man in a hat (C); a line facing +x
     const warmHero = [col('#ffb06c', 1.1), col('#ffc08e', 1.1), col('#ffc47e', 1.05)];
     const heroDef: [typeof rpm, 'rpm' | 'michelle', boolean, Lonely, number, number, number][] = [
@@ -246,7 +251,7 @@ export default class Ghosts extends Scene {
       S.add(motes);
     });
     this.buildCrowd(bakes);
-    S.add(this.crowd, this.phones);
+    S.add(this.crowd, this.phones, this.heroPhone);
 
     // ---- glows: the clasped hands, the lights that float up, dust in the moonlight
     this.clasps = new GlowPoints(this.chain.length * 2 + 16, 0.05);
@@ -267,7 +272,7 @@ export default class Ghosts extends Scene {
   // -------------------------------------------------------------------------------------------------
   // the crowd: a double spiral of people around the friends (one chain), each first standing alone nearby
 
-  private buildCrowd(bakes: BodyBake[]) {
+  private buildCrowd(bakes: BodyBake[][]) {
     const T = this.T, rnd = mulberry32(1717);
     // arm 1 continues the friends' line from C (2D: u along the line A->C, v to the left of it), arm 2 from A
     const b = GAP / Math.PI;
@@ -428,7 +433,7 @@ export default class Ghosts extends Scene {
     const r18 = [subLine(l18, 0, 3), subLine(l18, 3, n18)];
     const iceC = col('#cfe0ff', 0.85);
     r18.forEach((line, i) => {
-      const tr = frostText(lineText(line), 'script', 1, iceC, 0.05, i * 7);
+      const tr = frostText(lineText(line), 'script', 1, iceC, 0.058, i * 7);
       const w = (tr.st!.width) * tr.textScale;
       const sc = Math.min(4.25 / w, 0.95);
       tr.scale.setScalar(sc);
@@ -474,7 +479,7 @@ export default class Ghosts extends Scene {
       const grp = new THREE.Group();
       const geos = ids.map((i) => displayTextGeometry(font, l22.words[i]!.w.replace(/[,.]/g, '').toUpperCase(), 1, { curveSegments: 10 }));
       const ws = geos.map((g) => g.boundingBox!.max.x - g.boundingBox!.min.x);
-      const gap = 0.32, total = ws.reduce((a, b) => a + b, 0) + gap * (ws.length - 1);
+      const gap = 0.46, total = ws.reduce((a, b) => a + b, 0) + gap * (ws.length - 1);
       let x = -total / 2;
       const words = ids.map((wi, k) => {
         const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0, 0, 0), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
@@ -685,9 +690,20 @@ export default class Ghosts extends Scene {
       uni.uGain!.value = (1 + 1.6 * pulse(t, tLight, 0.16) + 0.35 * pulse(t, first, 0.2)) * (1 + 0.1 * kick * lk) * (1 - 0.15 * (1 - this.U.uMoonK.value) * (1 - lk));
       const phoneK = i === 1 ? 1 - prog(t, T.on! - 0.1, T.friends! - 0.2) : 0;
       if (i === 1 && phoneK > 0) {
-        const hp = f.hand(1).clone().lerp(f.hand(0), t < T.s19! - 0.2 ? 0.5 : 0);
-        (uni.uPhoneP!.value as THREE.Vector4).set(hp.x, hp.y + 0.03, hp.z, phoneK);
-      } else (uni.uPhoneP!.value as THREE.Vector4).w = 0;
+        // her phone, in both hands, then in her left as she takes his hand; put away as she reaches for the other
+        const hp = f.hand(1).clone().lerp(f.hand(0), 0.5 * (1 - kHand[0]!)).add(V3(0, 0.03, 0));
+        (uni.uPhoneP!.value as THREE.Vector4).set(hp.x, hp.y, hp.z, phoneK);
+        const n = f.headPoint().sub(hp).normalize();
+        const m = new THREE.Matrix4().compose(hp, new THREE.Quaternion().setFromUnitVectors(V3(0, 0, 1), n), V3(1, 1, 1).multiplyScalar(0.9 + 0.1 * phoneK));
+        this.heroPhone.setMatrixAt(0, m);
+        this.heroPhone.aK.array[0] = phoneK;
+        this.heroPhone.count = 1;
+      } else if (i === 1) {
+        (uni.uPhoneP!.value as THREE.Vector4).w = 0;
+        this.heroPhone.count = 0;
+      }
+      this.heroPhone.instanceMatrix.needsUpdate = true;
+      this.heroPhone.aK.needsUpdate = true;
       // motes of light drifting off them once they glow
       this.motes[i]!.update(f, t, h.warm.clone().multiplyScalar(1.6), 0.9 * lk + 0.25 * prog(t, first, first + 1));
     });
@@ -744,7 +760,7 @@ export default class Ghosts extends Scene {
     this.moonGrp.visible = t < T.whip3! + 0.5;
 
     // ---- the roof opens
-    const cs = (HALL.x1 - HALL.x0) / CEIL_N, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e3 = new THREE.Euler();
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e3 = new THREE.Euler();
     let opened = 0;
     this.ceilT.forEach((c, i) => {
       const a = Math.max(0, t - c.t0);
@@ -758,7 +774,6 @@ export default class Ghosts extends Scene {
       m4.compose(p, q, V3(1, 1, 1));
       this.ceil.setMatrixAt(i, m4);
       if (a > 0) opened++;
-      void cs;
     });
     this.ceil.instanceMatrix.needsUpdate = true;
     U.uOpen.value = opened / this.ceilT.length;
@@ -774,15 +789,17 @@ export default class Ghosts extends Scene {
     const surgeEnd = 1 + 0.9 * ease.inQuad(prog(t, T.last!, T.end! + 0.2));
     const phM = new THREE.Matrix4(), phQ = new THREE.Quaternion();
     let phN = 0;
+    this.crowd.begin();
     this.chain.forEach((c, ci) => {
       if (c[0] !== 'p') return;
       const p = this.people[c[1]]!, s = this.personAt(p, t, ci);
+      const lod = s.pos.distanceTo(cam.position) > LOD_FAR ? 1 : 0;
       qq.setFromAxisAngle(UP, s.yaw + 0.03 * Math.sin(t * 0.45 + p.seed) * (1 - s.kb));
       sc.setScalar(p.s);
       m.compose(s.pos.clone().setY(0.004 * Math.sin(t * 1.4 + p.seed)), qq, sc);
       const phone = this.crowd.phones[c[1]] ? 1 - smoothstep(0.05, 0.3, s.kb) : 0;
       const gain = (1 + 1.4 * pulse(t, p.tL, 0.13)) * (s.flow > 0 ? (1 + 0.12 * kick) * (1 + 0.22 * s.up) * surgeEnd : gainG);
-      this.crowd.set(c[1], m, [s.kb, s.kL, s.kR, s.up], [s.flow, p.seed * 0.137 % 1 + p.seed, gain, phone], p.warm, p.near);
+      this.crowd.set(c[1], lod, m, [s.kb, s.kL, s.kR, s.up], [s.flow, p.seed * 0.137 % 1 + p.seed, gain, phone], p.warm, p.near);
       const ph = this.crowd.phones[c[1]];
       if (ph) {
         phQ.setFromUnitVectors(V3(0, 0, 1), ph.n);
@@ -819,7 +836,7 @@ export default class Ghosts extends Scene {
       const pn = this.panes[i]!;
       const len = pn.c.y / MOON_L.y;
       const b = pn.c.clone().addScaledVector(MOON_L, -len);
-      this.shafts.set(i, pn.c, b, pn.w * 1.3, pn.w * 2.6, 0.16 * (0.88 + 0.12 * noise1(t * 0.6, i)), cam.position);
+      this.shafts.set(i, pn.c, b, pn.w * 1.3, pn.w * 2.6, 0.075 * (0.88 + 0.12 * noise1(t * 0.6, i)), cam.position);
     }
     this.shafts.commit();
     this.shafts.visible = U.uMoonK.value > 0.01;
@@ -835,7 +852,7 @@ export default class Ghosts extends Scene {
     const db = this.bars.reduce((a, d) => a + pulse(t, d, 0.18), 0);
     return {
       bloom: 0.95 + 0.4 * prog(t, T.build!, end), bloomThreshold: 0.8, bloomRadius: 0.85, halation: 0.12, vignette: 0.45 - 0.2 * prog(t, T.rise!, end), grain: 0.05, ca: 0.8,
-      flash, zoom: 1 + 0.004 * kick + 0.006 * db + 0.04 * ease.inQuad(prog(t, T.last!, end + 0.2)), exposure: 1 + 1.1 * ease.inQuad(prog(t, T.last!, end + 0.2)),
+      flash, zoom: 1 + 0.004 * kick + 0.006 * db + 0.04 * ease.inQuad(prog(t, T.last!, end + 0.2)) + this.L.l22!.words.reduce((z, w) => z + 0.014 * pulse(t, w.start, 0.09), 0), exposure: 1 + 1.1 * ease.inQuad(prog(t, T.last!, end + 0.2)),
     };
   }
 
@@ -917,7 +934,7 @@ export default class Ghosts extends Scene {
     this.dust.commit();
   }
 
-  /** Where the L21 letters sit for a camera: block centre at 47% above the frame centre, 3.4 m away, 56% wide. */
+  /** Where the L21 letters sit for a camera: block centre at 42% above the frame centre, 3.4 m away, 56% wide. */
   private letterPose(c: Shot | { pos: THREE.Vector3; q: THREE.Quaternion; fov: number }) {
     let q: THREE.Quaternion;
     if ('q' in c) q = c.q.clone();
@@ -925,7 +942,7 @@ export default class Ghosts extends Scene {
     const d = 3.4, tv = Math.tan(THREE.MathUtils.degToRad(c.fov / 2));
     const fwd = V3(0, 0, -1).applyQuaternion(q), up = V3(0, 1, 0).applyQuaternion(q);
     const B = this.letterBox, s = (0.56 * 2 * tv * (16 / 9) * d) / (B.x1 - B.x0);
-    const centre = c.pos.clone().addScaledVector(fwd, d).addScaledVector(up, 0.47 * tv * d);
+    const centre = c.pos.clone().addScaledVector(fwd, d).addScaledVector(up, 0.42 * tv * d);
     const pos = centre.sub(V3((B.x0 + B.x1) / 2, (B.y0 + B.y1) / 2, 0).multiplyScalar(s).applyQuaternion(q));
     return { pos, q, s };
   }
@@ -983,7 +1000,7 @@ export default class Ghosts extends Scene {
     const G = this.letters, grp = this.letterGrp;
     // hung above the friends (where the camera sees them at the start of the crane), then carried along with
     // the camera through the crane so the held "spot" stays readable, the block in the upper part of the frame
-    const held = this.letterPose(this.camAt(T.crane!)), live = this.letterPose({ pos: cam.position, q: cam.quaternion, fov: cam.fov });
+    const held = (this.letterHeld ??= this.letterPose(this.camAt(T.crane!))), live = this.letterPose({ pos: cam.position, q: cam.quaternion, fov: cam.fov });
     const kc = ease.inOutCubic(prog(t, T.crane!, T.crane! + 1.4));
     grp.position.copy(held.pos).lerp(live.pos, kc);
     grp.quaternion.copy(held.q).slerp(live.q, kc);
@@ -1012,7 +1029,7 @@ export default class Ghosts extends Scene {
       hg.grp.visible = t > t0 - 0.05 && t < t1;
       const d = 6;
       const tv = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * d;
-      hg.grp.position.copy(cam.position).addScaledVector(fwd, d).addScaledVector(upv, (k === 0 ? 0.6 : 0.5) * tv);
+      hg.grp.position.copy(cam.position).addScaledVector(fwd, d).addScaledVector(upv, (k === 0 ? 0.52 : 0.42) * tv);
       hg.grp.quaternion.copy(cam.quaternion);
       hg.grp.scale.setScalar(tv * (k === 0 ? 0.26 : 0.4));
       hg.words.forEach((w) => {

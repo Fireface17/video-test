@@ -177,9 +177,8 @@ export function roomMaterial(U: WorldU, kind: 0 | 1 | 2 | 3, base: THREE.Color) 
       #endif
         vec3 c = base * uAmb;
         // moonlight through the window (direct light on the reveal and mullions, a window-shaped patch inside)
-        float ml = (p.z < WZ - 0.005 ? 1.0 : moonAt(p)) * max(dot(N, uMoonL), 0.0) * uMoonK;
-        c += base * uMoonCol * ml;
-        c += base * handGlow(p, N);
+        if (uMoonK > 0.002) c += base * uMoonCol * (p.z < WZ - 0.005 ? 1.0 : moonAt(p)) * max(dot(N, uMoonL), 0.0) * uMoonK;
+        if (uHandK.x + uHandK.y > 0.0) c += base * handGlow(p, N);
         // the warm light of the people of light: from the light map near the floor, and the fill
         vec3 wm = mapAt(p);
       #if KIND == 0
@@ -206,7 +205,7 @@ export function roomMaterial(U: WorldU, kind: 0 | 1 | 2 | 3, base: THREE.Color) 
           c += m * sky * fres * gloss;
         }
         // and the warm glow, as a glossy smear
-        c += wm * 0.35 * gloss * (0.3 + fres) + uHandCol * (uHandK.x + uHandK.y) * 0.0;
+        c += wm * 0.35 * gloss * (0.3 + fres);
       #endif
         c = mix(uFogCol * (0.6 + 0.4 * uMoonK) + uFill * 0.08, c, fogK(p));
         gl_FragColor = vec4(c, 1.0);
@@ -408,7 +407,7 @@ export class Shafts extends THREE.Mesh {
           float m = moonAt(vWP);
           float along = smoothstep(0.0, 0.04, vUV.y) * (1.0 - smoothstep(0.75, 1.0, vUV.y)) * (1.0 - 0.55 * vUV.y);
           float dust = 0.75 + 0.25 * sin(vWP.y * 2.6 + vWP.x * 1.3 - uTime * 0.45) * sin(vWP.z * 1.7 + uTime * 0.3 + vWP.y);
-          float near = smoothstep(0.8, 3.2, length(vWP - cameraPosition));
+          float near = smoothstep(1.5, 5.0, length(vWP - cameraPosition));
           float side = 1.0 - smoothstep(0.75, 1.0, abs(vUV.x));
           gl_FragColor = vec4(uMoonCol * uMoonK * (vK * m * along * dust * near * side) * fogK(vWP), 1.0);
         }`,
