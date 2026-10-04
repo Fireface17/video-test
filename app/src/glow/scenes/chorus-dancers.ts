@@ -85,14 +85,14 @@ export class Beams extends THREE.Group {
     geo.translate(0, -height / 2, 0); // apex at the origin, opening downward
     for (let i = 0; i < n; i++) {
       const mat = new THREE.ShaderMaterial({
-        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.FrontSide,
         uniforms: { color: { value: colors[i % colors.length]!.clone() }, k: { value: 1 }, H: { value: height } },
         vertexShader: `varying float vY; varying vec3 vN; varying vec3 vV;
           void main(){ vY = -position.y; vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
         fragmentShader: `uniform vec3 color; uniform float k, H; varying float vY; varying vec3 vN; varying vec3 vV;
           void main(){ float along = clamp(vY / H, 0.0, 1.0);
             float soft = pow(abs(dot(normalize(vN), normalize(vV))), 1.5);
-            gl_FragColor = vec4(color * k * soft * (1.0 - along) * (0.25 + 0.75 * smoothstep(0.0, 0.08, along)) * 0.22, 1.0); }`,
+            gl_FragColor = vec4(color * k * soft * (1.0 - along) * (0.25 + 0.75 * smoothstep(0.0, 0.08, along)) * 0.3, 1.0); }`,
       });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.frustumCulled = false;
