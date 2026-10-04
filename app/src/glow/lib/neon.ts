@@ -64,9 +64,9 @@ export function neonMaterial(color: THREE.Color, glass = new THREE.Color(0.018, 
       #include <fog_pars_vertex>
       varying vec3 vN; varying vec3 vV;
       void main() {
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz);
-        gl_Position = projectionMatrix * mv;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0); // (the name fog_vertex expects)
+        vN = normalize(normalMatrix * normal); vV = normalize(-mvPosition.xyz);
+        gl_Position = projectionMatrix * mvPosition;
         #include <fog_vertex>
       }`,
     fragmentShader: /* glsl */ `
@@ -165,4 +165,49 @@ export class NeonSign extends THREE.Group {
   }
 
   override dispose() { for (const w of this.words) { w.mesh.geometry.dispose(); w.mat.dispose(); } }
+}
+
+/**
+ * A sung line as neon in several rows (word indices per row, top to bottom), centred, `leading` between
+ * baselines. `sing(t)` lights each word at its sung start.
+ */
+export class NeonLine extends THREE.Group {
+  rows: { sign: NeonSign; ids: number[] }[] = [];
+
+  constructor(public line: Line, rows: number[][], o: NeonOpts & { leading?: number } = {}) {
+    super();
+    const lead = o.leading ?? (o.size ?? 1) * 1.05;
+    rows.forEach((ids, r) => {
+      const sign = new NeonSign(ids.map((i) => line.words[i]!.w).join(' '), { align: 'center', ...o });
+      sign.position.y = (rows.length - 1 - r) * lead;
+      this.add(sign);
+      this.rows.push({ sign, ids });
+    });
+  }
+
+  sing(t: number, gain = 1) {
+    for (const { sign, ids } of this.rows)
+      ids.forEach((wi, k) => {
+        const w = this.line.words[wi];
+        sign.setLevel(k, w ? flickerOn(t, w.start, wi * 7 + this.line.i) * gain : 0);
+      });
+  }
+
+  setColor(c: THREE.Color) { for (const { sign } of this.rows) sign.words.forEach((_, i) => sign.setColor(i, c)); }
+
+  override dispose() { for (const { sign } of this.rows) sign.dispose(); }
+}
+
+/** Split a line's words into `n` rows of similar length (word indices per row). */
+export function splitRows(line: Line, n: number): number[][] {
+  const ws = line.words, total = ws.reduce((s, w) => s + w.w.length + 1, 0);
+  const rows: number[][] = [];
+  let acc = 0, cur: number[] = [];
+  ws.forEach((w, i) => {
+    cur.push(i);
+    acc += w.w.length + 1;
+    if (rows.length < n - 1 && acc >= (total * (rows.length + 1)) / n && i < ws.length - 1) { rows.push(cur); cur = []; }
+  });
+  if (cur.length) rows.push(cur);
+  return rows;
 }
