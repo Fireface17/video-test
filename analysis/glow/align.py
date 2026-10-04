@@ -81,6 +81,8 @@ MAXLEN = 6.0
 # Words the free transcription heard (text matches) anchor the start of the
 # lyric word to +-ANCHOR s around the transcription's time.
 ANCHOR = 0.18
+# below this mean CTC probability a word's start comes from the transcription
+LOW_CONF = 0.12
 # Lines the models cannot hear (the final "We'll be glowing in the dark!" is
 # buried under the big drop's build): sung like the same line of an earlier
 # chorus, so they take its word times in beats, counted back from the drop
@@ -185,7 +187,7 @@ def refine(words, f):
     for k, w in enumerate(words):
         w["ctc_start"], w["ctc_end"] = w["start"], w["end"]
         prev_end = words[k - 1]["ctc_end"] if k else 0.0
-        lo = max(w["start"] - 0.14, prev_end - 0.02, (words[k - 1]["start"] + 0.08) if k else 0)
+        lo = max(w["start"] - (0.06 if w.get("rule") == "heard" else 0.14), prev_end - 0.02, (words[k - 1]["start"] + 0.08) if k else 0)
         cand = [(p, flux[i]) for p, i in zip(pkt, pk) if lo <= p <= w["start"] + 0.04]
         if cand:
             p, _ = max(cand, key=lambda c: c[1] * (1.0 if w["start"] - c[0] < 0.06 else 0.7))
@@ -253,7 +255,7 @@ def main(plots=False):
                     elo[a] = max(wlo, int((anchor[wi] - ANCHOR) / FRAME))
                     ehi[a] = min(whi, int((anchor[wi] + ANCHOR) / FRAME))
                     n_anch += 1
-            index.append((li, wi, a, len(tgt)))
+            index.append((li, wi, a, len(tgt), anchor.get(wi)))
         tgt.append(star)
         lo.append(0)
         hi.append(T - 1)
@@ -265,10 +267,15 @@ def main(plots=False):
     tokpos = np.where(path % 2 == 1, (path - 1) // 2, -1)
     P = np.exp(Ex[np.arange(T), np.where(tokpos >= 0, np.asarray(tgt)[np.maximum(tokpos, 0)], 0)])
     words = []
-    for (li, wi, a, b) in index:
+    for (li, wi, a, b, heard_at) in index:
         fr = np.where((tokpos >= a) & (tokpos < b))[0]
-        words.append(dict(li=li, wi=wi, w=lines[li]["words"][wi], start=round(fr.min() * FRAME, 3),
-                          end=round((fr.max() + 1) * FRAME, 3), conf=round(float(P[fr].mean()), 2)))
+        w = dict(li=li, wi=wi, w=lines[li]["words"][wi], start=round(fr.min() * FRAME, 3),
+                 end=round((fr.max() + 1) * FRAME, 3), conf=round(float(P[fr].mean()), 2))
+        # where the CTC path is a guess (legato, reverb) but the transcription heard the word,
+        # its timestamp is the better start (they agree within ~30 ms on clear words)
+        if heard_at is not None and w["conf"] < LOW_CONF:
+            w["start"], w["rule"] = round(heard_at, 3), "heard"
+        words.append(w)
     f = vocal_features()
     words = refine(words, f)
     # template lines, in beats (the tempo drifts between choruses)
