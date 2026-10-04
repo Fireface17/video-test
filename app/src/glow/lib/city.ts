@@ -25,6 +25,7 @@ export interface CityOpts {
 export class City extends THREE.Group {
   buildings: THREE.InstancedMesh;
   mat: THREE.ShaderMaterial;
+  groundMat: THREE.ShaderMaterial;
   lamps: GlowPoints;
   cars: GlowPoints;
   carPaths: { x0: number; z0: number; dx: number; dz: number; len: number; speed: number; off: number; dir: number }[] = [];
@@ -116,8 +117,12 @@ export class City extends THREE.Group {
           }
           float d = length(vW - cameraPosition);
           float fog = exp(-fogD * fogD * d * d);
-          gl_FragColor = vec4(mix(fogC, c, fog), 1.0);
-        }`,
+          c = mix(fogC, c, fog);
+          // low-lying haze, lit warm by the streets
+          float haze = (1.0 - exp(-d * 0.0022)) * exp(-max(vW.y, 0.0) / 28.0);
+          c = mix(c, HAZE, clamp(haze, 0.0, 0.85));
+          gl_FragColor = vec4(c, 1.0);
+        }`.replace('HAZE', 'vec3(0.075, 0.05, 0.04) * (1.0 - gold) + vec3(0.12, 0.07, 0.02) * gold'),
     });
     this.buildings = new THREE.InstancedMesh(geo, this.mat, this.boxes.length);
     const aB = new Float32Array(this.boxes.length * 4);
@@ -132,11 +137,50 @@ export class City extends THREE.Group {
     this.buildings.frustumCulled = false;
     this.add(this.buildings);
 
+    // the ground: dark lots, asphalt streets with pools of sodium light under the lamps, the same haze
+    this.groundMat = new THREE.ShaderMaterial({
+      uniforms: this.mat.uniforms,
+      vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+      fragmentShader: /* glsl */ `
+        uniform float fogD, gold, t; uniform vec3 fogC;
+        varying vec3 vW;
+        const float BLOCK = ${block.toFixed(1)}, STREET = ${street.toFixed(1)}, HALF = ${half.toFixed(1)};
+        float h(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+        void main() {
+          vec2 q = vW.xz + HALF;
+          vec2 m = mod(q, BLOCK);
+          vec2 dc = min(m, BLOCK - m);                 // distance to the nearest street centre line, per axis
+          float onX = 1.0 - smoothstep(STREET * 0.5 - 1.0, STREET * 0.5 + 1.0, dc.x);
+          float onZ = 1.0 - smoothstep(STREET * 0.5 - 1.0, STREET * 0.5 + 1.0, dc.y);
+          float street = max(onX, onZ);
+          vec3 c = vec3(0.006, 0.007, 0.012);
+          c = mix(c, vec3(0.018, 0.018, 0.022), street);
+          // lamps every 32 m down each street, near its centre line
+          float ax = abs(mod(vW.z + HALF, 32.0) - 16.0), az = abs(mod(vW.x + HALF, 32.0) - 16.0);
+          float poolX = exp(-(dc.x * dc.x) / 60.0) * (0.35 + exp(-(16.0 - ax) * (16.0 - ax) / 40.0));
+          float poolZ = exp(-(dc.y * dc.y) / 60.0) * (0.35 + exp(-(16.0 - az) * (16.0 - az) / 40.0));
+          vec3 sodium = mix(vec3(1.0, 0.5, 0.17), vec3(1.0, 0.68, 0.2), gold);
+          c += sodium * (poolX * onX + poolZ * onZ) * 0.38;
+          // dashes and a little wet sheen down the middle
+          float dash = step(0.5, fract(vW.z / 9.0)) * (1.0 - smoothstep(0.15, 0.3, dc.x)) * onX + step(0.5, fract(vW.x / 9.0)) * (1.0 - smoothstep(0.15, 0.3, dc.y)) * onZ;
+          c += vec3(0.05, 0.045, 0.04) * dash;
+          float d = length(vW - cameraPosition);
+          c = mix(fogC, c, exp(-fogD * fogD * d * d));
+          float haze = (1.0 - exp(-d * 0.0022));
+          c = mix(c, vec3(0.075, 0.05, 0.04) * (1.0 - gold) + vec3(0.12, 0.07, 0.02) * gold, clamp(haze, 0.0, 0.85));
+          gl_FragColor = vec4(c, 1.0);
+        }`,
+    });
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(half * 2.4, half * 2.4), this.groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0.02;
+    this.add(ground);
+
     // streetlights along every street line
     const lampPos: number[] = [];
     for (let s = -half; s <= half; s += block) {
       for (let a = -half; a <= half; a += 32) {
-        lampPos.push(s + 2, a, a, s + 2);
+        lampPos.push(s + 3, a, a, s + 3);
       }
     }
     this.lamps = new GlowPoints(lampPos.length, 1.2, { fogDensity: o.fog ?? 0.0009 });

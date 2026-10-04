@@ -438,3 +438,52 @@ export function bend(u: THREE.Vector3, toward: THREE.Vector3, a: number, out = n
 }
 
 export { DOWN };
+
+/**
+ * A dance step on the beat grid: poses `fig` for continuous beat position `beat` in one of four styles
+ * (0 arms-up pump, 1 overhead wave, 2 jump, 3 point and swap), scaled by `energy` (0..1). Returns the
+ * vertical bounce (m) to add to the figure's height.
+ */
+export function dance(fig: RealFigure, beat: number, style: number, energy = 1, seed = 0): number {
+  const b = Math.floor(beat), ph = beat - b;
+  const hit = Math.exp(-ph * 6); // sharp on the beat
+  const sw = Math.sin((beat + seed) * Math.PI * 0.5);
+  const e = energy;
+  let bounce = 0;
+  for (const i of [0, 1]) { const th = limbDir(i ? 1 : -1, 0.06, 0); fig.setLeg(i, th, th); }
+  const arm = (i: number, raise: number, fwd: number, elbow: number, twist = 0) => {
+    const s = i ? 1 : -1;
+    const u = limbDir(s, raise, fwd);
+    fig.setArm(i, u, bend(u, new THREE.Vector3(-s * 0.4, 0.1, 1), elbow), twist);
+  };
+  if (style === 0) {
+    const pump = 0.35 * hit * e;
+    arm(0, 2.5 - pump, 0.2, 0.25 + pump);
+    arm(1, 2.5 - pump, 0.2, 0.25 + pump);
+    bounce = -0.06 * hit * e;
+    fig.setSpine(-0.1 * e, 0.06 * sw * e, -0.25 + 0.15 * hit * e, 0.1 * sw);
+  } else if (style === 1) {
+    arm(0, 2.6 + 0.35 * sw * e, 0.1, 0.35, -0.3);
+    arm(1, 2.6 - 0.35 * sw * e, 0.1, 0.35, 0.3);
+    fig.setSpine(-0.05, 0.18 * sw * e, -0.2, 0.15 * sw * e);
+  } else if (style === 2) {
+    const crouch = Math.max(0, Math.sin(ph * Math.PI * 2 + 1.2)) * 0.5 * e;
+    const air = Math.max(0, Math.sin(ph * Math.PI)) * 0.25 * e;
+    bounce = air - 0.12 * crouch;
+    arm(0, 1.2 + 1.5 * (1 - crouch), 0.3, 0.5);
+    arm(1, 1.2 + 1.5 * (1 - crouch), 0.3, 0.5);
+    for (const i of [0, 1]) {
+      const s = i ? 1 : -1, th = limbDir(s, 0.08, 0.5 * crouch);
+      fig.setLeg(i, th, bend(th, new THREE.Vector3(0, 0, -1), 1.2 * crouch));
+    }
+    fig.setSpine(0.15 * crouch, 0, -0.2, 0);
+  } else {
+    const which = b % 4 < 2 ? 0 : 1;
+    arm(which, 2.9, 0.35, 0.05);
+    arm(1 - which, 0.6 + 0.4 * hit * e, 0.5, 1.4);
+    fig.setSpine(-0.05, (which ? 0.12 : -0.12) * e, -0.3, (which ? -0.1 : 0.1));
+    bounce = -0.04 * hit * e;
+  }
+  for (const i of [0, 1]) fig.setHand(i, style === 3 ? 0.7 : 0.15);
+  return bounce;
+}
