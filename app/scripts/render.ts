@@ -9,6 +9,7 @@
 //            --samples auto picks the count per frame (4, 12, 36, 108 or 324, see Engine.render)
 //   --scale N (all modes): render at N× the 1920x1080 layout (--scale 2 = true 3840x2160); stills are then saved
 //            full-res from the pixel buffer, videos are encoded at the physical size.
+//   --song ID (all modes): which song to render (src/songs.ts; default: the app's default song, glow).
 // Uses the Vite dev server at --url (default http://localhost:5173); starts a private one if unreachable.
 // CHROME_PATH=/path/to/chromium (e.g. Playwright's Chromium on a GPU-less Linux box) launches that binary instead of
 // the installed Chrome, with software WebGL (SwiftShader): same frames, much slower.
@@ -56,8 +57,8 @@ async function openPage(url: string) {
   const logs: string[] = [];
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') logs.push(`[${m.type()}] ${m.text()}`); });
   page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
-  const only = opt('only');
-  await page.goto(`${url}/?export=1${only ? `&only=${only}` : ''}${SCALE !== 1 ? `&scale=${SCALE}` : ''}`);
+  const only = opt('only'), song = opt('song');
+  await page.goto(`${url}/?export=1${song ? `&song=${song}` : ''}${only ? `&only=${only}` : ''}${SCALE !== 1 ? `&scale=${SCALE}` : ''}`);
   await page.waitForFunction(() => (window as any).__pdoom?.ready || (window as any).__pdoom?.error, null, { timeout: 120000 });
   const err = await page.evaluate(() => (window as any).__pdoom.error);
   if (err) throw new Error(`app failed to boot:\n${err}\n${logs.join('\n')}`);
@@ -108,7 +109,7 @@ async function sheet(page: Page, times: number[], cols: number, out: string) {
 async function video(page: Page, from: number, to: number, fps: number, out: string) {
   mkdirSync(path.dirname(out), { recursive: true });
   const crf = opt('crf', '16')!;
-  const audio = path.join(ROOT, 'audio/pdoom.mp3');
+  const audio = path.join(ROOT, await page.evaluate(() => (window as any).__pdoom.audio as string));
   const args = ['ffmpeg', '-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${OW}x${OH}`, '-r', String(fps), '-i', 'pipe:0'];
   if (!flag('noaudio')) args.push('-ss', String(from), '-t', String(to - from), '-i', audio);
   // Frames are sRGB (toSRGB in the final pass): convert with the BT.709 matrix and tag the stream,
@@ -210,7 +211,8 @@ try {
     console.log(`frames ${r.n}  avg ${r.avg.toFixed(1)}ms  p50 ${r.p50.toFixed(1)}  p95 ${r.p95.toFixed(1)}  max ${r.max.toFixed(1)}  sub-frames ${hist(r.used)}`);
   } else if (mode === 'video') {
     const dur: number = await page.evaluate(() => (window as any).__pdoom.duration);
-    await video(page, +opt('from', '0')!, +opt('to', String(dur))!, +opt('fps', '60')!, path.resolve(opt('out', path.join(ROOT, 'out/pdoom.mp4'))!));
+    const song: string = await page.evaluate(() => (window as any).__pdoom.song);
+    await video(page, +opt('from', '0')!, +opt('to', String(dur))!, +opt('fps', '60')!, path.resolve(opt('out', path.join(ROOT, `out/${song}.mp4`))!));
   }
   if (logs.length) console.error('BROWSER LOG:\n' + logs.slice(0, 40).join('\n'));
 } finally {

@@ -1,9 +1,12 @@
 // Entry: preview player (default) or export mode (?export=1, driven by scripts/render.ts).
+// ?song=<id> picks the song (see songs.ts).
 import { Engine, type AdaptiveSampling } from './engine/engine';
 import { PW, PH, SCALE } from './engine/gl';
-import { makeTimeline } from './timeline';
+import { songById, type MakeTimeline } from './songs';
 
 const params = new URLSearchParams(location.search);
+const SONG = songById(params.get('song'));
+document.title = SONG.title;
 const EXPORT = params.has('export');
 const ONLY = params.get('only'); // comma-separated scene ids to load (faster stills)
 const FROM = params.get('t') ? parseFloat(params.get('t')!) : null;
@@ -13,7 +16,8 @@ const canvas = document.getElementById('c') as HTMLCanvasElement;
 canvas.width = PW;
 canvas.height = PH;
 
-const engine = new Engine(canvas, makeTimeline);
+let makeTimeline: MakeTimeline | null = null; // the song's timeline module, loaded in boot()
+const engine = new Engine(canvas, (lyrics, audio) => makeTimeline!(lyrics, audio));
 
 declare global {
   interface Window { __pdoom: any }
@@ -23,7 +27,8 @@ let TIMELINE: typeof engine.timeline = [];
 
 async function boot() {
   const onlySet = ONLY ? new Set(ONLY.split(',')) : null;
-  await engine.init(onlySet ? (e) => onlySet.has(e.id) : undefined);
+  makeTimeline = await SONG.timeline();
+  await engine.init(onlySet ? (e) => onlySet.has(e.id) : undefined, SONG.data);
   TIMELINE = engine.timeline;
   if (EXPORT) setupExport();
   else setupPlayer();
@@ -34,6 +39,9 @@ function setupExport() {
   document.body.classList.add('export');
   window.__pdoom = {
     engine,
+    song: SONG.id,
+    /** The track, relative to the repo root (render.ts muxes it into videos). */
+    audio: SONG.audio,
     duration: engine.duration,
     errors: engine.errors,
     /** Output size in px (1920x1080 times scale); stream() sends frames of width*height*4 bytes. */
@@ -95,7 +103,7 @@ function setupExport() {
 
 // ------------------------------------------------------------------ preview player
 function setupPlayer() {
-  const audio = new Audio('audio/pdoom.mp3');
+  const audio = new Audio(SONG.audio);
   audio.preload = 'auto';
   const ui = document.getElementById('ui')!;
   const scrub = document.getElementById('scrub') as HTMLInputElement;

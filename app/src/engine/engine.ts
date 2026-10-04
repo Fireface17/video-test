@@ -138,8 +138,9 @@ export class Engine {
       }`, { e: { value: null } });
   }
 
-  async init(only?: (e: TimelineEntry) => boolean) {
-    [this.audio, this.lyrics] = await Promise.all([AudioData.load(), Lyrics.load(), loadFonts(), loadStrokeFonts()]) as [AudioData, Lyrics, void, void];
+  /** Loads the song's timing data from `dataDir` (lyrics.json, audio.json), the fonts and the scenes. */
+  async init(only?: (e: TimelineEntry) => boolean, dataDir = 'data') {
+    [this.audio, this.lyrics] = await Promise.all([AudioData.load(dataDir), Lyrics.load(dataDir), loadFonts(), loadStrokeFonts()]) as [AudioData, Lyrics, void, void];
     this.timeline = this.makeTimeline(this.lyrics, this.audio);
     this.ctx = { renderer: this.renderer, audio: this.audio, lyrics: this.lyrics, comp: this.comp, W, H, id: '', params: {}, start: 0, end: 0 };
     this.post = new Post();
