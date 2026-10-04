@@ -1909,44 +1909,44 @@
    "i": 39,
    "section": "chorus3",
    "text": "We'll be glowing in the dark!",
-   "start": 184.31,
-   "end": 189.915,
+   "start": 184.631,
+   "end": 188.462,
    "words": [
     {
      "w": "We'll",
-     "start": 184.31,
-     "end": 184.56,
-     "conf": 0.0
+     "start": 184.631,
+     "end": 184.949,
+     "conf": 0.3
     },
     {
      "w": "be",
-     "start": 184.56,
-     "end": 187.965,
-     "conf": 0.0
+     "start": 184.949,
+     "end": 185.068,
+     "conf": 0.3
     },
     {
      "w": "glowing",
-     "start": 187.965,
-     "end": 188.2,
-     "conf": 0.0
+     "start": 185.068,
+     "end": 187.645,
+     "conf": 0.3
     },
     {
      "w": "in",
-     "start": 188.2,
-     "end": 188.25,
-     "conf": 0.0
+     "start": 187.645,
+     "end": 187.887,
+     "conf": 0.3
     },
     {
      "w": "the",
-     "start": 188.24,
-     "end": 188.29,
-     "conf": 0.0
+     "start": 187.887,
+     "end": 187.986,
+     "conf": 0.3
     },
     {
      "w": "dark!",
-     "start": 188.28,
-     "end": 189.915,
-     "conf": 0.0
+     "start": 187.986,
+     "end": 188.462,
+     "conf": 0.3
     }
    ]
   },

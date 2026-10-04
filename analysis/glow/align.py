@@ -81,6 +81,13 @@ MAXLEN = 6.0
 # Words the free transcription heard (text matches) anchor the start of the
 # lyric word to +-ANCHOR s around the transcription's time.
 ANCHOR = 0.18
+# Lines the models cannot hear (the final "We'll be glowing in the dark!" is
+# buried under the big drop's build): sung like the same line of an earlier
+# chorus, so they take its word times in beats, counted back from the drop
+# that follows each of them ("in the dark" lands just before the drop).
+# target line -> (template line, section after the template, section after
+# the target).
+TEMPLATE = {39: (15, "drop1", "drop3")}
 
 
 def load_vocab():
@@ -264,6 +271,21 @@ def main(plots=False):
                           end=round((fr.max() + 1) * FRAME, 3), conf=round(float(P[fr].mean()), 2)))
     f = vocal_features()
     words = refine(words, f)
+    # template lines, in beats (the tempo drifts between choruses)
+    au = json.loads((DATA / "audio.json").read_text())
+    beats = np.array(au["beats"])
+    sec = {x["name"]: x["start"] for x in au["sections"]}
+    beat_at = lambda t: np.interp(t, beats, np.arange(len(beats)))
+    time_of = lambda b: float(np.interp(b, np.arange(len(beats)), beats))
+    for li, (tl, t_sec, a_sec) in TEMPLATE.items():
+        b_t0, b_a0 = beat_at(sec[t_sec]), beat_at(sec[a_sec])
+        tw = [w for w in words if w["li"] == tl]
+        for w in (w for w in words if w["li"] == li):
+            src = tw[min(w["wi"], len(tw) - 1)]
+            w["start"] = round(time_of(b_a0 + beat_at(src["start"]) - b_t0), 3)
+            w["end"] = round(time_of(b_a0 + beat_at(src["end"]) - b_t0), 3)
+            w["conf"] = 0.3
+            w["rule"] = "template"
     out_lines = []
     for li, l in enumerate(lines):
         ws = [dict(w=w["w"], start=w["start"], end=w["end"], conf=w["conf"]) for w in words if w["li"] == li]
