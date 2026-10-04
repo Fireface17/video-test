@@ -219,7 +219,8 @@ export default class Rave extends Scene {
     });
 
     // beams and lasers: lasers fan on the drop's phrases, off in the floating break
-    this.beams.pose(beatT, (n === 2 ? 0.6 : 1) * (0.6 + 0.6 * audio.env('rms', t)), 16);
+    this.beams.pose(beatT, (n === 2 ? 0.6 : 1) * (0.6 + 0.6 * audio.env('rms', t)) * (1 - smoothstep(0, 0.6, ascend)), 16);
+    this.beams.visible = ascend < 0.6;
     const laserOn = n === 2 ? 0 : (0.5 + 0.5 * audio.env('high', t)) * (1 - ascend);
     for (let i = 0; i < 24; i++) {
       const fan = i < 12 ? -1 : 1, j = i % 12;
