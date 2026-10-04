@@ -12,7 +12,7 @@ import type { AnchorKind } from '../lib/city';
 
 /** Soft tints for the people's own light (pale, each a little different; blue-white dominates). */
 export const TINTS = [
-  [0.62, 0.8, 1.0], [0.75, 0.85, 1.0], [0.55, 0.9, 0.95], [0.85, 0.78, 1.0], [1.0, 0.82, 0.72], [0.7, 0.95, 0.85], [0.9, 0.9, 1.0], [0.6, 0.72, 1.0],
+  [0.45, 0.72, 1.0], [0.62, 0.62, 1.0], [0.35, 0.88, 0.9], [0.8, 0.6, 1.0], [1.0, 0.68, 0.55], [0.5, 0.95, 0.75], [0.75, 0.8, 1.0], [0.45, 0.58, 1.0],
 ] as const;
 export const tint = (i: number, k = 1) => new THREE.Color(...(TINTS[((i % TINTS.length) + TINTS.length) % TINTS.length] as [number, number, number])).multiplyScalar(k);
 

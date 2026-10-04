@@ -8,7 +8,6 @@
 import * as THREE from 'three';
 import { clamp, hash, mulberry32 } from '../../engine/util';
 import { GlowPoints } from '../lib/points';
-import { GlowLines } from '../lib/stars';
 
 /** The spiral's disk bulges a little at its centre. */
 const rfDip = (r: number) => 12 * Math.exp(-r / 40);
@@ -24,43 +23,47 @@ export interface LiftSource {
   n: number;
 }
 
-/** Sparks rising off people and streaming up into a spiral above the city. */
+/**
+ * Sparks rising off people and streaming up into a spiral above the city: soft round glows with a short
+ * fading tail (a few dimmer points along the way they came), tinted by the person they left, curling up in
+ * one stream per person.
+ */
 export class Lifts extends THREE.Group {
   heads: GlowPoints;
-  tails: GlowLines;
-  sparks: { s: number; tb: number; th: number; sp: number; size: number; jx: number; jz: number }[] = [];
+  sparks: { s: number; tb: number; sp: number; size: number; jx: number; jz: number }[] = [];
   /** The spiral's axis (x, z) and height, and how fast it turns (rad/s). */
   axis = new THREE.Vector3(0, 260, 0);
   spin = 0.06;
   gain = 1;
+  /** Points per spark: the head and its tail. */
+  static TAIL = 4;
 
-  /** Per source: the curl's phase, a drift, where its stream lands in the spiral (arm, radius). */
-  src: { th: number; dx: number; dz: number; arm: number; rf: number }[] = [];
+  /** Per source: the curl's phase and radius, a drift, where its stream lands in the spiral (arm, radius). */
+  src: { th: number; R: number; dx: number; dz: number; arm: number; rf: number }[] = [];
 
-  constructor(public sources: LiftSource[], o: { width?: number } = {}) {
+  constructor(public sources: LiftSource[]) {
     super();
     const r = mulberry32(911);
     sources.forEach((s, si) => {
-      this.src.push({ th: r() * Math.PI * 2, dx: r() - 0.5, dz: r() - 0.5, arm: si % 2, rf: 16 + 125 * Math.pow(r(), 0.75) });
+      this.src.push({ th: r() * Math.PI * 2, R: 1.2 + r() * 2.2, dx: r() - 0.5, dz: r() - 0.5, arm: si % 2, rf: 16 + 125 * Math.pow(r(), 0.75) });
       for (let i = 0; i < s.n; i++) {
-        this.sparks.push({ s: si, tb: s.t0 + (i / s.n) * s.dur + r() * 0.05, th: r() * Math.PI * 2, sp: 0.9 + r() * 0.2, size: 0.6 + r() * r() * 1.6, jx: (r() - 0.5) * 0.3, jz: (r() - 0.5) * 0.3 });
+        this.sparks.push({ s: si, tb: s.t0 + (i / s.n) * s.dur + r() * 0.05, sp: 0.92 + r() * 0.16, size: 0.7 + r() * r() * 1.3, jx: (r() - 0.5) * 0.25, jz: (r() - 0.5) * 0.25 });
       }
     });
-    this.heads = new GlowPoints(this.sparks.length, 0.3);
-    this.tails = new GlowLines(this.sparks.length, o.width ?? 0.05);
-    this.add(this.tails, this.heads);
+    this.heads = new GlowPoints(this.sparks.length * Lifts.TAIL, 0.32);
+    this.add(this.heads);
   }
 
-  /** Where spark i is at age a (s): off the body, faster and faster up, into a turning two-armed spiral high above. */
+  /** Where spark i is at age a (s): off the body, curling up faster and faster, into a turning two-armed spiral. */
   at(i: number, a: number, out: THREE.Vector3, t = 0) {
     const k = this.sparks[i]!, src = this.sources[k.s]!, S = this.src[k.s]!, p = src.pos;
     const u = a * k.sp;
     // up: slow off the body, then faster and faster
     const y = p.y + 0.6 * u + 3 * u * u + 6 * u * u * u;
-    // a little curl round the person as it leaves, then a gentle drift: each person's sparks make one stream
-    const curl = 0.35 * Math.min(u * 1.5, 1);
-    let x = p.x + Math.cos(S.th + u * 3) * curl + k.jx + S.dx * 3 * u * u;
-    let z = p.z + Math.sin(S.th + u * 3) * curl + k.jz + S.dz * 3 * u * u;
+    // a stream per person: curling up round a slowly widening helix, drifting a little
+    const R = S.R * Math.min(1, u * 0.9) * (1 + 0.6 * u), w = S.th + u * 2.6;
+    let x = p.x + Math.cos(w) * R - Math.cos(S.th) * S.R * Math.min(1, u * 0.9) + k.jx + S.dx * 2.5 * u * u;
+    let z = p.z + Math.sin(w) * R - Math.sin(S.th) * S.R * Math.min(1, u * 0.9) + k.jz + S.dz * 2.5 * u * u;
     // its place in the spiral (one of two arms, a log spiral, turning slowly); a stream lays itself along its arm
     const q = clamp((u - 1.2) / 1.65), qe = q * q * (3 - 2 * q);
     const A = this.axis;
@@ -75,26 +78,27 @@ export class Lifts extends THREE.Group {
   }
 
   private _a = new THREE.Vector3();
-  private _b = new THREE.Vector3();
 
   update(t: number, cam?: THREE.Vector3) {
-    const H = this.heads, T = this.tails;
+    const H = this.heads, NT = Lifts.TAIL;
     let n = 0;
     for (let i = 0; i < this.sparks.length; i++) {
       const k = this.sparks[i]!, a = t - k.tb;
-      if (a <= 0 || a > 9) { H.hide(i); continue; }
+      if (a <= 0 || a > 9) continue;
       const c = this.sources[k.s]!.color;
-      const tw = 0.75 + 0.25 * Math.sin(t * 9 + i * 1.7);
-      this.at(i, a, this._a, t);
-      // (never a big blur right at the lens)
-      const near = cam ? clamp((this._a.distanceTo(cam) - 5) / 12) : 1;
-      const fade = clamp(a / 0.2) * clamp((9 - a) / 1.5) * near * near;
-      H.set(i, this._a.x, this._a.y, this._a.z, c, 1.6 * fade * tw * this.gain, k.size * (1 + 1.5 * clamp(a / 3)));
-      this.at(i, Math.max(0, a - 0.025), this._b, t - 0.025);
-      T.set(n++, this._a, this._b, c, 0.9 * fade * this.gain);
+      const tw = 0.8 + 0.2 * Math.sin(t * 7 + i * 1.7);
+      for (let j = 0; j < NT; j++) {
+        const aj = a - j * 0.045;
+        if (aj <= 0) break;
+        this.at(i, aj, this._a, t - j * 0.045);
+        // (never a big blur right at the lens)
+        const near = cam ? clamp((this._a.distanceTo(cam) - 4) / 14) : 1;
+        const fade = clamp(aj / 0.25) * clamp((9 - aj) / 1.5) * near;
+        const tail = j === 0 ? 1 : 0.45 * Math.pow(0.55, j - 1);
+        H.set(n++, this._a.x, this._a.y, this._a.z, c, 1.5 * fade * tw * tail * this.gain, k.size * (j === 0 ? 1 : 0.8 - 0.12 * j) * (1 + 0.8 * clamp(a / 3)));
+      }
     }
-    H.commit();
-    T.commit(n);
+    H.commit(n);
   }
 }
 

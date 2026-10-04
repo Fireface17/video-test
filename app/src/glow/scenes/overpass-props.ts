@@ -9,32 +9,29 @@ import { hash } from '../../engine/util';
 import { placeKit } from './run-props';
 
 /**
- * The east edge of the overpass from z0 to z1 (world coordinates): a strip of deck with its lane line, the
- * concrete parapet and its pipe railing (with a gap at `gapZ`, where a section is missing), two lamp posts.
+ * (Stand-in until the city's overpass has its walkway.) The overpass's walkway along its west side: a strip of
+ * deck from the railing at `railX` to a jersey barrier 3 m in, the steel railing on a low curb (with a missing
+ * panel at `gapZ`, the edge open), lamp posts on the barrier; z from z0 to z1 (world coordinates).
  */
-export function deckKit(edgeX: number, y: number, z0: number, z1: number, gapZ: number) {
+export function walkwayKit(railX: number, y: number, z0: number, z1: number, gapZ: number) {
   const k = new KitBuilder();
-  const conc = [0.2, 0.2, 0.195, M.ALB], asph = [0.045, 0.045, 0.05, M.ALB], steel = [0.12, 0.13, 0.14, M.ALB], paint = [0.5, 0.5, 0.45, M.ALB];
+  const conc = [0.2, 0.2, 0.195, M.ALB], walk = [0.13, 0.13, 0.13, M.ALB], steel = [0.12, 0.13, 0.14, M.ALB];
   const L = z1 - z0, zc = (z0 + z1) / 2;
-  // the deck strip (the shoulder and the outer lane), its edge beam below
-  k.box(edgeX - 4.5, y - 0.12, zc, 9, 0.24, L, asph);
-  k.box(edgeX - 3.7, y + 0.005, zc, 0.15, 0.01, L, paint);
-  k.box(edgeX + 0.15, y - 0.75, zc, 0.5, 1.3, L, conc);
-  // the parapet: 0.55 m of concrete, 0.3 thick
-  k.box(edgeX + 0.15, y + 0.275, zc, 0.3, 0.55, L, conc);
-  // the railing on it: posts every 2 m and two pipes, missing for 2.6 m at the gap
-  for (let z = z0 + 1; z < z1; z += 2) {
-    if (Math.abs(z - gapZ) < 1.5) continue;
-    k.box(edgeX + 0.15, y + 0.82, z, 0.06, 0.55, 0.06, steel);
+  k.box(railX + 1.5, y - 0.12, zc, 3.1, 0.24, L, walk); // the walkway
+  k.box(railX - 0.1, y - 0.7, zc, 0.5, 1.4, L, conc); // the edge beam
+  k.box(railX + 0.08, y + 0.12, zc, 0.22, 0.24, L, conc); // the curb under the railing
+  k.box(railX + 3.15, y + 0.42, zc, 0.35, 0.84, L, conc); // the jersey barrier
+  for (let z = z0 + 1; z < z1; z += 1.8) {
+    if (Math.abs(z - gapZ) < 1.6) continue;
+    k.box(railX + 0.08, y + 0.68, z, 0.05, 0.9, 0.05, steel);
   }
-  for (const [a, b] of [[z0, gapZ - 1.3], [gapZ + 1.3, z1]] as const) {
-    for (const yy of [y + 0.82, y + 1.08]) k.box(edgeX + 0.15, yy, (a + b) / 2, 0.05, 0.05, b - a, steel);
+  for (const [a, b] of [[z0, gapZ - 1.5], [gapZ + 1.5, z1]] as const) {
+    for (const yy of [y + 0.6, y + 1.1]) k.box(railX + 0.08, yy, (a + b) / 2, 0.05, 0.05, b - a, steel);
   }
-  // lamp posts on the parapet, their arms over the deck
-  for (const z of [212, 248]) {
-    k.box(edgeX + 0.15, y + 4.0, z, 0.18, 7.4, 0.18, steel);
-    k.box(edgeX - 0.6, y + 7.65, z, 1.6, 0.12, 0.14, steel);
-    k.box(edgeX - 1.3, y + 7.55, z, 0.5, 0.12, 0.3, [1.6, 1.3, 0.9, M.LIGHT]);
+  for (const z of [103, 139]) {
+    k.box(railX + 3.15, y + 3.7, z, 0.16, 6.6, 0.16, steel);
+    k.box(railX + 2.6, y + 6.95, z, 1.2, 0.1, 0.12, steel);
+    k.box(railX + 2.1, y + 6.85, z, 0.45, 0.1, 0.28, [1.6, 1.3, 0.9, M.LIGHT]);
   }
   return k;
 }

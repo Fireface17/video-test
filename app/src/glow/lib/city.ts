@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import { mulberry32 } from '../../engine/util';
 import { GlowPoints } from './points';
 import { CityPlan, F, Grid, GRID, ST, faceNormal, type Building, type Tier } from './city-plan';
-import { cityUniforms, type CityUniforms } from './city-glsl';
+import { CITY_GLSL, cityUniforms, type CityUniforms } from './city-glsl';
 import {
   CityLOD, KitBuilder, M, TileSet, antennaGeometry, balconyGeometry, buildingBatch, buildingMeshes, facadeMaterial, plantMaterial, roofMaterial, buildingMaterial, fireEscapeGeometry, kitBatch, kitMaterial, ringBatch, ringGeometry, ringMaterial, roofBoxGeometry, waterTowerGeometry,
   type BInst, type KInst, type RInst,
@@ -22,6 +22,7 @@ import {
 import { bakeLightMap, cobraGeometry, groundMaterial, lampColor, lightAt, parkLampGeometry, slabMaterial, slabMesh, type LightMapInfo } from './city-street';
 import { cloudMaterial, skyMaterial, skylineMaterial, waterMaterial } from './city-sky';
 import { CityLife } from './city-life';
+import { Rail, elTrainZ, type ElInfo, type OverpassInfo } from './city-rail';
 
 export { FACADE_GLSL, CITY_GLSL } from './city-glsl';
 export { GRID, Grid, ST, F } from './city-plan';
@@ -57,6 +58,8 @@ export interface CityOpts {
   mirror?: boolean;
   /** Street detail density 0..1 (trees, parked cars, props). Default 1. */
   detail?: number;
+  /** Trains running on the elevated line (0 for none — e.g. when your own train rides it). Default 2. */
+  elTrains?: number;
   /** Moving traffic density 0..1. Default 1. */
   traffic?: number;
   /** Multiplies the distances at which small things are drawn. Default 1. */
@@ -194,9 +197,10 @@ export class City extends THREE.Group {
   cloudMat?: THREE.ShaderMaterial;
   ground: THREE.Mesh;
   /** The elevated line (if any): avenue x, rail-top height, extent along z, the station's z. */
-  el: { x: number; y: number; z0: number; z1: number; station: number; tracks: [number, number] } | null = null;
-  /** The highway overpass along the river (if any): its centre x, deck height, extent along z. */
-  overpass: { x: number; y: number; z0: number; z1: number; lanes: number[] } | null = null;
+  el: ElInfo | null = null;
+  /** The highway overpass along the river (if any): its centre x, deck height, extent along z, lane centres, the walkway. */
+  overpass: OverpassInfo | null = null;
+  rail: Rail;
   /** Multipliers for the lamps' glow and the shop signs (e.g. pulses on the kicks). */
   lampGain = 1;
   /** Draw the wet-street reflections (when the camera is low enough). */
@@ -207,6 +211,7 @@ export class City extends THREE.Group {
   private mirror?: Mirror;
   /** the distance-drawn groups of small things (hidden from the mirror pass) */
   lods: THREE.Object3D[] = [];
+  private rooms: (THREE.Group | null)[] = [null, null, null, null, null, null];
   /** facade materials [masonry, glass][near, mid, far], the roofs' */
   facM: THREE.ShaderMaterial[][] = [];
   roofM!: THREE.ShaderMaterial;
@@ -240,10 +245,17 @@ export class City extends THREE.Group {
     this.power = new CityPower(this, i1 - i0 + 1, j1 - j0 + 1, i0, j0);
     U.uBlockMask.value = this.power.maskTex;
     U.uMaskRect.value.set(g.avX(i0), g.stZ(j0), 1 / ((i1 - i0 + 1) * g.s.avPitch), 1 / ((j1 - j0 + 1) * g.s.stPitch));
+    // the el and the riverside highway
+    this.rail = new Rail(this.U, {
+      elX: el !== null ? g.avX(el) : null, stationZ: g.stZ(0), z0: bounds[1], z1: bounds[3], river, trains: o.elTrains ?? 2, avRoadH: g.avRoadH(),
+      streetsZ: (z: number) => { const j = g.stJ(z); return Math.abs(z - g.stZ(j)) < g.stRoadH(j) + 1.5; },
+    });
+    this.el = this.rail.el;
+    this.overpass = this.rail.overpass;
     // light map
     const lr = mulberry32((o.seed ?? 3) * 101 + 1);
     this.lampSeeds = plan.lamps.map(() => lr());
-    this.lm = bakeLightMap(plan, this.lampSeeds);
+    this.lm = bakeLightMap(plan, this.lampSeeds, this.rail.extraLight);
     U.uLightMap.value = this.lm.tex;
     U.uLMRect.value.copy(this.lm.rect);
 
@@ -344,18 +356,14 @@ export class City extends THREE.Group {
       this.add(wall);
     }
 
-    // ---- traffic, signals, shops, signs, trees, props, steam, the el, the overpass ----
+    // ---- traffic, signals, shops, signs, trees, props, steam; the el, the overpass ----
     this.life = new CityLife(this, o);
-    this.add(this.life);
-    mirrorHide.push(...this.life.mirrorHide);
-    if (el !== null) {
-      const x = g.avX(el);
-      this.el = { x, y: 9.6, z0: bounds[1], z1: bounds[3], station: g.stZ(0), tracks: [x - 2.1, x + 2.1] };
-    }
-    if (river !== null) this.overpass = { x: river - 16, y: 8.5, z0: bounds[1] - 600, z1: bounds[3] + 600, lanes: [-5.4, -1.8, 1.8, 5.4].map((d) => river - 16 + d) };
+    this.add(this.life, this.rail);
+    mirrorHide.push(...this.life.mirrorHide, ...this.rail.mirrorHide);
 
     // ---- lamps: glow sprites at the heads (+ soft halos in the haze) ----
-    const lampPos = plan.lamps.map((l) => (l.kind === 1 ? [l.x, l.h, l.z] : [l.x + l.ax * 1.95, l.h * 0.955, l.z + l.az * 1.95]));
+    const lampPos = plan.lamps.map((l) => (l.kind === 1 || l.kind === 2 ? [l.x, l.h, l.z] : [l.x + l.ax * 1.95, l.h * 0.955, l.z + l.az * 1.95]));
+    for (const [x, y, z] of this.rail.glows) { lampPos.push([x, y, z]); plan.lamps.push({ x, z, ax: 0, az: 0, h: y, kind: 3 }); this.lampSeeds.push(0.3); }
     this.lamps = new GlowPoints(lampPos.length, 0.9, { fogDensity: (o.fog ?? 0.0006) * 0.9 });
     this.lampHalos = new GlowPoints(lampPos.length, 7, { fogDensity: (o.fog ?? 0.0006) * 0.9 });
     lampPos.forEach(([x, y, z], i) => {
@@ -494,6 +502,7 @@ export class City extends THREE.Group {
     });
     this.beacons.commit(this.beaconSpots.length);
     this.life.update(t, camPos);
+    this.rail.update(t);
   }
 
   // ------------------------------------------------------------------ looks
@@ -520,7 +529,65 @@ export class City extends THREE.Group {
       U.uPGlowC.value[i]!.set(g.color.r, g.color.g, g.color.b, 0);
     }
     U.uPGlowN.value = n;
+    U.uPGlowNi.value = n;
   }
+  /**
+   * Cut a window open (slot 0..5) so people can be seen inside: the facade is removed in the opening and a room is
+   * built behind it (a reveal, walls, floor, ceiling, a lamp), lit by `light` and by the glowing people (setGlows).
+   * Put people at anchor.pos − facing × 0.6…1.5 (city-local coordinates). Pass null to close it again.
+   */
+  openWindow(slot: number, a: Anchor | null, o: { light?: THREE.Color; depth?: number; width?: number } = {}) {
+    const U = this.U;
+    this.rooms[slot]?.removeFromParent();
+    this.rooms[slot] = null;
+    if (!a) {
+      U.uOpenA.value[slot]!.set(0, -1e5, 0, 0); U.uOpenB.value[slot]!.set(0, 0, 0, 0);
+      U.uOpenN.value = Math.max(0, ...this.rooms.map((r, i) => (r ? i + 1 : 0)));
+      return null;
+    }
+    const [w, h] = a.size, n = a.facing, depth = o.depth ?? 4.2, rw = o.width ?? Math.max(w + 2.2, 3.6);
+    const cx = a.pos.x, cy = a.pos.y + h / 2, cz = a.pos.z;
+    U.uOpenA.value[slot]!.set(cx, cy, cz, 0);
+    U.uOpenB.value[slot]!.set(Math.abs(n.z) * w / 2 + Math.abs(n.x) * 0.35, h / 2, Math.abs(n.x) * w / 2 + Math.abs(n.z) * 0.35, 0);
+    U.uOpenN.value = Math.max(U.uOpenN.value, slot + 1);
+    const light = o.light ?? new THREE.Color(1.0, 0.62, 0.32).multiplyScalar(0.35);
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { ...(U as unknown as Record<string, THREE.IUniform>), uRoomL: { value: light.clone() }, uLamp: { value: new THREE.Vector3(cx - n.x * depth * 0.6, a.pos.y + 2.3, cz - n.z * depth * 0.6) } },
+      side: THREE.BackSide,
+      vertexShader: 'varying vec3 vW, vN; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; vN = -normalize(mat3(modelMatrix) * normal); gl_Position = projectionMatrix * viewMatrix * w; }',
+      fragmentShader: /* glsl */ `
+        uniform vec3 uRoomL, uLamp;
+        varying vec3 vW, vN;
+        ${CITY_GLSL}
+        void main() {
+          vec3 N = normalize(vN);
+          vec3 q = vW - uOrigin;
+          float p = power(vW.xz);
+          vec3 d = uLamp - q;
+          float fall = 0.25 + 0.75 / (1.0 + dot(d, d) * 0.12);
+          vec3 alb = N.y > 0.5 ? vec3(0.32, 0.2, 0.12) * (0.85 + 0.15 * step(0.5, fract(q.x * 4.0 + q.z * 4.0))) : N.y < -0.5 ? vec3(0.75) : vec3(0.72, 0.66, 0.56);
+          vec3 c = alb * (uRoomL * fall * mix(0.15, 1.0, p) + peopleGlow(vW, N) + vec3(0.004, 0.004, 0.006));
+          gl_FragColor = vec4(cityFog(c, vW, p), 1.0);
+        }`,
+    });
+    const g = new THREE.Group();
+    // the room (open toward the street) and the reveal of the opening
+    const yaw = Math.atan2(n.x, n.z);
+    const room = new THREE.Mesh(new THREE.BoxGeometry(rw, Math.max(h + 1.4, 2.8), depth), mat);
+    room.position.set(cx - n.x * (depth / 2 + 0.3), a.pos.y - 0.9 + Math.max(h + 1.4, 2.8) / 2, cz - n.z * (depth / 2 + 0.3));
+    room.rotation.y = yaw;
+    const rg = new THREE.BoxGeometry(w, h, 0.36), rn = rg.attributes.normal as THREE.BufferAttribute, ri = rg.index!.array, keep: number[] = [];
+    for (let i = 0; i < ri.length; i += 3) if (Math.abs(rn.getZ(ri[i]!)) < 0.5) keep.push(ri[i]!, ri[i + 1]!, ri[i + 2]!);
+    rg.setIndex(keep);
+    const rev = new THREE.Mesh(rg, mat);
+    rev.position.set(cx - n.x * 0.12, cy, cz - n.z * 0.12);
+    rev.rotation.y = yaw;
+    g.add(room, rev);
+    this.add(g);
+    this.rooms[slot] = g;
+    return g;
+  }
+
   /** The moon's direction (unit, toward the moon) and light colour. */
   setMoon(dir: THREE.Vector3, color?: THREE.Color) { this.U.uMoonDir.value.copy(dir).normalize(); if (color) this.U.uMoonCol.value.copy(color); }
   setSun(dir: THREE.Vector3, color?: THREE.Color) { this.U.uSunDir.value.copy(dir).normalize(); if (color) this.U.uSunCol.value.copy(color); }
@@ -552,6 +619,9 @@ export class City extends THREE.Group {
     const t = best.tiers.reduce((m, q) => (q.y0 + q.h > m.y0 + m.h ? q : m), best.tiers[0]!);
     return { building: best, x0: t.cx - t.w / 2, z0: t.cz - t.d / 2, x1: t.cx + t.w / 2, z1: t.cz + t.d / 2, y: t.y0 + t.h, cx: t.cx, cz: t.cz };
   }
+
+  /** Where the city's el train i (0, 1) is at time t: its z (front), direction, track x, whether it's in the station. */
+  elTrain(i: number, t: number) { return this.el ? elTrainZ(i, t, this.el) : null; }
 
   /** Centre of the intersection of avenue i and street j. */
   intersection(i: number, j: number) { return new THREE.Vector3(this.grid.avX(i), 0, this.grid.stZ(j)); }

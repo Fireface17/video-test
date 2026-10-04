@@ -23,18 +23,18 @@ import * as THREE from 'three';
 import { Scene, type Frame } from '../../engine/scene';
 import type { Line } from '../../engine/lyrics';
 import { clamp, ease, frameIdx, hash, keys, lerp, noise1, prog, pulse, smoothstep, springStep, type Key } from '../../engine/util';
-import { HU, ROAD, litMat } from './highway-common';
-import { bakeTextures, type HwTextures } from './highway-tex';
-import { CITY, City, Landscape, Sky } from './highway-env';
-import { Furniture, Gantry, NWORDS, Reflection, RoadSurface, Streetlights, Traffic, wordAtlas } from './highway-road';
-import { Gauge } from './highway-gauge';
-import { CalendarBoard } from './highway-boards';
-import { Station, VmsGantry } from './highway-station';
+import { HU, ROAD, litMat } from './highway-zold-common';
+import { bakeTextures, type HwTextures } from './highway-zold-tex';
+import { CITY, City, Landscape, Sky } from './highway-zold-env';
+import { Furniture, Gantry, NWORDS, Reflection, RoadSurface, Streetlights, Traffic, wordAtlas } from './highway-zold-road';
+import { Gauge } from './highway-zold-gauge';
+import { CalendarBoard } from './highway-zold-boards';
+import { Station, VmsGantry } from './highway-zold-station';
 import { makeRT } from '../../engine/gl';
-import { LensFlare } from './highway-flare';
-import { GiantScreen, SCR, SCREEN_HORIZON, ScreenPicture } from './highway-screen';
-import { Cabin, CU, WIPER } from './highway-cabin';
-import { Bridge, Moths, PowerLine, Rain, RoadSigns, Steam, type MothSource } from './highway-life';
+import { LensFlare } from './highway-zold-flare';
+import { GiantScreen, SCR, SCREEN_HORIZON, ScreenPicture } from './highway-zold-screen';
+import { Cabin, CU, WIPER } from './highway-zold-cabin';
+import { Bridge, Moths, PowerLine, Rain, RoadSigns, Steam, type MothSource } from './highway-zold-life';
 
 const C = (hex: string, k = 1) => new THREE.Color(hex).multiplyScalar(k);
 const DEG = Math.PI / 180;
@@ -492,7 +492,6 @@ export default class Highway extends Scene {
 
   render(f: Frame, out: THREE.WebGLRenderTarget) {
     const t = f.t, { renderer, audio } = this.ctx;
-
     const T = this.T;
     const shot = this.shotAt(t);
     const ws0 = this.L[0]!.words;
@@ -591,12 +590,8 @@ export default class Highway extends Scene {
     this.screen.visible = scrVisible;
     if (scrVisible) {
       const arcK = t >= T.sun ? 1 : 0; // (the layout changes on the cut)
-      // (the picture is only drawn while it can be seen: alive, and in front of us)
-      const inView = scrDir.dot(new THREE.Vector3(0, 0, -1).applyQuaternion(this.cam.quaternion)) > 0.5;
-      if (ss.off < 1 && inView) {
-        this.pic.update(t, ss.sunY, ss.dawn, ss.bright, arcK, T.sun, 1);
-        this.pic.render(renderer);
-      }
+      this.pic.update(t, ss.sunY, ss.dawn, ss.bright, arcK, T.sun, 1);
+      this.pic.render(renderer);
       this.screen.update(t, { glitch: ss.glitch, off: ss.off, stuck: ss.stuck, seed: frameIdx(t) }, t > T.out + 0.2 ? 0 : 1);
     }
 

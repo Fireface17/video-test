@@ -49,6 +49,7 @@ export function bakeLightMap(plan: CityPlan, lampSeeds: number[], extra: { x: nu
     const c = lampColor(l, lampSeeds[i]!);
     const hx = l.x + l.ax * 1.8, hz = l.z + l.az * 1.8;
     if (l.kind === 1) { splat(hx, hz, c, 4.5, 0.55); splat(hx, hz, c, 10, 0.08); return; }
+    if (l.kind === 2) { splat(hx, hz, c, 5, 0.6); splat(hx, hz, c, 11, 0.1); return; }
     splat(hx, hz, c, 6.5, 0.72);
     splat(hx, hz, c, 15, 0.12);
   });

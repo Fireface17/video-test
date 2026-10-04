@@ -86,7 +86,13 @@ export class RoofWorld extends THREE.Group {
   }
   powerAt(p: THREE.Vector3) { return this.city.power.at(p.x - CITY_OFF.x, p.z - CITY_OFF.z); }
   /** The people's light on the walls (world positions; up to 16). */
-  glows(list: Glow[]) { this.city.setGlows(list.slice(0, 16)); }
+  glows(list: Glow[]) {
+    const l = list.slice(0, 16);
+    this.city.setGlows(l);
+    // (the shaders loop on an int count; set it too in case setGlows doesn't)
+    const U = this.city.U as unknown as Record<string, THREE.IUniform>;
+    if (U.uPGlowNi) U.uPGlowNi.value = l.length;
+  }
   /** Gold inside radius r around `from` (world). */
   gold(k: number, from: THREE.Vector3, r: number) {
     this.city.gold = k;

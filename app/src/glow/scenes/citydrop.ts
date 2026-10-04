@@ -20,7 +20,7 @@ import { City } from '../lib/city';
 import { Crowd, type Person } from '../lib/crowd';
 import { GlowPoints } from '../lib/points';
 import { Beams, Lifts, SpiralGlow, Veins, type LiftSource } from './citydrop-fx';
-import { mirrorOnly } from './run-props';
+import { mirrorOnly, shiftRender } from './run-props';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 /** The street: wide street 6 (z = 520) between avenues −3 (x = −625) and −2 (x = −375). */
@@ -31,6 +31,8 @@ interface Dancer { p: Person; chest: THREE.Vector3; shot: number; group: number 
 
 export default class CityDrop extends Scene {
   st = new Stage(52, 0.1, 9000);
+  /** Everything in the world (the city and all), shifted to a floating origin for the draw (run-props shiftRender). */
+  world = new THREE.Group();
   city!: City;
   crowd = new Crowd({ dust: [14, 90, 260], dustGain: 0.11 });
   dancers: Dancer[] = [];
@@ -60,16 +62,17 @@ export default class CityDrop extends Scene {
 
     // ---- the city ----
     this.city = new City({});
-    S.add(this.city);
+    S.add(this.world);
+    this.world.add(this.city);
     const plan = this.city.plan;
     const bld = (id: number) => plan.buildings.find((b) => b.id === id);
     const roofOf = (id: number) => { const b = bld(id); if (!b) return null; const t = b.tiers.reduce((m, q) => (q.y0 + q.h > m.y0 + m.h ? q : m), b.tiers[0]!); return { x: t.cx, z: t.cz, w: t.w, d: t.d, y: t.y0 + t.h }; };
 
     // ---- people ----
     await this.crowd.init([...DANCES, '77_02', '111_28']);
-    S.add(this.crowd);
+    this.world.add(this.crowd);
     const r = mulberry32(606);
-    const pal = [col('cyan', 1.2), col('white', 1.2).lerp(col('cyan', 1.2), 0.4), col('violet', 1.15).lerp(col('white', 1.15), 0.45), col('blue', 1.2).lerp(col('cyan', 1.2), 0.5), col('white', 1.1).lerp(col('pink', 1.1), 0.25), col('white', 1.25)];
+    const pal = [col('cyan', 1.2), col('white', 1.2).lerp(col('cyan', 1.2), 0.4), col('violet', 1.15).lerp(col('white', 1.15), 0.45), col('blue', 1.2).lerp(col('cyan', 1.2), 0.5), col('white', 1.1).lerp(col('pink', 1.1), 0.3), col('gold', 1.15).lerp(col('white', 1.15), 0.4), col('#ffb38a', 1.15), col('white', 1.25)];
     let di = 0;
     const add = (pos: THREE.Vector3, yaw: number, o: Partial<Person> & { shot?: number; group?: number } = {}) => {
       const k = di++;
@@ -137,11 +140,11 @@ export default class CityDrop extends Scene {
       const q = new THREE.Mesh(new THREE.PlaneGeometry(ww, wh), m);
       q.position.copy(win.pos).addScaledVector(win.facing, 0.03).add(V(0, wh / 2, 0));
       q.lookAt(q.position.clone().add(win.facing));
-      S.add(q);
+      this.world.add(q);
       const halo = new GlowPoints(1, 2.2);
       halo.set(0, q.position.x + win.facing.x * 0.3, q.position.y, q.position.z + win.facing.z * 0.3, col('#ffb36b', 0.18), 1, 1);
       halo.commit();
-      S.add(halo);
+      this.world.add(halo);
     }
     // kids on a low roof (7194), under string lights
     const kr = roofOf(7194) ?? { x: -546.3, z: 543.9, w: 7.2, d: 18.8, y: 13.3 };
@@ -156,12 +159,12 @@ export default class CityDrop extends Scene {
       for (let i = 0; i <= 14; i++) { const u = i / 14; this.bulbPos.push(a.clone().lerp(b, u).add(V(0, -0.7 * 4 * u * (1 - u), 0))); }
     }
     this.bulbs = new GlowPoints(this.bulbPos.length, 0.12);
-    S.add(this.bulbs);
+    this.world.add(this.bulbs);
     // the DJ's roof: the tallest on the street (7177), its south edge over the street
     const dj = roofOf(7177) ?? { x: -474.9, z: 490.3, w: 19.4, d: 22.7, y: 40.1 };
     this.P.dj = V(dj.x, dj.y, dj.z + dj.d / 2 - 3.5);
     this.beams.position.copy(this.P.dj).add(V(0, 1.3, 1.5));
-    S.add(this.beams);
+    this.world.add(this.beams);
     const djDance = ['05_02', '49_09', '141_12', '55_01', '113_04'];
     for (let i = 0; i < 5; i++) {
       const ang = (i / 5) * Math.PI * 1.6 - 0.8, rr = 2.2 + hash(i, 61) * 1.5;
@@ -184,7 +187,7 @@ export default class CityDrop extends Scene {
     this.veins = new Veins(lines, col('cyan', 1.4).lerp(col('white', 1.4), 0.35));
     this.veins.material.uniforms.speed!.value = 150;
     this.veins.setKicks(audio.events('kick', start - 0.05, this.ctx.end).filter(([, s]) => s > 0.5));
-    S.add(this.veins);
+    this.world.add(this.veins);
     // beads of light on the lamps and signals along those streets, flaring as the pulse goes by
     for (const l of plan.lamps) {
       const onSt = Math.abs(l.z - SZ) < 14 && l.x > AXW - 260 && l.x < AXE + 380, onAv = (Math.abs(l.x - AXE) < 14 || Math.abs(l.x - AXW) < 14) && Math.abs(l.z - SZ) < 600;
@@ -197,18 +200,18 @@ export default class CityDrop extends Scene {
       this.beadD.push({ p: V(s.x, 4.2, s.z), d: Math.abs(s.ix - AXE) + 2, c: col('phosphor', 1).lerp(col('cyan', 1), 0.5) });
     }
     this.beads = new GlowPoints(Math.max(1, this.beadD.length), 0.35);
-    S.add(this.beads);
+    this.world.add(this.beads);
 
     // ---- everyone's light lifts off them (the last "Glo-o-owing") ----
     const sources: LiftSource[] = this.dancers.map((d, i) => ({
-      pos: d.chest, t0: this.T.lift + 0.1 + Math.pow(hash(i, 71), 1.3) * 1.0, dur: 1.4, color: d.p.color.clone().lerp(col('white', 1.2), 0.3), n: d.p.look === 'light' ? 30 : 13,
+      pos: d.chest, t0: this.T.lift + 0.1 + Math.pow(hash(i, 71), 1.3) * 1.0, dur: 1.6, color: d.p.color.clone().lerp(col('white', 1.2), 0.12).multiplyScalar(1.1), n: d.p.look === 'light' ? 16 : 7,
     }));
     this.lifts = new Lifts(sources);
     this.lifts.axis.set((AXW + AXE) / 2 + 20, 165, SZ - 20);
-    S.add(this.lifts);
+    this.world.add(this.lifts);
     this.spiral = new SpiralGlow(170, col('cyan', 0.5).lerp(col('white', 0.5), 0.4));
     this.spiral.position.copy(this.lifts.axis);
-    S.add(this.spiral);
+    this.world.add(this.spiral);
     mirrorOnly(this.city, [this.crowd, this.lifts, this.beads, this.bulbs, this.beams]);
   }
 
@@ -253,7 +256,7 @@ export default class CityDrop extends Scene {
     const gl = this.dancers.map((d) => ({ d: d.chest.distanceToSquared(S.cam.position), pos: d.chest, color: d.p.color.clone().multiplyScalar(0.09), radius: 3 })).sort((a, b) => a.d - b.d).slice(0, 12);
     this.city.setGlows(gl);
     this.city.update(t, S.cam.position);
-    S.render(this.ctx.renderer, out);
+    shiftRender(this.ctx.renderer, S.scene, S.cam, this.world, this.city, out, S.bg);
     const hit = pulse(t, B[0]!, 0.25);
     return { bloom: 0.95, bloomThreshold: 0.75, bloomRadius: 0.85, halation: 0.14, vignette: 0.42, grain: 0.05, ca: 0.8 + 1.5 * hit, flash: 0.35 * hit, shake: [0.004 * f.a.kick, 0.004 * f.a.kick] as [number, number] };
   }

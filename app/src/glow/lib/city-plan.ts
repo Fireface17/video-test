@@ -523,7 +523,9 @@ export class CityPlan {
         for (let z = zMin + (side > 0 ? 16 : 0); z < zMax; z += 32, k++) {
           const jn = g.stJ(z);
           if (Math.abs(z - g.stZ(jn)) < g.stHalf(jn) + 3) continue;
-          this.lamps.push({ x: curb - side * 0.6, z, ax: -side, az: 0, h: 9, kind: isEl ? 2 : 0 });
+          // (under the el: lamps hang from its columns, lower)
+          if (isEl) this.lamps.push({ x: ax + side * 7.2, z: z + 7.5, ax: 0, az: 0, h: 6.4, kind: 2 });
+          else this.lamps.push({ x: curb - side * 0.6, z, ax: -side, az: 0, h: 9, kind: 0 });
         }
         // parked cars in the parking lane
         for (let z = zMin; z < zMax; z += 6.2) {

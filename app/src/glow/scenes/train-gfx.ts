@@ -6,7 +6,7 @@ import * as THREE from 'three';
 
 /** World height of the car floor (the car's local origin is on the floor, x along the car, z across). */
 export const FLOOR_Y = 9.1;
-export const MAXL = 16;
+export const MAXL = 12;
 
 export function lightUniforms() {
   return {
@@ -56,7 +56,7 @@ export const GLSL_LIGHT = /* glsl */ `
       vec3 d = P.xyz - p;
       float dd = dot(d, d), r2 = P.w * P.w;
       // (a negative radius marks a light outside the car: inside, only what comes in through the windows)
-      float att = r2 / (r2 + dd) * clamp(1.0 - dd / (r2 * 36.0), 0.0, 1.0) * (P.w < 0.0 && inCar ? 0.22 : 1.0);
+      float att = r2 / (r2 + dd) * clamp(1.0 - dd / (r2 * 12.0), 0.0, 1.0) * (P.w < 0.0 && inCar ? 0.22 : 1.0);
       if (att <= 0.0) continue;
       vec3 l = d * inversesqrt(max(dd, 1e-5));
       L += uPtC[i] * att * (max(dot(n, l), 0.0) * 0.85 + 0.15);

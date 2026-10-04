@@ -24,15 +24,49 @@ export function placeKit(city: City, k: KitBuilder, x: number, y: number, z: num
   return m;
 }
 
+/**
+ * Render with a floating origin: the scene's world (everything in `root`, which holds the city) is shifted so
+ * the camera sits near the origin for the draw, then put back. People of light far from the origin (x ≈ 1150 m)
+ * otherwise lose float precision in their skinning: their depth prepass and colour pass disagree and the glass
+ * bodies show black holes. All scene logic stays in the city's (plan) coordinates.
+ */
+export function shiftRender(renderer: THREE.WebGLRenderer, scene: THREE.Scene, cam: THREE.PerspectiveCamera, root: THREE.Object3D, city: City | null, out: THREE.WebGLRenderTarget, bg: THREE.Color) {
+  const O = new THREE.Vector3(Math.round(cam.position.x), 0, Math.round(cam.position.z));
+  root.position.sub(O);
+  cam.position.sub(O);
+  root.updateMatrixWorld(true);
+  cam.updateMatrixWorld();
+  if (city) {
+    const U = city.U;
+    U.uOrigin.value.setFromMatrixPosition(city.matrixWorld);
+    for (let i = 0; i < U.uPGlowN.value; i++) { const p = U.uPGlowP.value[i]!; p.x -= O.x; p.z -= O.z; }
+  }
+  renderer.setRenderTarget(out);
+  renderer.setClearColor(bg, 1);
+  renderer.clear(true, true, true);
+  renderer.render(scene, cam);
+  root.position.add(O);
+  cam.position.add(O);
+  root.updateMatrixWorld(true);
+  cam.updateMatrixWorld();
+  if (city) city.U.uOrigin.value.setFromMatrixPosition(city.matrixWorld);
+}
+
 /** Leave these out of the city's wet-street reflection (it renders the scene a second time; they are costly or tiny). */
 export function mirrorOnly(city: City, hide: THREE.Object3D[]) {
-  const g = city.ground, orig = g.onBeforeRender;
-  g.onBeforeRender = function (this: THREE.Object3D, ...args: Parameters<THREE.Object3D['onBeforeRender']>) {
-    const vis = hide.map((o) => o.visible);
-    hide.forEach((o) => (o.visible = false));
-    orig.apply(g, args);
-    hide.forEach((o, i) => (o.visible = vis[i]!));
-  };
+  // (the reflection is rendered from inside an onBeforeRender of one of the city's children: wrap them all)
+  const noop = THREE.Object3D.prototype.onBeforeRender;
+  city.traverse((g) => {
+    if (g.onBeforeRender === noop || (g as { __mo?: boolean }).__mo) return;
+    const orig = g.onBeforeRender;
+    (g as { __mo?: boolean }).__mo = true;
+    g.onBeforeRender = function (this: THREE.Object3D, ...args: Parameters<THREE.Object3D['onBeforeRender']>) {
+      const vis = hide.map((o) => o.visible);
+      hide.forEach((o) => (o.visible = false));
+      orig.apply(g, args);
+      hide.forEach((o, i) => (o.visible = vis[i]!));
+    };
+  });
 }
 
 /** A yellow cab, nose toward local +x (4.7 m long), wheels on y = 0. */

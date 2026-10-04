@@ -579,8 +579,9 @@ export default class Train extends Scene {
     const moonK = t < T.cD ? 1 : 0;
     const moonLight = (1 - prog(t, T.swallow + 0.1, T.moon + 0.15)) * moonK;
     U.uMoonC.value.setRGB(0.3, 0.33, 0.45).multiplyScalar(0.12 * moonLight);
-    const street = shot.id === 'G' || shot.id === 'H' || shot.id === 'I';
-    this.out.city.mirrorOn = street;
+    // the full city only where the street is the picture (the crane over the avenue, the run); elsewhere the stand-in
+    const street = shot.id === 'H' || shot.id === 'I';
+    this.out.city.mirrorOn = shot.id === 'I';
     this.out.update(t, cam, moonK, street);
 
     // ---- people
@@ -604,7 +605,7 @@ export default class Train extends Scene {
     this.lantern.time = t;
     this.lantern.update();
     // reflections: twins copy the pose
-    const showMirror = t > T.cB - 0.5 && t < T.cE;
+    const showMirror = t > T.cB - 0.5 && t < T.cD;
     this.mirror.visible = showMirror;
     if (showMirror) {
       for (const tw of this.twins) {

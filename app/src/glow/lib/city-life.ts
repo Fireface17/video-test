@@ -11,6 +11,7 @@ import { CITY_GLSL, type CityUniforms } from './city-glsl';
 import { KitBuilder, M, TileSet, kitBatch, kitMaterial, type KInst } from './city-build';
 import { SHOP } from './city-plan';
 import { signAtlas, type SignAtlas } from './city-signs';
+import { overpassCars } from './city-rail';
 import { SCALE } from '../../engine/gl';
 
 /** Signal timing: a 30 s cycle; avenue green 0–16, yellow –19; street green 20–27, yellow –29. Green wave at V_WAVE m/s. */
@@ -212,7 +213,7 @@ export function carGeometry(type: number) {
     const tris = THREE.ShapeUtils.triangulateShape(body.map(([z, y]) => new THREE.Vector2(z, y)), []);
     for (const [a, b, c] of tris) {
       const P = [body[a]!, body[b]!, body[c]!].map(([z, y]) => [sx * half(y), y, z]);
-      if (sx > 0) k.poly4(P[0]!, P[2]!, P[1]!, P[1]!, paint); else k.poly4(P[0]!, P[1]!, P[2]!, P[2]!, paint);
+      if (sx > 0) k.tri(P[0]!, P[2]!, P[1]!, paint); else k.tri(P[0]!, P[1]!, P[2]!, paint);
     }
     const gh = prof.filter(([, y]) => y >= belt - 0.01);
     if (gh.length >= 2) {
@@ -221,7 +222,7 @@ export function carGeometry(type: number) {
       const t2 = THREE.ShapeUtils.triangulateShape(poly.map(([z, y]) => new THREE.Vector2(z, y)), []);
       for (const [a, b, c] of t2) {
         const P = [poly[a]!, poly[b]!, poly[c]!].map(([z, y]) => [sx * (half(y) + 0.002), y, z]);
-        if (sx > 0) k.poly4(P[0]!, P[2]!, P[1]!, P[1]!, glass); else k.poly4(P[0]!, P[1]!, P[2]!, P[2]!, glass);
+        if (sx > 0) k.tri(P[0]!, P[2]!, P[1]!, glass); else k.tri(P[0]!, P[1]!, P[2]!, glass);
       }
       // the B-pillar
       const zp = (zf + zb) / 2 - 0.1, yt = belt + 0.42;
@@ -230,14 +231,14 @@ export function carGeometry(type: number) {
     // a dark rocker panel and wheel arches
     k.poly4([sx * (W / 2 + 0.003), 0.28, 2.0], [sx * (W / 2 + 0.003), 0.28, -2.0], [sx * (W / 2 + 0.003), 0.4, -2.0], [sx * (W / 2 + 0.003), 0.4, 2.0], dark);
     // a side mirror
-    k.box(sx * (W / 2 + 0.08), belt + 0.08, (prof[3]?.[0] ?? 1) - 0.15, 0.14, 0.1, 0.18, paint);
+    k.quad(sx * (W / 2 + 0.06), belt + 0.08, (prof[3]?.[0] ?? 1) - 0.15, 0.18, 0.12, paint, Math.PI / 2);
   };
   side(1); side(-1);
   // wheels: tyres and hubs
   const wz = type === 3 ? 1.75 : 1.42, wr = type === 1 ? 0.37 : 0.33;
   for (const zz of [wz, -wz]) for (const sx of [-1, 1]) {
-    k.cyl(sx * (W / 2 - 0.12), wr, zz, wr, wr, 0.24, 8, [0.015, 0.015, 0.016, M.ALB], false, 0, Math.PI / 2);
-    k.cyl(sx * (W / 2 - 0.0), wr, zz, wr * 0.55, wr * 0.55, 0.02, 8, [0.25, 0.25, 0.26, M.ALB], false, 0, Math.PI / 2);
+    k.cyl(sx * (W / 2 - 0.12), wr, zz, wr, wr, 0.24, 6, [0.015, 0.015, 0.016, M.ALB], true, 0, Math.PI / 2);
+    k.quad(sx * (W / 2 + 0.005), wr, zz, wr * 1.1, wr * 1.1, [0.22, 0.22, 0.23, M.ALB], Math.PI / 2);
   }
   // lights (the instance's k lights them; parked cars 0), the grille, the plates
   const fz = prof[0]![0] + 0.035, bz = prof[prof.length - 1]![0] - 0.035;
@@ -343,6 +344,12 @@ const TRAFFIC_GLSL = /* glsl */ `
   // L = (type 0 avenue / 1 street, lane coordinate, direction, s0 | queue x), S = (slot k, copy c, offset here, offset next)
   vec3 carPose(vec4 L, vec4 S, out vec2 dir, out float brake, out float vis) {
     brake = 0.0; vis = 1.0;
+    if (L.x > 1.5) {
+      // the highway: S = (speed, deck height, z0, length)
+      float s = mod(L.w + S.x * uTime, S.w);
+      dir = vec2(0.0, L.z);
+      return vec3(L.y, S.y, L.z > 0.0 ? S.z + s : S.z + S.w - s);
+    }
     if (L.x < 0.5) {
       float s = mod(L.w + V_WAVE * uTime, uLoop);
       dir = vec2(0.0, L.z);
@@ -654,6 +661,7 @@ export class CityLife extends THREE.Group {
         }
       }
     }
+    if (city.overpass) for (const c of overpassCars(city.overpass, r)) cars.push({ L: c.L, S: c.S, col: CAR_COLORS[Math.floor(r() * 16)]!, type: c.type });
     const carM = carMaterial(U, this.tu);
     for (const type of [0, 1, 2, 3]) {
       const list = cars.filter((c) => c.type === type);

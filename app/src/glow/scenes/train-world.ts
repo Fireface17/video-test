@@ -224,7 +224,7 @@ export class Backdrop extends THREE.Group {
     super();
     const r = mulberry32(41);
     const inst: number[][] = [];
-    const clearAt = (x: number, z: number) => z > 40 && z < 380 && x > -280 && x < 350;
+    const clearAt = (x: number, z: number) => z > 0 && z < 380 && x > -280 && x < 350;
     const avenue = (x: number) => [-175, 75, 325].some((a) => Math.abs(x - a) < 18);
     // building lines along the street (z = -18.5 and +10.5 from the road's middle at z = -4), and the blocks behind
     for (const side of [-1, 1]) for (let row = 0; row < 4; row++) {
@@ -262,7 +262,7 @@ export class Backdrop extends THREE.Group {
     const m = new THREE.Matrix4();
     inst.forEach(([x, z, w, d, h, seed, warm, office], i) => {
       mesh.setMatrixAt(i, m.makeScale(w!, h!, d!).setPosition(x!, 0, z!));
-      aB.set([seed!, warm!, office!, 0.3 + 0.4 * hash(i, 7)], i * 4);
+      aB.set([seed!, warm!, office!, 0.18 + 0.32 * hash(i, 7)], i * 4);
     });
     geo.setAttribute('aB', new THREE.InstancedBufferAttribute(aB, 4));
     mesh.frustumCulled = false;
@@ -334,11 +334,14 @@ function facadeMat(U: LightU, glassTower = false) {
           float kind = hh(vec3(seed * 31.0, vB.x, 3.0));
           vec3 warm = vec3(1.0, 0.64, 0.34), cool = vec3(0.75, 0.85, 1.0), tv = vec3(0.35, 0.5, 1.0);
           vec3 Lc = kind < 0.55 + 0.35 * vB.y ? warm : kind < 0.9 ? mix(warm, cool, 0.6) : tv;
-          float Li = 0.45 + 0.5 * hh(vec3(seed, 4.0, 4.0));
-          // a room: brighter toward the ceiling, a dark sill line, sometimes a curtain
-          float room = 0.7 + 0.5 * f.y;
-          float cur = step(0.7, hh(vec3(seed, 11.0, 1.0))) * step(f.x, 0.5);
-          vec3 win = Lc * Li * room * lit * (1.0 - 0.5 * cur) + (1.0 - lit) * step(0.95, kind) * tv * 0.12;
+          float Li = 0.28 + 0.42 * hh(vec3(seed, 4.0, 4.0));
+          // a room: the lamp's pool on the ceiling, darker below, a curtain on one side, the window's cross bars
+          vec2 wf = (f - lo) / (hi - lo);
+          float lamp = 0.45 + 0.9 * exp(-pow(wf.x - 0.3 - 0.4 * hh(vec3(seed, 5.0, 2.0)), 2.0) * 9.0) * smoothstep(0.2, 0.95, wf.y);
+          float cur = step(0.6, hh(vec3(seed, 11.0, 1.0))) * step(wf.x, 0.25 + 0.3 * hh(vec3(seed, 12.0, 1.0)));
+          float bars = office > 0.5 ? 0.0 : max(step(abs(wf.x - 0.5), 0.03), step(abs(wf.y - 0.62), 0.03));
+          vec3 glass = vec3(0.012, 0.014, 0.022) + vec3(0.03, 0.035, 0.05) * wf.y;
+          vec3 win = (Lc * Li * lamp * lit * (1.0 - 0.6 * cur) + glass + (1.0 - lit) * step(0.95, kind) * tv * 0.1) * (1.0 - 0.85 * bars);
           vec3 wall = office > 0.5 ? vec3(0.008, 0.01, 0.016) : mix(vec3(0.03, 0.017, 0.012), vec3(0.022, 0.021, 0.024), step(0.6, vB.y));
           wall += vec3(1.0, 0.55, 0.25) * 0.05 * exp(-v / 8.0);
           float far = smoothstep(0.25, 0.6, px);

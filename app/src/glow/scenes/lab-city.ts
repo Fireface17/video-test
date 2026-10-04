@@ -19,6 +19,7 @@ export default class LabCity extends Scene {
   dots = new GlowPoints(600, 0.12);
   anchors: Anchor[] = [];
   shots: Shot[] = [];
+  opened = [false, false];
 
   override async init() {
     const S = this.st;
@@ -40,14 +41,14 @@ export default class LabCity extends Scene {
     console.warn('CITY STATS ' + Object.entries(st).sort((a, b) => b[1][2] - a[1][2]).slice(0, 25).map(([k, [c, n, v]]) => `${k} meshes=${c} inst=${n} idx=${(v / 1e6).toFixed(2)}M`).join(' | ') + ` buildings=${this.city.plan.buildings.length} shops=${this.city.plan.shops.length} lamps=${this.city.plan.lamps.length} trees=${this.city.plan.trees.length} parked=${this.city.plan.parked.length}`);
     const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
     const c = this.city;
-    this.anchors = c.anchors({ x: 40, z: 130, r: 140, kinds: ['window', 'fireEscape', 'balcony', 'roofEdge'], max: 60, seed: 3, spacing: 6, from: V(60, 30, 260) });
+    this.anchors = c.anchors({ x: 40, z: 108, r: 45, kinds: ['window', 'fireEscape', 'balcony', 'roofEdge'], max: 40, seed: 3, spacing: 5, from: V(62, 9, 124) });
     const P = c.power;
-    const reset = () => { P.clear(); c.dawn = 0; c.setGlows([]); this.dots.visible = false; };
+    const reset = () => { P.clear(); c.dawn = 0; c.setGlows([]); this.dots.visible = false; this.opened.forEach((o, i) => { if (o) { c.openWindow(i, null); this.opened[i] = false; } }); };
     this.shots = [
       { a: 0, b: 4, pos: (k) => V(lerp(-20, 10, k), 46, 30), at: () => V(-60, 70, -1100), setup: reset },
       { a: 4, b: 8, pos: (k) => V(lerp(700, 560, k), 300, lerp(500, 380, k)), at: () => V(0, 0, -500), setup: reset },
       { a: 8, b: 12, pos: (k) => V(-125 + 7.5, 1.6, lerp(222, 214, k)), at: () => V(-125 + 1, 4, -700), fov: 55, setup: reset },
-      { a: 12, b: 16, pos: (k) => V(375 + 2.1, 11.3, lerp(160, 120, k)), at: (k) => V(375, 9, lerp(-400, -440, k)), fov: 55, setup: reset },
+      { a: 12, b: 16, pos: (k) => V(381, 10.1, lerp(70, 60, k)), at: () => V(374, 9.5, -300), fov: 55, setup: reset },
       { a: 16, b: 20, pos: (k) => V(lerp(-20, 10, k), 46, 30), at: () => V(-60, 70, -1100), setup: () => { reset(); P.level = 0; } },
       { a: 20, b: 26, pos: (k) => V(lerp(60, 80, k), 140, 250), at: () => V(-60, 0, -500), setup: (t) => { reset(); P.level = 0; P.wave(0, { x: -100, z: -380, r: (t - 20.3) * 260, soft: 160, to: 1 }); } },
       { a: 26, b: 30, pos: (k) => V(1150, 22, lerp(420, 380, k)), at: () => V(900, 30, -900), setup: reset },
@@ -69,6 +70,9 @@ export default class LabCity extends Scene {
           for (let i = this.anchors.length; i < this.dots.n; i++) this.dots.hide(i);
           this.dots.commit();
           c.setGlows(glows);
+          // two windows cut open, a person of light inside each
+          const wins = this.anchors.filter((a) => a.kind === 'window').slice(0, 2);
+          wins.forEach((a, i) => { if (!this.opened[i]) { c.openWindow(i, a, { light: new THREE.Color(1, 0.6, 0.3).multiplyScalar(0.25) }); this.opened[i] = true; } });
           void t;
         },
       },
@@ -79,6 +83,10 @@ export default class LabCity extends Scene {
       { a: 48, b: 50, pos: () => V(40, 1.7, 127), at: () => V(40, 9, 110), fov: 55, setup: reset },
       { a: 50, b: 52, pos: () => V(60, 34, 150), at: () => V(20, 18, 90), fov: 50, setup: reset },
       { a: 52, b: 54, pos: () => V(-125 + 12.5, 1.6, 140), at: () => V(-125 - 5, 3.5, 112), fov: 55, setup: reset },
+      { a: 54, b: 56, pos: () => V(379, 1.6, 230), at: () => V(375, 5, -100), fov: 55, setup: reset },
+      { a: 56, b: 58, pos: () => V(396, 1.7, 84), at: () => V(386, 4.5, 48), fov: 55, setup: reset },
+      { a: 58, b: 60, pos: () => V(1136.5, 10.1, 120), at: () => V(1146, 9, -250), fov: 55, setup: reset },
+      { a: 60, b: 62, pos: () => V(1170, 1.7, 110), at: () => V(1146, 6, -120), fov: 55, setup: reset },
     ];
   }
 

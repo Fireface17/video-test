@@ -36,7 +36,6 @@ import { RoofWorld, type Glow } from './rooftop-world';
 import { bikeMesh, farPeople, litK, overShoulder, placeKit, raiseHand, tint, type FarPerson } from './rooftop-people';
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
-const DBG = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('roofdbg') ?? '' : '';
 const GOLD = col('gold', 1.0);
 const LANTERN = new THREE.Color(1.0, 0.86, 0.62);
 
@@ -78,7 +77,7 @@ export default class Rooftop extends Scene {
   S0 = new THREE.Vector3();
   C1 = new THREE.Vector3(0, 82, -150);
   C3 = new THREE.Vector3(0, 52, -48);
-  TXT = new THREE.Vector3(-0.4, 19.5, -3.2);
+  TXT = new THREE.Vector3(-0.4, 24.2, -3.6);
   tGold = 39.77;
 
   override async init() {
@@ -287,9 +286,10 @@ export default class Rooftop extends Scene {
     } else if (t < cD) {
       shot = 'C';
       const k = ease.inOutQuad(prog(t, cC, cD)), up = ease.inOutCubic(prog(t, cC + 0.5, cD + 0.1));
-      pos.set(lerp(0.9, -0.3, k), lerp(12.0, 12.6, k), lerp(-4.6, -4.2, k));
-      tgt.set(lerp(-1.1, -0.9, k), lerp(11.4, 11.8, k) + up * 9, -9.0 + up * 1.5);
-      fov = 42;
+      // across the street at the third floor: the girl with her cat (left), the couple (right); then up with the lights
+      pos.set(lerp(0.6, 6.0, k), lerp(11.9, 12.3, k), lerp(-3.4, -3.0, k));
+      tgt.set(lerp(-0.4, 7.5, k), lerp(11.3, 11.0, k) + up * 7, -9.5 + up * 2.5);
+      fov = 60;
       roll = -0.02;
     } else if (t < cE) {
       shot = 'D';
@@ -307,8 +307,8 @@ export default class Rooftop extends Scene {
     } else if (t < cG) {
       shot = 'F';
       const k = ease.inOutQuad(prog(t, cF, cG));
-      pos.set(lerp(70, 52, k), lerp(165, 175, k), lerp(150, 120, k));
-      tgt.set(lerp(-10, -20, k), lerp(20, 30, k), -170);
+      pos.set(lerp(46, 34, k), lerp(128, 136, k), lerp(70, 52, k));
+      tgt.set(lerp(-6, -14, k), lerp(32, 40, k), -170);
       fov = 52;
       roll = 0.04 - 0.03 * k;
     } else if (t < cH) {
@@ -345,19 +345,8 @@ export default class Rooftop extends Scene {
     // ---------------- him ----------------
     const he = this.he;
     he.position.copy(H).setY(H.y + he.hipHeight);
-    he.rotation.y = Math.PI;
-    this.idle.apply(he, t * 0.8 + 4, { loop: true, face: !DBG.includes('noface') });
-    if (DBG.includes('noik')) { he.time = t; }
-    if (DBG.includes('dbgface')) {
-      he.updateMatrixWorld(true);
-      const hq = he.bone('Hips').getWorldQuaternion(new THREE.Quaternion());
-      const fz = V(0, 0, 1).applyQuaternion(hq), toe = he.bone('LeftToeBase').getWorldPosition(V(0, 0, 0)).sub(he.bone('LeftFoot').getWorldPosition(V(0, 0, 0)));
-      const sh = he.bone('LeftArm').getWorldPosition(V(0, 0, 0)).sub(he.bone('RightArm').getWorldPosition(V(0, 0, 0)));
-      console.warn(`t=${t.toFixed(2)} hipsZ=(${fz.x.toFixed(2)},${fz.z.toFixed(2)}) toe=(${toe.x.toFixed(2)},${toe.z.toFixed(2)}) L-R shoulders=(${sh.x.toFixed(2)},${sh.z.toFixed(2)}) faceQ=${(2 * Math.atan2(this.idle.faceQ().y, this.idle.faceQ().w) * 57.3).toFixed(0)}`);
-      const Wq: THREE.Quaternion[] = [], rr = V(0, 0, 0);
-      const hd = (u: number, loop: boolean) => { if (loop) this.idle.sample(u, Wq, rr, { loop: true }); else this.idle.sampleRaw(u, Wq, rr, true); const f = V(0, 0, 1).applyQuaternion(Wq[0]!); return (Math.atan2(f.x, f.z) * 57.3).toFixed(0); };
-      console.warn(`clip u=${((t * 0.8 + 4) % (this.idle.duration - 0.6)).toFixed(2)} dur=${this.idle.duration.toFixed(2)} raw(0.32)=${hd(0.32, false)} raw(14.08)=${hd(14.08, false)} loop(t)=${hd(t * 0.8 + 4, true)}`);
-    }
+    he.rotation.set(0, Math.PI, 0);
+    this.idle.apply(he, t * 0.8 + 4, { loop: true, face: true });
     const lift = ease.inOutCubic(prog(t, put.words[0]!.start - 0.15, put.words[3]!.start + 0.1));
     const upR = ease.inOutCubic(prog(t, put.words[3]!.start - 0.2, put.words[4]!.start + 0.3)) * (1 - ease.inOutCubic(prog(t, 34.6, 35.8)));
     const both = ease.inOutCubic(prog(t, hereT - 0.3, hereT + 0.9));
@@ -369,8 +358,8 @@ export default class Rooftop extends Scene {
     const handL = palmL.clone().lerp(openL, open * (1 - palms)), handR = palmR.clone().lerp(he.spinePoint(-0.25, 1.05, 0.25), upR).lerp(openR, open * (1 - palms));
     const restL = he.hand(1), restR = he.hand(0);
     const wL = Math.max(palms, open, 0.0001), wR = Math.max(palms, upR, open, 0.0001);
-    if (!DBG.includes('noik')) he.reach(1, restL.clone().lerp(handL, Math.min(1, wL)), V(0.8, -0.7, -0.3));
-    if (!DBG.includes('noik')) he.reach(0, restR.clone().lerp(handR, Math.min(1, wR)), V(-0.8, -0.7, -0.3));
+    he.reach(1, restL.clone().lerp(handL, Math.min(1, wL)), V(0.8, -0.7, -0.3));
+    he.reach(0, restR.clone().lerp(handR, Math.min(1, wR)), V(-0.8, -0.7, -0.3));
     if (both > 0) {
       he.reach(1, he.hand(1).lerp(he.spinePoint(0.32, 1.12, 0.3), both), V(0.8, -0.3, -0.4));
       he.reach(0, he.hand(0).lerp(he.spinePoint(-0.32, 1.12, 0.3), both), V(-0.8, -0.3, -0.4));
@@ -452,8 +441,8 @@ export default class Rooftop extends Scene {
       if (l.free) {
         // a lantern from a neighbour: rises slowly, swaying, drifting with the breeze
         p = s0.clone().add(V(wob.x * 0.6 * age + age * 0.3, age * (1.6 + (l.seed % 1) * 0.8) + 0.2 * age * age, wob.z * 0.6 * age - age * 0.4));
-        size = 0.24 + (l.seed % 3) * 0.05;
-        bright = 1.1 * smoothstep(0, 0.5, age);
+        size = 0.32 + (l.seed % 3) * 0.06;
+        bright = 1.5 * smoothstep(0, 0.5, age);
         const k = toStar(l, i);
         if (k > 0) { p.lerp(star, k); bright *= 1 + k; }
       } else {
@@ -509,23 +498,12 @@ export default class Rooftop extends Scene {
     if (penOn > 0) glows.push({ pos: pen, color: col('white', 0.5 * penOn), radius: 4 });
     for (const n of this.near) {
       const k = typeof n.p.k === 'number' ? n.p.k : n.p.k(t);
-      if (k > 0.01) glows.push({ pos: n.chest(), color: n.color.clone().lerp(GOLD, goldK * 0.8).multiplyScalar(0.6 * k), radius: 3.4 });
+      if (k > 0.01) glows.push({ pos: n.chest(), color: n.color.clone().lerp(GOLD, goldK * 0.8).multiplyScalar(0.9 * k), radius: 3.2 });
     }
     w.glows(glows);
     w.pigeonsFly = Infinity;
     w.update(t, cam, { wind: 0.6 });
 
-    if (DBG.includes('nocity')) w.city.visible = false;
-    if (DBG) {
-      const c = w.city as any;
-      if (DBG.includes('noground')) c.ground.visible = false;
-      if (DBG.includes('nolife')) c.life.visible = false;
-      if (DBG.includes('nosky') && c.sky) c.sky.visible = false;
-      if (DBG.includes('noclouds') && c.cloudMat) c.children.forEach((o: any) => { if (o.material === c.cloudMat) o.visible = false; });
-      if (DBG.includes('nobld')) c.children.forEach((o: any) => { if (o.isGroup && o !== c.life) o.visible = false; });
-    }
-    if (DBG.includes('nocrowd')) this.crowd.visible = false;
-    if (DBG.includes('noset')) w.set.visible = false;
     S.render(this.ctx.renderer, out);
     const flash = prog(t, burst - 0.18, burst + 0.05) * 0.6;
     return {

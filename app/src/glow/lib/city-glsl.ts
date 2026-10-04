@@ -36,6 +36,7 @@ export function cityUniforms(o: { fog: number; fogColor: THREE.Color }) {
     // windows cut open for people inside (x, y, z centre; w) and (half x, half y, half z)
     uOpenA: { value: Array.from({ length: 6 }, () => new THREE.Vector4(0, -1e5, 0, 0)) },
     uOpenB: { value: Array.from({ length: 6 }, () => new THREE.Vector4(0, 0, 0, 0)) },
+    uOpenN: { value: 0 },
     // glowing people light the walls, windows and streets near them: (x, y, z, radius), (r, g, b, -)
     uPGlowP: { value: Array.from({ length: 16 }, () => new THREE.Vector4(0, -1e5, 0, 1)) },
     uPGlowC: { value: Array.from({ length: 16 }, () => new THREE.Vector4(0, 0, 0, 0)) },
@@ -58,6 +59,7 @@ export const CITY_GLSL = /* glsl */ `
   uniform sampler2D uLightMap; uniform vec4 uLMRect; uniform vec3 uOrigin;
   uniform vec4 uPGlowP[16]; uniform vec4 uPGlowC[16]; uniform float uPGlowN; uniform int uPGlowNi;
   uniform float uDawn; uniform vec3 uSunDir, uSunCol; uniform vec2 uFlash;
+  uniform vec4 uOpenA[6]; uniform vec4 uOpenB[6]; uniform int uOpenN;
 
   float h11(float p) { p = fract(p * 0.1031); p *= p + 33.33; p *= p + p; return fract(p); }
   float h12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
@@ -418,6 +420,15 @@ export const FACADE_GLSL = /* glsl */ `
     return c;
   }
 
+`;
+
+/** (fragment only) Cut the facade open where a window was opened for people inside (city.openWindow). */
+export const OPEN_GLSL = /* glsl */ `
+  // cut the facade open where a window was opened for people inside (city.openWindow)
+  void openCut(vec3 W) {
+    vec3 q = W - uOrigin;
+    for (int i = 0; i < uOpenN; i++) { vec3 d = abs(q - uOpenA[i].xyz) - uOpenB[i].xyz; if (max(d.x, max(d.y, d.z)) < 0.0) discard; }
+  }
 `;
 
 /** Roof surfaces. */

@@ -4,41 +4,59 @@
 // Center (a square that turns into a square rotated 45°, eight triangular glass faces, the spire with its beacon).
 // Facades use the city's interior-mapped windows (lib/city.ts FACADE_GLSL); crowns are floodlit or emissive.
 import * as THREE from 'three';
-import { FACADE_GLSL, type City } from './city';
+import { CITY_GLSL, FACADE_GLSL, FACADE_VS } from './city-glsl';
+import type { City } from './city';
 import { GlowPoints } from './points';
 
-function towerMaterial(city: City, B: [number, number, number, number], flood: { y: number; c: THREE.Color }) {
+/**
+ * A landmark's facade: the city's facade shader (mid detail) on the tower's own boxes (each carries its centre and
+ * size), floodlights washing the upper setbacks. B = (seed, lit density, warmth, style: 2 glass / 3 deco).
+ */
+function towerMaterial(city: City, B: [number, number, number, number], flood: { y: number; c: THREE.Color }, wall: [number, number, number]) {
+  const glass = B[3] === 2;
   return new THREE.ShaderMaterial({
     uniforms: {
-      ...city.mat.uniforms,
-      B: { value: new THREE.Vector4(...B) },
+      ...(city.U as unknown as Record<string, THREE.IUniform>),
       floodY: { value: flood.y }, floodC: { value: flood.c.clone() }, top: { value: 0 },
+      lF0: { value: new THREE.Vector4(B[0], glass ? 2 : 3, glass ? 4.0 : 3.8, glass ? 9 : 6) },
+      lF1: { value: glass ? new THREE.Vector4(1.52, 1, 0.72, 0.28) : new THREE.Vector4(2.2, 0.5, 0.6, 0.24) },
+      lF2: { value: new THREE.Vector4(wall[0], wall[1], wall[2], B[1]) },
     },
+    defines: { FAC_LOD: 1, FAC_GLASS: glass ? 1 : 0 },
     vertexShader: /* glsl */ `
-      varying vec3 vN; varying vec3 vW;
-      void main() { vN = normalize(mat3(modelMatrix) * normal); vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+      attribute vec3 aPos; attribute vec3 aSize;
+      uniform vec4 lF0, lF1, lF2; uniform float top;
+      varying vec3 vW, vN; varying vec4 vF0, vF1, vF2, vF3;
+      ${CITY_GLSL}
+      ${FACADE_VS}
+      void main() {
+        vec4 w = modelMatrix * vec4(position, 1.0);
+        vW = w.xyz; vN = normalize(mat3(modelMatrix) * normal);
+        vec3 nl = normal; if (abs(nl.y) < 0.9) nl = normalize(vec3(nl.x, 0.0, nl.z));
+        vF0 = lF0; vF1 = lF1; vF2 = lF2; vF3 = vec4(15.0, top, 0.0, lF2.w);
+        // the grid is laid out in the tower's own frame; power and gold where the tower stands
+        facadeVertex(position, nl, aPos, aSize, vF0, vF1, vF3);
+        vPG = vec2(power(w.xz), goldAt(w.xz));
+        gl_Position = projectionMatrix * viewMatrix * w;
+      }`,
     fragmentShader: /* glsl */ `
-      uniform float fogD, wake, gold, t, gain, floodY, top; uniform vec3 fogC, skyTop, skyHor, floodC; uniform vec4 B;
-      varying vec3 vN; varying vec3 vW;
+      uniform float floodY; uniform vec3 floodC;
+      varying vec3 vW, vN; varying vec4 vF0, vF1, vF2, vF3;
+      ${CITY_GLSL}
       ${FACADE_GLSL}
       void main() {
         vec3 N = normalize(vN), V = normalize(vW - cameraPosition);
         vec3 c;
         if (abs(N.y) > 0.8) c = vec3(0.012, 0.012, 0.015) + floodC * 0.3 * step(floodY, vW.y);
         else {
-          float wa;
-          vec3 Nh = normalize(vec3(N.x, 0.0, N.z));
-          c = facade(vW, Nh, V, B, top, wake, skyTop, skyHor, wa);
+          c = facade(vW, normalize(vec3(N.x, 0.0, N.z)), V, vF0, vF1, vF2, vF3);
           // floodlights wash the upper setbacks from below: brightest at each tier's foot
-          float fk = step(floodY, vW.y);
-          c += floodC * fk * (1.0 - wa * 0.6) * (0.55 + 0.45 * smoothstep(0.0, 1.0, fract(vW.y / 14.0)));
+          c += floodC * step(floodY, vW.y) * vPG.x * (0.55 + 0.45 * smoothstep(0.0, 1.0, fract(vW.y / 14.0))) * 0.6;
         }
         float lum = max(c.r, max(c.g, c.b));
         c = mix(c, vec3(1.0, 0.68, 0.2) * lum * 1.1, gold * 0.8);
         c *= gain;
-        float d = length(vW - cameraPosition);
-        c = mix(fogC, c, exp(-fogD * fogD * d * d * 0.45));
-        gl_FragColor = vec4(c, 1.0);
+        gl_FragColor = vec4(cityFog(c, vW, vPG.x), 1.0);
       }`,
   });
 }
@@ -51,6 +69,9 @@ function glowMat(c: THREE.Color) {
 function box(w: number, h: number, d: number, y: number, mat: THREE.Material) {
   const g = new THREE.BoxGeometry(w, h, d);
   g.translate(0, y + h / 2, 0);
+  const n = g.attributes.position!.count;
+  g.setAttribute('aPos', new THREE.Float32BufferAttribute(new Array(n).fill(0).flatMap(() => [0, y, 0]), 3));
+  g.setAttribute('aSize', new THREE.Float32BufferAttribute(new Array(n).fill(0).flatMap(() => [w, h, d]), 3));
   return new THREE.Mesh(g, mat);
 }
 
@@ -67,7 +88,7 @@ export class Landmarks extends THREE.Group {
   constructor(city: City) {
     super();
     // ---- Empire State Building: 381 m roof, antenna to 443 m ----
-    this.esbFlood = towerMaterial(city, [17, 0.7, 0.7, 4], { y: 268, c: new THREE.Color(0.25, 0.22, 0.18) });
+    this.esbFlood = towerMaterial(city, [17, 0.7, 0.7, 3], { y: 268, c: new THREE.Color(0.25, 0.22, 0.18) }, [0.4, 0.37, 0.32]);
     this.esbFlood.uniforms.top!.value = 381;
     const m = this.esbFlood;
     const tiers: [number, number, number, number][] = [
@@ -87,14 +108,14 @@ export class Landmarks extends THREE.Group {
     this.esb.add(new THREE.Mesh(ant, new THREE.MeshBasicMaterial({ color: new THREE.Color(0.08, 0.08, 0.09) })));
 
     // ---- Chrysler Building: 319 m ----
-    const cm = towerMaterial(city, [53, 0.55, 0.6, 4], { y: 1e9, c: new THREE.Color(0, 0, 0) });
+    const cm = towerMaterial(city, [53, 0.55, 0.6, 3], { y: 1e9, c: new THREE.Color(0, 0, 0) }, [0.42, 0.4, 0.37]);
     cm.uniforms.top!.value = 242;
     const ct: [number, number, number, number][] = [[61, 56, 61, 0], [48, 60, 48, 56], [40, 90, 40, 116], [34, 36, 34, 206]];
     for (const [w, h, d, y] of ct) this.chrysler.add(box(w, h, d, y, cm));
     // the crown: seven terraced tiers of arches, each side a half-ring band with triangular windows that glow
     this.chryslerArches = new THREE.ShaderMaterial({
       side: THREE.DoubleSide,
-      uniforms: { k: { value: 1 }, gold: city.mat.uniforms.gold, fogD: city.mat.uniforms.fogD, fogC: city.mat.uniforms.fogC },
+      uniforms: { k: { value: 1 }, gold: city.U.gold, fogD: city.U.fogD, fogC: city.U.fogC },
       vertexShader: 'varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
       fragmentShader: /* glsl */ `
         uniform float k, gold, fogD; uniform vec3 fogC; varying vec2 vUv; varying vec3 vW;
@@ -135,7 +156,7 @@ export class Landmarks extends THREE.Group {
     this.chrysler.add(new THREE.Mesh(needle, new THREE.MeshBasicMaterial({ color: new THREE.Color(0.35, 0.34, 0.33) })));
 
     // ---- One World Trade Center: 417 m roof, spire to 541 m ----
-    const wm = towerMaterial(city, [88, 0.82, 0.2, 1], { y: 1e9, c: new THREE.Color(0, 0, 0) });
+    const wm = towerMaterial(city, [88, 0.82, 0.2, 2], { y: 1e9, c: new THREE.Color(0, 0, 0) }, [0.03, 0.035, 0.045]);
     wm.uniforms.top!.value = 417;
     this.wtc.add(box(61, 56, 61, 0, wm));
     const S = 30.5, Tt = 45 / Math.SQRT2 * 1.0, y0 = 56, y1 = 412;
@@ -149,6 +170,8 @@ export class Landmarks extends THREE.Group {
     }
     const wg = new THREE.BufferGeometry();
     wg.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+    wg.setAttribute('aPos', new THREE.Float32BufferAttribute(new Array(P.length / 3).fill(0).flatMap(() => [0, y0, 0]), 3));
+    wg.setAttribute('aSize', new THREE.Float32BufferAttribute(new Array(P.length / 3).fill(0).flatMap(() => [61, y1 - y0, 61]), 3));
     wg.computeVertexNormals();
     this.wtc.add(new THREE.Mesh(wg, wm));
     const parapet = new THREE.CylinderGeometry(Tt * 1.02, Tt * 1.02, 5, 4, 1, true);

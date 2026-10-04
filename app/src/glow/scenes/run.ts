@@ -30,7 +30,7 @@ import { GlowLines } from '../lib/stars';
 import { CycleMotion, Route, holdHands, inOut, loadCycle, loadSpan } from './run-motion';
 import { Folk, type Joiner, poseStride, reachTo, type Stride } from './run-people';
 import { Handprints } from './run-prints';
-import { BrokenWindow, Pigeons, Splashes, mirrorOnly, placeKit, stairKit, taxiKit } from './run-props';
+import { BrokenWindow, Pigeons, Splashes, mirrorOnly, placeKit, shiftRender, stairKit, taxiKit } from './run-props';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const UP = V(0, 1, 0);
@@ -52,6 +52,8 @@ interface HeroTrack { s: Key[]; side?: Key[]; turn?: Key[]; lift?: Key[]; jumpK?
 
 export default class Run extends Scene {
   st = new Stage(50, 0.08, 9000);
+  /** Everything in the world (the city and all), shifted to a floating origin for the draw (run-props shiftRender). */
+  world = new THREE.Group();
   city!: City;
   he!: RealFigure;
   she!: RealFigure;
@@ -109,7 +111,8 @@ export default class Run extends Scene {
 
     // ---- the city ----
     this.city = new City({});
-    S.add(this.city);
+    S.add(this.world);
+    this.world.add(this.city);
     this.city.power.level = 1;
 
     // ---- the routes ----
@@ -122,8 +125,8 @@ export default class Run extends Scene {
     // R2: across avenue 2 and east along street 1 toward the river
     this.R2 = new Route([[560, 0.15, 127.4], [609, 0.15, 127.4], [614.5, 0, 127.0], [635.5, 0, 127.0], [641, 0.15, 127.4], [1105, 0.15, 127.4]]);
     // R3: across the riverside avenue, up the steel stairs onto the overpass deck, north along it
-    const ov = this.city.overpass, oy = ov?.y ?? 8.5, ox = ov?.x ?? 1144;
-    this.R3 = new Route([[1060, 0.15, 127.4], [1108, 0.15, 127.4], [1113, 0, 128.5], [1131.5, 0, 131], [1133.6, 0.15, 132.5], [1133.6, oy, 147.5], [1136.5, oy, 151], [ox - 2.5, oy, 160], [ox - 2.5, oy, 420]]);
+    const ov = this.city.overpass, oy = ov?.y ?? 8.5;
+    this.R3 = new Route([[1060, 0.15, 127.4], [1108, 0.15, 127.4], [1113, 0, 128.5], [1131.5, 0, 131], [1133.6, 0.15, 132.5], [1133.6, oy, 147.5], [1135.6, oy, 149.5], [1136.5, oy, 155], [1136.5, oy, 420]]);
     const sAt = (R: Route, p: THREE.Vector3) => { let best = 0, bd = Infinity; for (let s = 0; s <= R.length; s += 0.1) { const d = R.at(s).distanceToSquared(p); if (d < bd) { bd = d; best = s; } } return best; };
     const sCar = sAt(this.R1, V(411.3, 0, 121.6));
     const sWin = sAt(this.R1, V(434.7, 0.15, 127.4));
@@ -141,14 +144,14 @@ export default class Run extends Scene {
       L('G2', T.G2, T.I, this.R2, sAt(this.R2, V(626, 0, 127.0)) - PACE * 0.4, 1),
       L('I', T.I, T.J, this.R2, sAt(this.R2, V(676, 0.15, 127.4)), 1),
       L('J', T.J, T.K, this.R3, sAt(this.R3, V(1128, 0, 130.5)), 1),
-      L('K', T.K, T.L, this.R3, sAt(this.R3, V(1136.5, oy, 151)) + 4, 1),
-      L('L', T.L, this.ctx.end + 1, this.R3, sAt(this.R3, V(1136.5, oy, 151)) + 4 + PACE * (T.L - T.K), 1),
+      L('K', T.K, T.L, this.R3, sAt(this.R3, V(1136.5, oy, 155)) + 4, 1),
+      L('L', T.L, this.ctx.end + 1, this.R3, sAt(this.R3, V(1136.5, oy, 155)) + 4 + PACE * (T.L - T.K), 1),
     ];
 
     // ---- the heroes, their things, their motion ----
     const [{ he, she }, run, runB, jump, idle] = await Promise.all([makeHeroes(), loadCycle('09_01'), loadCycle('16_35'), loadSpan('13_11', 50, 26), loadMotion('77_02')]);
     this.he = he; this.she = she; this.run = run; this.runB = runB; this.jump = jump; this.idle = idle;
-    S.add(he, she, this.star, this.lantern, this.trails);
+    this.world.add(he, she, this.star, this.lantern, this.trails);
     this.lantern.lit = 1;
 
     // C/D, the cab: he vaults it, turns, reaches back; she takes his hand and he pulls her up and over
@@ -178,21 +181,20 @@ export default class Run extends Scene {
 
     // ---- props ----
     const cab = placeKit(this.city, taxiKit(), this.taxi.x, 0, this.taxi.z, Math.PI);
-    S.add(cab);
+    this.world.add(cab);
     // two cabs stopped at the red light on avenue 2, headlights on the crossing
-    S.add(placeKit(this.city, taxiKit(), 619.6, 0, 112.5, -Math.PI / 2), placeKit(this.city, taxiKit(), 624.4, 0, 111.4, -Math.PI / 2));
-    // the bottom flight of the el station's stairs, and the steel stairs up to the overpass
-    S.add(placeKit(this.city, stairKit(V(388.6, 4.6, 55.5), V(388.6, 0.15, 64.2), 1.9), 0, 0, 0));
-    S.add(placeKit(this.city, stairKit(V(1133.6, oy, 147.5), V(1133.6, 0.15, 132.5), 1.8), 0, 0, 0));
+    this.world.add(placeKit(this.city, taxiKit(), 619.6, 0, 112.5, -Math.PI / 2), placeKit(this.city, taxiKit(), 624.4, 0, 111.4, -Math.PI / 2));
+    // the steel stairs up to the overpass (the el station's stairs are the city's)
+    this.world.add(placeKit(this.city, stairKit(V(1133.6, oy, 147.5), V(1133.6, 0.15, 132.5), 1.8), 0, 0, 0));
     // the smashed window (FOR RENT, street 1 south side)
     this.window = new BrokenWindow(this.city, V(434.7, 0.55, 129.5), V(0, 0, -1), 4.6, 2.5, T.piece - 0.15, T.star + 0.25, 80);
-    S.add(this.window);
+    this.world.add(this.window);
 
     // ---- people ----
     const figs: [RealFigure, RealFigure] = [he, she];
     const idles = ['77_02', '111_28', '142_15', '79_71', '13_04', '13_05', '140_06'];
     await this.folk.init(idles, [run, runB]);
-    S.add(this.folk.crowd);
+    this.world.add(this.folk.crowd);
     const pal = [col('cyan', 1.2), col('white', 1.2).lerp(col('cyan', 1.2), 0.35), col('violet', 1.1).lerp(col('white', 1.1), 0.45), col('blue', 1.2).lerp(col('cyan', 1.2), 0.5), col('gold', 1.1).lerp(col('white', 1.1), 0.55), col('white', 1.1).lerp(col('pink', 1.1), 0.2)];
     // the stream: the train's crowd first (they come down the stairs behind them), then more and more
     const nS = 260;
@@ -201,7 +203,7 @@ export default class Run extends Scene {
 
     // ---- prints, pigeons, splashes ----
     this.addPrints();
-    S.add(this.prints);
+    this.world.add(this.prints);
     const pr = mulberry32(17);
     const birds: { p: THREE.Vector3; t0: number; away: THREE.Vector3 }[] = [];
     const legB = this.legs[1]!;
@@ -211,9 +213,9 @@ export default class Run extends Scene {
       birds.push({ p, t0: legB.t0 + (s - legB.s0 - 3.5) / PACE + pr() * 0.2, away: V(pr() - 0.5, 0, -1 - pr()) });
     }
     this.pigeons = new Pigeons(birds, col('#ffb070', 1));
-    S.add(this.pigeons);
+    this.world.add(this.pigeons);
     this.addSplashes();
-    S.add(this.splashes);
+    this.world.add(this.splashes);
     // the wet street's reflection (the city renders the scene again, mirrored): only the two of them in it
     mirrorOnly(this.city, [this.folk.crowd, this.prints, this.splashes, this.pigeons, this.trails, this.window]);
   }
@@ -286,8 +288,8 @@ export default class Run extends Scene {
     P.scatter(50, V(645, 0, 125.4), V(700, 0, 125.4), V(0, 0, 1), T.I + 0.8, T.J + 1, cols, 45, 0.6, 1.0);
     // J–L: the overpass stair rails and the deck's railing, a long line of hands
     P.scatter(40, V(1132.65, 0.15, 132.5), V(1132.65, this.R3.at(9999).y, 147.5), V(1, 0, 0), T.J + 0.6, T.L + 1, cols, 51, 0.9, 1.0);
-    const ov = this.city.overpass, ox = (ov?.x ?? 1144) - 8.6, oy = ov?.y ?? 8.5;
-    P.scatter(120, V(ox, oy, 150), V(ox, oy, 215), V(1, 0, 0), T.J + 1.4, T.L + 2.2, cols, 52, 0.85, 1.05);
+    const ov = this.city.overpass as ({ y: number; walk?: [number, number] }) | null, ox = (ov?.walk?.[0] ?? 1135) + 0.1, oy = ov?.y ?? 8.5;
+    P.scatter(120, V(ox, oy, 152), V(ox, oy, 215), V(1, 0, 0), T.J + 1.4, T.L + 2.2, cols, 52, 0.85, 1.05);
     P.build();
   }
 
@@ -427,7 +429,7 @@ export default class Run extends Scene {
     this.pigeons.visible = leg.id === 'B' || leg.id === 'A';
     this.splashes.update(tm);
 
-    S.render(this.ctx.renderer, out);
+    shiftRender(this.ctx.renderer, S.scene, S.cam, this.world, this.city, out, S.bg);
     // ---- post ----
     let flash = 0;
     for (const [a] of this.freezes) flash = Math.max(flash, t >= a ? Math.exp(-(t - a) * 9) * 0.85 : 0);

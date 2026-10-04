@@ -58,18 +58,23 @@ export function passengerMaterial(ghost: THREE.Color, glow: THREE.Color) {
         float f = clamp(abs(dot(n, v)), 0.0, 1.0), rim = 1.0 - f;
         // the ghost, lit by its phone (and a little by the car)
         vec3 g = color * (0.05 + 0.3 * pow(rim, 1.5) + 0.8 * pow(rim, 4.0));
-        vec3 wn = normalize(vWN);
-        vec3 d = phone.xyz - vW; float dd = dot(d, d);
-        float pl = phone.w * 0.03 / (0.02 + dd) * (max(dot(wn, d * inversesqrt(max(dd, 1e-5))), 0.0) * 0.9 + 0.1);
-        g += phoneC * pl * (0.35 + 0.65 * f);
+        if (phone.w > 0.0) {
+          vec3 wn = normalize(vWN);
+          vec3 d = phone.xyz - vW; float dd = dot(d, d);
+          float pl = phone.w * 0.03 / (0.02 + dd) * (max(dot(wn, d * inversesqrt(max(dd, 1e-5))), 0.0) * 0.9 + 0.1);
+          g += phoneC * pl * (0.35 + 0.65 * f);
+        }
         g += fill * (0.3 + 0.7 * rim);
-        // the person of light
-        float lum = max(glow.r, max(glow.g, glow.b));
-        float flow = n3(vec3(vW.x * 3.0, vW.y * 2.2 - time * 1.1, vW.z * 3.0));
-        float bands = smoothstep(0.55, 0.9, flow);
-        float glint = step(0.985, h3(floor(vW * 90.0) + floor(time * 8.0))) * f;
-        float r2 = rim * rim, r4 = r2 * r2;
-        vec3 L = glow * (0.07 + 0.35 * bands + 0.9 * r2 + 2.2 * r4 * r2) + mix(glow, vec3(lum), 0.6) * 1.6 * r4 * r4 + vec3(lum) * (0.12 * pow(f, 8.0) + 1.5 * glint);
+        vec3 L = g;
+        if (lit > 0.001) {
+          // the person of light
+          float lum = max(glow.r, max(glow.g, glow.b));
+          float flow = n3(vec3(vW.x * 3.0, vW.y * 2.2 - time * 1.1, vW.z * 3.0));
+          float bands = smoothstep(0.55, 0.9, flow);
+          float glint = step(0.985, h3(floor(vW * 90.0) + floor(time * 8.0))) * f;
+          float r2 = rim * rim, r4 = r2 * r2;
+          L = glow * (0.07 + 0.35 * bands + 0.9 * r2 + 2.2 * r4 * r2) + mix(glow, vec3(lum), 0.6) * 1.6 * r4 * r4 + vec3(lum) * (0.12 * pow(f, 8.0) + 1.5 * glint);
+        }
         gl_FragColor = vec4(mix(g, L, lit) * level, 1.0);
       }`,
   });

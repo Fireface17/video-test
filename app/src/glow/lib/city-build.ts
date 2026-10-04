@@ -5,7 +5,7 @@
 //   fire escapes, lamp posts, hydrants, cars…) with per-vertex materials and per-instance position, yaw,
 //   scale, colour and light level.
 import * as THREE from 'three';
-import { CITY_GLSL, FACADE_GLSL, FACADE_VS, ROOF_GLSL, type CityUniforms } from './city-glsl';
+import { CITY_GLSL, FACADE_GLSL, FACADE_VS, OPEN_GLSL, ROOF_GLSL, type CityUniforms } from './city-glsl';
 
 // ---------------------------------------------------------------- merging
 
@@ -88,8 +88,10 @@ export function facadeMaterial(U: CityUniforms, lod: number, glass: boolean) {
     fragmentShader: /* glsl */ `
       varying vec3 vW, vN; varying vec4 vF0, vF1, vF2, vF3;
       ${CITY_GLSL}
+      ${OPEN_GLSL}
       ${FACADE_GLSL}
       void main() {
+        openCut(vW);
         vec3 N = normalize(vN), V = normalize(vW - cameraPosition);
         vec3 c = facade(vW, N, V, vF0, vF1, vF2, vF3);
         gl_FragColor = vec4(cityFog(c, vW, vPG.x), 1.0);
@@ -185,9 +187,11 @@ export function buildingMaterial(U: CityUniforms) {
     fragmentShader: /* glsl */ `
       varying vec3 vW, vN, vC, vS; varying vec4 vF0, vF1, vF2, vF3;
       ${CITY_GLSL}
+      ${OPEN_GLSL}
       ${FACADE_GLSL}
       ${ROOF_GLSL}
       void main() {
+        openCut(vW);
         vec3 N = normalize(vN), V = normalize(vW - cameraPosition);
         vec3 c = N.y > 0.5 ? roofShade(vW, vC, vS, vF0.x, vPG.x) : vF0.y > 6.5 ? vF2.rgb * (ambient(N) + streetLight(vW.xz + N.xz * 2.0, vW.y, vPG.x) * 0.4) : facade(vW, N, V, vF0, vF1, vF2, vF3);
         gl_FragColor = vec4(cityFog(c, vW, vPG.x), 1.0);
@@ -396,7 +400,7 @@ export function ringBatch(geo: THREE.BufferGeometry, list: RInst[], mat: THREE.M
  * 0 instance colour × rgb, 1 fixed albedo rgb, 2 emissive rgb × instance light × power, 3 glass,
  * 4 emissive rgb × instance light (no power: car lights), 5 iron bars (cut out), 6 slats (cut out).
  */
-export const M = { TINT: 0, ALB: 1, LAMP: 2, GLASS: 3, LIGHT: 4, BARS: 5, SLATS: 6, WOOD: 7, STRIPES: 8, SIGNAL: 9, LEAVES: 10 } as const;
+export const M = { TINT: 0, ALB: 1, LAMP: 2, GLASS: 3, LIGHT: 4, BARS: 5, SLATS: 6, WOOD: 7, STRIPES: 8, SIGNAL: 9, LEAVES: 10, LATTICE: 11, TIES: 12 } as const;
 
 /** A unit box (x, z in [-0.5, 0.5], y in [0, 1]) without its bottom face. */
 export function boxNoBottom() {
@@ -457,6 +461,15 @@ export class KitBuilder {
     const m = new THREE.Matrix4().compose(new THREE.Vector3(cx, cy, cz), new THREE.Quaternion().setFromEuler(new THREE.Euler(rotX, rotY, 0, 'YXZ')), new THREE.Vector3(w, h, 1));
     return this.add(new THREE.PlaneGeometry(1, 1), m, v);
   }
+  /** a triangle (counter-clockwise seen from its front) */
+  tri(a: number[], b: number[], c: number[], v: number[]) {
+    const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), C = new THREE.Vector3(...c);
+    const n = new THREE.Vector3().subVectors(B, A).cross(new THREE.Vector3().subVectors(C, A)).normalize();
+    const base = this.P.length / 3;
+    for (const p of [A, B, C]) this.push(p, n, v, p);
+    this.I.push(base, base + 1, base + 2);
+    return this;
+  }
   /** a quad from four corners (a, b, c, d counter-clockwise seen from its front), both sides drawn by the material */
   poly4(a: number[], b: number[], c: number[], d: number[], v: number[]) {
     const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), C = new THREE.Vector3(...c), D = new THREE.Vector3(...d);
@@ -516,10 +529,19 @@ export function kitMaterial(U: CityUniforms, o: { side?: THREE.Side; streetK?: n
         float ry = vL.y - 0.05;
         if (mode > 4.5 && mode < 5.5 && fract((vL.x + vL.z) * 8.0) > 0.2 && ry > 0.06 && ry < 0.82) discard;
         if (mode > 5.5 && mode < 6.5 && fract(vL.y * 4.2) > 0.3) discard;
+        // lattice girders (an X web between flanges), open ties of the el's deck
+        if (mode > 10.5 && mode < 11.5) {
+          float a1 = abs(fract((vL.z + vL.y) * 0.85) - 0.5), a2 = abs(fract((vL.z - vL.y) * 0.85) - 0.5);
+          float web = step(min(a1, a2), 0.07);
+          float flange = step(vL.y, 0.12) + step(0.88, vL.y);
+          if (web + flange < 0.5) discard;
+        }
+        if (mode > 11.5 && fract(vL.z / 0.62) > 0.42) discard;
         // leaves: a ragged canopy (holes where the noise is low), lighter and darker clumps
         float leafN = vnoise(vL.xz * 2.2 + vL.y * 1.7 + vCol.a * 9.0);
         if (mode > 9.5 && leafN < 0.36) discard;
         vec3 alb = mode < 0.5 ? vCol.rgb * vV.rgb : vV.rgb;
+        alb *= mix(1.0, 0.8 + 0.4 * h11(floor(vL.z / 0.62) + 2.0), step(11.5, mode));
         alb *= mix(1.0, 0.6 + 0.8 * leafN, step(9.5, mode));
         // stripes (awnings with k > 0.5; Con Ed stacks: orange and white bands)
         float stripeM = step(7.5, mode) * step(mode, 8.5);

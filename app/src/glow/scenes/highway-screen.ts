@@ -101,7 +101,7 @@ interface SWord { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; t0: number; w:
 export class ScreenPicture {
   scene = new THREE.Scene();
   cam = new THREE.OrthographicCamera(-ASPECT / 2, ASPECT / 2, 1, 0, -1, 1);
-  rt = makeRT(1280, Math.round(1280 / ASPECT));
+  rt = makeRT(832, Math.round(832 / ASPECT));
   u = { uSunY: { value: -0.2 }, uBright: { value: 1 }, uTime: { value: 0 }, uDawn: { value: 0 } };
   words: SWord[] = [];
   R = 0.8;
@@ -232,44 +232,49 @@ export class GiantScreen extends THREE.Group {
         void main() {
           vec2 uv = vUv;
           float g = uGlitch;
-          float q = floor(uT * 14.0);                          // the glitch changes 14 times a second
-          // ---- tearing: horizontal bands slide sideways
-          float bandI = floor(uv.y * 22.0);
-          float tb = h2(vec2(bandI, q));
-          float tear = step(1.0 - 0.32 * g, tb) * (h2(vec2(bandI, q + 3.0)) - 0.5) * 0.22 * g;
-          // a slow roll of the whole picture
-          uv.x += tear;
-          uv.y = fract(uv.y + 0.03 * g * step(0.75, h1(q * 1.7)) * (h1(q) - 0.5));
-          // ---- modules (the LED cabinets: 28 x 12)
-          vec2 mgrid = vec2(28.0, 12.0);
-          vec2 mi = floor(vUv * mgrid);
-          float mh = h2(mi + 0.5);
-          // ---- sample the picture through an RGB split
-          float split = 0.006 * g + 0.004 * g * step(0.6, h1(q + 9.0));
-          vec3 c = vec3(texture2D(pic, uv + vec2(split, 0.0)).r, texture2D(pic, uv).g, texture2D(pic, uv - vec2(split, 0.0)).b);
-          // ---- glitched modules: colour swapped or frozen bright
-          float bad = step(1.0 - 0.14 * g, h2(mi + q * 0.37));
-          c = mix(c, c.brg * vec3(1.3, 0.4, 1.4), bad * step(0.5, h2(mi + 7.0)));
-          c = mix(c, vec3(0.9, 1.0, 0.95) * 1.4, bad * step(h2(mi + 3.0), 0.18));
-          // ---- the dead block (upper left, appears as the glitch takes hold)
-          vec2 db = (vUv - vec2(0.13, 0.6)) / vec2(0.15, 0.22);
-          float dead = step(0.0, db.x) * step(db.x, 1.0) * step(0.0, db.y) * step(db.y, 1.0) * step(0.18, g);
-          float deadEdge = dead * (1.0 - step(0.03, min(min(db.x, 1.0 - db.x), min(db.y, 1.0 - db.y))));
-          c = mix(c, vec3(0.0), dead);
-          c += vec3(0.5, 0.05, 0.4) * deadEdge * 1.5;
-          // ---- scanlines: a rolling dark bar and fine lines
-          float bar = exp(-pow((fract(vUv.y - uT * 0.9) - 0.5) / 0.06, 2.0));
-          c *= 1.0 - 0.55 * g * bar;
-          float lines = 0.5 + 0.5 * sin(vUv.y * res.y * 3.14159);
-          float fwl = fwidth(vUv.y * res.y);
-          c *= mix(1.0, 0.55 + 0.6 * lines, g * (1.0 - smoothstep(0.4, 0.9, fwl)));
-          // ---- whole-frame flicker
-          c *= 1.0 - 0.6 * g * step(0.72, h1(floor(uT * 30.0)));
-          // ---- the cascade: module by module to black (each flashes as it dies)
-          float dieAt = 0.04 + mh * 0.9;
-          float flash = smoothstep(dieAt - 0.06, dieAt, uOff) * (1.0 - step(dieAt, uOff)) * step(0.001, uOff);
-          c = mix(c, vec3(1.2, 1.1, 1.0) * 0.8, flash * 0.6);
-          c *= 1.0 - step(dieAt, uOff) * step(0.001, uOff);
+          vec3 c;
+          if (g < 0.001 && uOff < 0.001) {
+            c = texture2D(pic, uv).rgb;
+          } else {
+            float q = floor(uT * 14.0);                          // the glitch changes 14 times a second
+            // ---- tearing: horizontal bands slide sideways
+            float bandI = floor(uv.y * 22.0);
+            float tb = h2(vec2(bandI, q));
+            float tear = step(1.0 - 0.32 * g, tb) * (h2(vec2(bandI, q + 3.0)) - 0.5) * 0.22 * g;
+            // a slow roll of the whole picture
+            uv.x += tear;
+            uv.y = fract(uv.y + 0.03 * g * step(0.75, h1(q * 1.7)) * (h1(q) - 0.5));
+            // ---- modules (the LED cabinets: 28 x 12)
+            vec2 mgrid = vec2(28.0, 12.0);
+            vec2 mi = floor(vUv * mgrid);
+            float mh = h2(mi + 0.5);
+            // ---- sample the picture through an RGB split
+            float split = 0.006 * g + 0.004 * g * step(0.6, h1(q + 9.0));
+            c = vec3(texture2D(pic, uv + vec2(split, 0.0)).r, texture2D(pic, uv).g, texture2D(pic, uv - vec2(split, 0.0)).b);
+            // ---- glitched modules: colour swapped or frozen bright
+            float bad = step(1.0 - 0.14 * g, h2(mi + q * 0.37));
+            c = mix(c, c.brg * vec3(1.3, 0.4, 1.4), bad * step(0.5, h2(mi + 7.0)));
+            c = mix(c, vec3(0.9, 1.0, 0.95) * 1.4, bad * step(h2(mi + 3.0), 0.18));
+            // ---- the dead block (upper left, appears as the glitch takes hold)
+            vec2 db = (vUv - vec2(0.13, 0.6)) / vec2(0.15, 0.22);
+            float dead = step(0.0, db.x) * step(db.x, 1.0) * step(0.0, db.y) * step(db.y, 1.0) * step(0.18, g);
+            float deadEdge = dead * (1.0 - step(0.03, min(min(db.x, 1.0 - db.x), min(db.y, 1.0 - db.y))));
+            c = mix(c, vec3(0.0), dead);
+            c += vec3(0.5, 0.05, 0.4) * deadEdge * 1.5;
+            // ---- scanlines: a rolling dark bar and fine lines
+            float bar = exp(-pow((fract(vUv.y - uT * 0.9) - 0.5) / 0.06, 2.0));
+            c *= 1.0 - 0.55 * g * bar;
+            float lines = 0.5 + 0.5 * sin(vUv.y * res.y * 3.14159);
+            float fwl = fwidth(vUv.y * res.y);
+            c *= mix(1.0, 0.55 + 0.6 * lines, g * (1.0 - smoothstep(0.4, 0.9, fwl)));
+            // ---- whole-frame flicker
+            c *= 1.0 - 0.6 * g * step(0.72, h1(floor(uT * 30.0)));
+            // ---- the cascade: module by module to black (each flashes as it dies)
+            float dieAt = 0.04 + mh * 0.9;
+            float flash = smoothstep(dieAt - 0.06, dieAt, uOff) * (1.0 - step(dieAt, uOff)) * step(0.001, uOff);
+            c = mix(c, vec3(1.2, 1.1, 1.0) * 0.8, flash * 0.6);
+            c *= 1.0 - step(dieAt, uOff) * step(0.001, uOff);
+          }
           // ---- LED structure: round diodes on a black mask, faded where they get smaller than a pixel
           vec2 lp = vUv * res;
           vec2 fw = fwidth(lp);
@@ -281,15 +286,12 @@ export class GiantScreen extends THREE.Group {
           vec3 spc = mix(vec3(1.0, 0.1, 0.05), vec3(0.1, 1.0, 0.3), step(0.5, h2(floor(lp) + 1.7)));
           c += spc * sp * uStuck * 2.0 * (1.0 - sub * 0.7);
           // module seams
-          vec2 mf = fract(vUv * mgrid);
-          vec2 mfw = fwidth(vUv * mgrid);
+          vec2 mf = fract(vUv * vec2(28.0, 12.0));
+          vec2 mfw = fwidth(vUv * vec2(28.0, 12.0));
           float seam = (1.0 - smoothstep(0.0, mfw.x * 1.5 + 1e-4, min(mf.x, 1.0 - mf.x))) + (1.0 - smoothstep(0.0, mfw.y * 1.5 + 1e-4, min(mf.y, 1.0 - mf.y)));
           c *= 1.0 - 0.22 * clamp(seam, 0.0, 1.0) * (1.0 - sub * 0.8);
           // a dead screen is a black glossy slab: the streetlights and the sky glance off it a little
-          vec3 spec;
-          vec3 V = normalize(cameraPosition - vW);
-          vec3 lit = hwLight(vW, vec3(0.0, 0.0, 1.0), V, 0.3, 0.6, spec);
-          vec3 base = hwFog(vec3(0.012) * lit + spec * 0.3, vW, cameraPosition);
+          vec3 base = hwFog(uAmbHi * 0.25 + uLampCol * 0.00004, vW, cameraPosition);
           // its own light reaches us through the haze better than the haze hides it
           float dist = length(vW - cameraPosition);
           gl_FragColor = vec4(base + c * exp(-dist * uFogD * 0.22), 1.0);
