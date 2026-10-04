@@ -4,8 +4,8 @@ The video's plan is `docs/glow/TREATMENT.md` (Russian); the engine, its rules an
 
 ## Files
 
-- `app/src/glow/timeline.ts` — the edit: entries (`intro`, `highway`, `snap1`, `chorus1`, `drop1`, `ghosts`, `snap2`, `chorus2`, `break2`, `bridge`, `chorus3`, `drop3`, `outro`), anchored to lyric lines and sections.
-- `app/src/glow/scenes/<name>.ts` — one module per scene (`ceiling`, `highway`, `snap`, `chorus`, `rave`, `ghosts`, `fall`); helpers for one scene go in `scenes/<name>-*.ts`.
+- `app/src/glow/timeline.ts` — the edit: entries (`intro`, `highway`, `snap1`, `chorus1`, `drop1`, `ghosts`, `chorus2`, `break2`, `bridge`, `chorus3`, `drop3`, `outro`), anchored to lyric lines and sections.
+- `app/src/glow/scenes/<name>.ts` — one module per scene (`ceiling`, `highway`, `rooftop`, `space-chorus`, `cosmos`, `ghosts`, `fall`); helpers for one scene go in `scenes/<name>-*.ts`; `lab-*.ts` are test scenes (`render.ts --lab <name>`).
 - `app/src/glow/lib/` — the shared 3D toolkit (below).
 - Data: `data/glow/lyrics.json` (lines as sung, word times) and `data/glow/audio.json` (beats, which are **not evenly spaced** — the tempo drifts from 150.1 to 152.3 BPM, so always go through `audio.beatAt` / `timeOfBeat` / `downbeats`; sections; envelopes; onsets `kick`, `snare`, `hat`, `vocal`, `chop`).
 
@@ -28,6 +28,12 @@ bun scripts/render.ts stills --t 21.3 --only highway --out ../out/wip/highway
 - `extrude.ts` — `BlockText(text, {family, size, depth, bevel, align, face, side})`: extruded Archivo (default width 125, weight 900), one mesh per word (`words[i].mesh`, `.face`, `.side` materials) for word-by-word slams. `textGeometry()` for one-offs.
 - `shapes.ts` — `starGeometry()` (sticker star), `glowStickGeometry(length, radius)` (groups: 0 = light-filled tube, 1 = plastic caps), `figureGeometry(armsUp)` (a simple standing figure, 1.75 tall, feet at y = 0).
 - `points.ts` — `GlowPoints(n, size)`: additive soft points (sparks, dust, star fields); `set(i, x, y, z, color, k, size)` each frame, then `commit()`.
+- `people.ts` — realistic people (`loadBody('rpm'|'michelle'|'xbot')`, `RealFigure` posed by limb directions / IK, `dance()`, `bakePose()` for instanced crowds, `glowBodyMaterial` (people of light), `ghostBodyMaterial`, `LightMotes`).
+- `stars.ts` — `StarFigures` (people drawn as constellations), `GlowLines`.
+- `lightpaint.ts` — `LightTrail` (text written by a point of light, word-synced with `writtenAt`), `sampleStrokeText` (points along text for particles).
+- `city.ts` — `City`: a night city with interior-mapped windows, lit streets, traffic, haze, clouds, a waking wave and a gold wave; `landmarks.ts` — the Empire State, Chrysler and One WTC.
+- `earth.ts` — `Earth`: the night Earth with city lights that wake in a wave, clouds, atmosphere, dawn.
+- `fonts.ts` — display fonts (Tilt Neon is the artist's name and the neon words).
 
 Scenes are classes extending `Scene` (`engine/scene.ts`); see `app/src/glow/scenes/ceiling.ts` for a complete example: init builds everything, render() poses it as a pure function of `f.t`, then `st.render(...)` and returns post overrides.
 

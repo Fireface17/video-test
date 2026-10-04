@@ -9,7 +9,6 @@ import { col } from '../lib/palette';
 import { GlowPoints } from '../lib/points';
 import { glowStickGeometry } from '../lib/shapes';
 import { RealFigure, bakePose, bend, ghostBodyMaterial, limbDir, loadBody } from '../lib/people';
-import { lightBodyMaterial } from './chorus-dancers';
 
 export default class LabPeople extends Scene {
   st = new Stage(40, 0.05, 900);
@@ -142,4 +141,36 @@ export default class LabPeople extends Scene {
     S.render(this.ctx.renderer, out);
     return { bloom: 0.9, bloomThreshold: 0.8, bloomRadius: 0.85, halation: 0.12, vignette: 0.45, grain: 0.04 };
   }
+}
+
+/** Luminous body: dim core, bright fresnel rim, per-instance colour (instanceColor). */
+function lightBodyMaterial(gain = 1) {
+  return new THREE.ShaderMaterial({
+    fog: true,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { gain: { value: gain } }]),
+    vertexShader: /* glsl */ `
+      #include <fog_pars_vertex>
+      varying vec3 vN; varying vec3 vV; varying vec3 vC;
+      void main() {
+        vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+        vN = normalize(normalMatrix * mat3(instanceMatrix) * normal);
+        vV = normalize(-mvPosition.xyz);
+        vC = instanceColor;
+        gl_Position = projectionMatrix * mvPosition;
+        #include <fog_vertex>
+      }`,
+    fragmentShader: /* glsl */ `
+      #include <fog_pars_fragment>
+      uniform float gain;
+      varying vec3 vN; varying vec3 vV; varying vec3 vC;
+      void main() {
+        float f = clamp(1.0 - abs(dot(normalize(vN + vec3(0.0, 0.0, 1e-5)), normalize(vV))), 0.0, 1.0);
+        vec3 c = vC * gain * (0.12 + 1.6 * pow(f, 2.2) + 2.5 * pow(f, 8.0));
+        gl_FragColor = vec4(c, 1.0);
+        #include <fog_fragment>
+      }`,
+  });
 }

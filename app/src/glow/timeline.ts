@@ -54,9 +54,9 @@ export function makeTimeline(ly: Lyrics, au: AudioData): TimelineEntry[] {
     E('intro', 'ceiling', 0, b.verse1, { params: { mode: 'intro' } }),
     // the camera tilts down out of the sky onto the road
     E('highway', 'highway', b.verse1, b.pre1, X('whip', 0.5, { dir: [0, 1] })),
-    // the night drive burns away in embers, leaving the dark and one glow stick
-    E('snap1', 'rooftop', b.pre1, b.chorus1, X('sparks', 0.7, { color: lin('ember', 1.4), seed: 3 })),
-    // the stick snaps: light
+    // the dawn sun flares white and opens on a rooftop over the night city
+    E('snap1', 'rooftop', b.pre1, b.chorus1, X('light', 0.5)),
+    // the lanterns' star bursts: light
     E('chorus1', 'space-chorus', b.chorus1, b.drop1, { params: { n: 1 }, ...X('light', 0.36) }),
     // the drop breaks the chorus like glass
     E('drop1', 'cosmos', b.drop1, b.verse2, { params: { n: 1 }, ...X('shatter', 0.9, { color: lin('cyan', 1.2), centre: [0.5, 0.45] }) }),
