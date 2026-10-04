@@ -201,7 +201,7 @@ export class Engine {
     return {
       t, dt, lt: t - e.start, p: (t - e.start) / (e.end - e.start), start: e.start, end: e.end, seeked, preroll,
       beat, bar, beatPhase: beat - Math.floor(beat), barPhase: bar - Math.floor(bar),
-      a: this.audio.sample(t), under, tin, tout,
+      a: this.audio.sample(t), under, tin, tout, win: this.win(e),
     };
   }
 

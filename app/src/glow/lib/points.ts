@@ -36,8 +36,8 @@ export class GlowPoints extends THREE.Points {
           vC = color * fog;
           // projected size in px; tiny points keep a minimum footprint and lose brightness instead
           float px = size * psize * projectionMatrix[1][1] * pxScale / max(d, 1e-3);
-          float m = max(px, 1.5);
-          vC *= min(1.0, (px * px) / (m * m)) ;
+          float m = clamp(px, 1.5, 160.0 * pxScale / 540.0);
+          vC *= min(1.0, (px * px) / (m * m)) * smoothstep(0.25, 0.9, d); // (a point at the lens would fill the frame)
           gl_PointSize = m;
           gl_Position = projectionMatrix * mv;
         }`,

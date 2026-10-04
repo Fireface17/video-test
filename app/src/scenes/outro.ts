@@ -793,6 +793,7 @@ export default class Outro extends Scene {
     return o.render({
       t: tau, dt: 1 / 60, lt: tau, p: tau / Math.max(1e-3, this.openEnd), start: 0, end: this.openEnd, seeked: true, preroll: false,
       beat, bar, beatPhase: beat - Math.floor(beat), barPhase: bar - Math.floor(bar), a: au.sample(tau), under: null, tin: 1, tout: 0,
+      win: [0, this.openEnd],
     }, out) as Record<string, any> | undefined;
   }
 }

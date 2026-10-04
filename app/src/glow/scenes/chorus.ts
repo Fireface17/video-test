@@ -156,7 +156,8 @@ export default class Chorus extends Scene {
       this.tr.render(this.ctx.renderer, spec, this.rtA.texture, this.rtB.texture, (t - (near.start - spec.dur / 2)) / spec.dur, out);
     } else post = this.renderSeg(f, seg, out);
     // the snap's white-out carries over the first frames of the chorus
-    const inFlash = this.n === 3 ? 0 : Math.pow(0.5, Math.max(0, t - this.ctx.start) / 0.09) * (t - this.ctx.start < 0.6 ? 1 : 0);
+    const dt0 = t - this.ctx.start;
+    const inFlash = this.n === 3 ? 0 : (dt0 < 0 ? smoothstep(f.win[0], this.ctx.start, t) : Math.pow(0.5, dt0 / 0.09) * (dt0 < 0.6 ? 1 : 0)) * 0.85;
     const cutFlash = 0; // (sub-scene cuts have their own transitions)
     return {
       bloom: 0.95, bloomThreshold: 0.78, bloomRadius: 0.85, halation: 0.12, vignette: 0.42, grain: 0.05, ca: 0.9,

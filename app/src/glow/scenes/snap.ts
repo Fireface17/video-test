@@ -197,7 +197,7 @@ export default class Snap extends Scene {
       const [lx, ty] = lay[i]!;
       this.place(w, this.frames[i]!.clone().add(new THREE.Vector3((lx + bw / Wp / 2 - 0.5) * Wp, (0.5 - ty) * Hp, 0)));
     });
-    // the hand swoops up into frame at the cut; then from line to line
+    // the hand rises into frame under the incoming transition (the entry is drawn before ctx.start); then line to line
     this.enter(a, this.frames[0]!.clone().add(new THREE.Vector3(0.1, -0.2, 0.03)), Math.max(0.3, L4.words[0]!.start - (start - 0.35)), ease.inOutCubic);
     [b, c, d].forEach((w, i) => {
       const prev = [a, b, c][i]!;
@@ -291,7 +291,7 @@ export default class Snap extends Scene {
       S.add(im);
     });
     const total = rows.reduce((s, f) => s + f.length, 0);
-    this.crowdSticks = new StickSwarm(total, 0.3, 0.014, this.L, { gripY: -0.1, radial: 8 });
+    this.crowdSticks = new StickSwarm(total, 0.42, 0.019, this.L, { gripY: -0.15, radial: 8 });
     this.crowdSticks.u.uCapDim.value = 0.12;
     S.add(this.crowdSticks);
   }
@@ -483,7 +483,7 @@ export default class Snap extends Scene {
     return { k, n };
   }
 
-  /** The white-out into the chorus (and the snap's pop), common to both entries. */
+  /** The white-out into the chorus, peaking on the cut; common to both entries. */
   private snapPost(t: number, sn: number, extra: PostOverrides = {}): PostOverrides {
     const { end } = this.ctx;
     // white-out peaking on the cut (the entry is still drawn under the next one's 'light' transition after it)
@@ -502,8 +502,9 @@ export default class Snap extends Scene {
     const L7 = ls[3]!;
     // ---- tension and snap
     const tens = this.tension(t, L7.pen.tStart - 0.05);
-    const bend = (tens.k / Math.max(1, tens.n)) * 3.4;
+    const strain = tens.k / Math.max(1, tens.n);
     const sn = t - this.snapT;
+    const bend = strain * 3.4 * (1 + (sn < 0 ? 0.035 * strain * (hash(frameIdx(t), 9) - 0.5) : 0));
     const kink = sn > 0 ? 0.75 * springStep(sn, 7, 0.45) : 0;
     const su = this.stick.u;
     su.uTime.value = t;
@@ -705,7 +706,7 @@ export default class Snap extends Scene {
       this.crowd.forEach((im, g) => this.figs[g]!.forEach((fg, i) => {
         if (k + 6 > this.sparks.n) return;
         im.getMatrixAt(i, _m);
-        const p = handL.clone().add(_v.set(0, 0.12, 0)).applyMatrix4(_m);
+        const p = handL.clone().add(_v.set(0, 0.16, 0)).applyMatrix4(_m);
         this.burst(t, this.snapT + fg.v * 0.03, p, k, 6, 31 + Math.floor(fg.seed * 1000), fg.c, 1.5, 0.01);
         k += 6;
       }));

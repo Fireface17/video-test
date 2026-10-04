@@ -53,6 +53,12 @@ export interface Frame {
   tin: number;
   /** 0..1 progress through the overlap with the next scene (0 when not overlapping). */
   tout: number;
+  /**
+   * The window this scene is actually drawn in: [start, end] padded by half of the transitions into and
+   * out of it (see TimelineEntry.transition). Between win[0] and start it is the incoming half of a
+   * transition, between end and win[1] the outgoing half.
+   */
+  win: [number, number];
 }
 
 export type PostOverrides = Partial<PostParams>;
