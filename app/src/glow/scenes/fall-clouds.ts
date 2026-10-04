@@ -112,51 +112,49 @@ export class CloudPuffs extends THREE.Mesh {
         lr: { value: [1, 1, 1] },
         clearR: { value: 1.2 },
       },
+      // light, fog and the near fade are per vertex (a puff is a soft blob: a bilinear gradient across it is
+      // plenty, and the fragment shader stays a texture read); only the clearing round the glows is per pixel
       vertexShader: /* glsl */ `
         attribute vec3 iPos; attribute vec4 iCol; attribute vec3 iSR;
-        uniform vec3 camRight, camUp;
-        varying vec2 vUv; varying vec2 vQ; varying vec4 vCol; varying vec3 vW; varying float vDepth;
+        uniform vec3 camRight, camUp, camBack;
+        uniform vec3 fogCol, sky, sun, sunDir; uniform float fogDen, fogAlpha; uniform vec2 nearFade;
+        uniform vec3 lp[3]; uniform vec3 lc[3]; uniform float lr[3];
+        varying vec2 vUv; varying vec3 vC; varying vec3 vL; varying float vA; varying vec3 vW;
         void main() {
           float c = cos(iSR.y), s = sin(iSR.y);
           vec2 q = vec2(c * position.x - s * position.y, s * position.x + c * position.y);
-          vQ = q * 2.0;
           vec3 w = iPos + (camRight * q.x + camUp * q.y) * iSR.x;
           vW = w;
           vec4 mv = viewMatrix * vec4(w, 1.0);
-          vDepth = -mv.z;
+          float depth = -mv.z;
           gl_Position = projectionMatrix * mv;
           float cell = iSR.z;
           vUv = (uv + vec2(mod(cell, 2.0), floor(cell / 2.0))) * 0.5;
-          vCol = iCol;
+          // a soft-sphere normal at this corner, for the sky above and the sun's side
+          vec3 n = normalize(camRight * q.x + camUp * q.y + camBack * 0.6);
+          vec3 light = sky * (0.55 + 0.45 * n.y) + sun * pow(clamp(0.5 + 0.5 * dot(n, sunDir), 0.0, 1.0), 1.5);
+          for (int i = 0; i < 3; i++) {
+            vec3 dv = lp[i] - w;
+            float q2 = dot(dv, dv) / (lr[i] * lr[i]);
+            light += lc[i] / ((1.0 + q2) * (1.0 + q2));
+          }
+          float f = 1.0 - exp(-fogDen * fogDen * depth * depth);
+          vC = mix(iCol.rgb, fogCol, f);
+          vL = light * (1.0 - f);
+          vA = iCol.a * smoothstep(nearFade.x, nearFade.y, depth) * (1.0 - f * fogAlpha);
         }`,
       fragmentShader: /* glsl */ `
         uniform sampler2D map;
-        uniform vec3 camRight, camUp, camBack;
-        uniform vec3 fogCol, sky, sun, sunDir; uniform float fogDen, fogAlpha; uniform vec2 nearFade;
-        uniform vec3 lp[3]; uniform vec3 lc[3]; uniform float lr[3]; uniform float clearR;
-        varying vec2 vUv; varying vec2 vQ; varying vec4 vCol; varying vec3 vW; varying float vDepth;
+        uniform vec3 lp[3]; uniform vec3 lc[3]; uniform float clearR;
+        varying vec2 vUv; varying vec3 vC; varying vec3 vL; varying float vA; varying vec3 vW;
         void main() {
           float d = texture2D(map, vUv).r;
-          float a = d * vCol.a * smoothstep(nearFade.x, nearFade.y, vDepth);
+          float a = d * vA;
           if (a < 0.002) discard;
-          // soft-sphere normal from the billboard coordinate
-          vec2 q = vQ * 1.15;
-          vec3 n = normalize(camRight * q.x + camUp * q.y + camBack * sqrt(max(0.0, 1.0 - dot(q, q))));
-          float up = n.y;
-          vec3 light = sky * (0.55 + 0.45 * up) + sun * pow(clamp(0.5 + 0.5 * dot(n, sunDir), 0.0, 1.0), 1.5) * (1.4 - d);
+          // thin out (keeping the light) right round the two figures, so a billboard never slices one
           float clear = 1.0;
-          for (int i = 0; i < 3; i++) {
-            vec3 dv = lp[i] - vW;
-            float r2 = dot(dv, dv);
-            float q2 = r2 / (lr[i] * lr[i]);
-            float wrap = 0.35 + 0.65 * max(dot(n, dv * inversesqrt(max(r2, 1e-4))), 0.0);
-            light += lc[i] * wrap / ((1.0 + q2) * (1.0 + q2));
-            if (dot(lc[i], vec3(1.0)) > 0.0) clear = min(clear, smoothstep(0.25, clearR, sqrt(r2)));
-          }
-          vec3 c = vCol.rgb * (0.55 + 0.45 * d) + light * (0.45 + 0.55 * d);
-          float f = 1.0 - exp(-fogDen * fogDen * vDepth * vDepth);
-          c = mix(c, fogCol, f);
-          a *= 1.0 - f * fogAlpha;
+          for (int i = 0; i < 2; i++) if (lc[i].r + lc[i].g + lc[i].b > 0.0) clear = min(clear, smoothstep(0.25, clearR, length(vW - lp[i])));
+          vec3 c = vC * (0.55 + 0.45 * d) + vL * (0.45 + 0.55 * d);
           gl_FragColor = vec4(c * a, a * mix(0.3, 1.0, clear));
         }`,
     });
@@ -189,7 +187,7 @@ export class CloudPuffs extends THREE.Mesh {
       const dx = p.x - cp.x, dy = p.y - cp.y, dz = p.z - cp.z;
       const dep = dx * fw.x + dy * fw.y + dz * fw.z;
       const rad = s.size * 0.5;
-      if (dep < -rad || dep > maxDepth) return;
+      if (dep < this.material.uniforms.nearFade!.value.x || dep > maxDepth) return;
       const sx = Math.abs(dx * right.x + dy * right.y + dz * right.z), sy = Math.abs(dx * upv.x + dy * upv.y + dz * upv.z);
       const md = Math.max(dep, 0);
       if (sx > md * tanW + rad * 1.5 || sy > md * tanH + rad * 1.5) return;

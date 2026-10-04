@@ -16,6 +16,7 @@ import { GlowPoints } from '../lib/points';
 import { GlowFigure, bend, limbDir } from './fall-figure';
 import { CloudPuffs, puffAtlas, type PuffLook, type PuffSpec } from './fall-clouds';
 import { StarStreaks } from './fall-stars';
+import { nebulaMap, nebulaSphere } from './fall-sky';
 
 const FOV = 50;
 const DEG = Math.PI / 180;
@@ -66,6 +67,7 @@ export default class Fall extends Scene {
   private tab!: Float32Array;
   private tab0 = 0;
   sky!: THREE.Mesh;
+  nebSky!: THREE.Mesh;
   fog = new THREE.FogExp2(0x000000, 0.004);
   pair = new THREE.Group();
   figs: GlowFigure[] = []; // 0 = pink (left, arrives), 1 = cyan-blue (the hero)
@@ -105,7 +107,8 @@ export default class Fall extends Scene {
     this.st.bg.copy(col('night'));
     S.fog = this.fog;
     this.sky = skyDome(col('night'), col('dusk', 0.7), col('night'), 500);
-    S.add(this.sky);
+    this.nebSky = nebulaSphere(nebulaMap(512, 256, 4), 4, 470);
+    S.add(this.sky, this.nebSky);
 
     // the golden light ahead (dark until "golden")
     this.sun = softSprite(new THREE.Color(0, 0, 0), 3.2);
@@ -139,7 +142,7 @@ export default class Fall extends Scene {
     // shapes: a few large glows with smaller knots around them)
     for (let z = 90; z > -total - 330; z -= 30) {
       const a0 = rnd() * TAU, r0 = 70 + rnd() * 70, h0 = rnd();
-      for (let k = 0; k < 5; k++) {
+      for (let k = 0; k < 4; k++) {
         const a = a0 + (rnd() - 0.5) * 0.7, r = r0 + (rnd() - 0.5) * 30;
         const big = k === 0;
         add(Math.cos(a) * r, Math.sin(a) * r * 0.8, z + (rnd() - 0.5) * 30, big ? 80 + rnd() * 50 : 25 + rnd() * 35,
@@ -148,7 +151,7 @@ export default class Fall extends Scene {
     }
     // "Through the colors": a many-coloured nebula across the route
     const zc = -this.travel((this.T.through + this.T.blue) / 2), len = this.travel(this.T.blue) - this.travel(this.T.through) + 20;
-    for (let i = 0; i < 240; i++) {
+    for (let i = 0; i < 210; i++) {
       const a = rnd() * TAU, r = 1.2 + Math.pow(rnd(), 1.1) * 22;
       // colour drifts along the nebula: violet and pink first, blue at the far end
       const zz = (rnd() - 0.5) * len, u = zz / len + 0.5;
@@ -168,6 +171,7 @@ export default class Fall extends Scene {
     }
     this.neb = new CloudPuffs(specs, puffAtlas(128, 'nebula'));
     this.neb.renderOrder = 1;
+    (this.neb.material.uniforms.nearFade!.value as THREE.Vector2).set(1.0, 4.2); // big near puffs fade out early (and cost nothing)
     S.add(this.neb);
 
     // stars: a deep column streaming past, and a field at infinity
@@ -279,6 +283,7 @@ export default class Fall extends Scene {
     const drift = new THREE.Vector3(noise1(t * 0.3, 11), noise1(t * 0.27, 12), noise1(t * 0.33, 13)).multiplyScalar(0.12);
     aim(cam, cb.pos.clone().add(drift), cb.target, cb.roll + noise1(t * 0.19, 14) * 0.025, { x: 0, y: 0, z: -1 });
     this.sky.position.copy(cam.position);
+    this.nebSky.position.copy(cam.position);
     this.far.position.copy(cam.position);
 
     // ---- the formation: banks slowly, noses up a little ----
@@ -385,6 +390,9 @@ export default class Fall extends Scene {
     this.sunCore.scale.setScalar(lerp(10, 46, sunK));
     spriteColor(this.sunCore).copy(col('#fff2cc', 2.2)).multiplyScalar(sunK);
     const fogC = deep.clone().lerp(col('ember', 0.05), warm);
+    const nu = (this.nebSky.material as THREE.ShaderMaterial).uniforms;
+    nu.gain!.value = 1.5 + 0.5 * blue + 0.6 * warm;
+    (nu.tint!.value as THREE.Color).setRGB(1, 1, 1).lerp(new THREE.Color(0.6, 0.8, 1.4), blue).lerp(new THREE.Color(9, 4.2, 0.6), smoothstep(0.2, 1, warm));
     this.fog.color.copy(fogC);
     this.neb.setFog(fogC, 0.0065, 0.85);
     this.neb.setAmbient(new THREE.Color(0, 0, 0), col('gold', 0.5).multiplyScalar(sunK), sunDir);
