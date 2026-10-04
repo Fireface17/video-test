@@ -145,8 +145,8 @@ export default class Fall extends Scene {
     const zc = -this.travel((this.T.through + this.T.blue) / 2), len = this.travel(this.T.blue) - this.travel(this.T.through) + 20;
     for (let i = 0; i < 170; i++) {
       const a = rnd() * TAU, r = 1.5 + Math.pow(rnd(), 0.8) * 24;
-      const c = [col('violet'), col('pink'), col('blue'), col('cyan', 0.7), col('violet')][Math.floor(rnd() * 5)]!.multiplyScalar(0.07 + 0.14 * rnd());
-      add(Math.cos(a) * r, Math.sin(a) * r * 0.85, zc + (rnd() - 0.5) * len, 6 + rnd() * 11, c, 0.22 + 0.25 * rnd(), COLORS);
+      const c = [col('violet'), col('pink'), col('blue'), col('cyan', 0.7), col('violet'), col('pink')][Math.floor(rnd() * 6)]!.multiplyScalar(0.1 + 0.22 * rnd());
+      add(Math.cos(a) * r, Math.sin(a) * r * 0.85, zc + (rnd() - 0.5) * len, 6 + rnd() * 11, c, 0.25 + 0.3 * rnd(), COLORS);
     }
     // "and the blue": a vast blue beyond it
     for (let i = 0; i < 46; i++) {
@@ -218,37 +218,35 @@ export default class Fall extends Scene {
   /** Where the pink one is (flying frame): catching up from behind and below, then alongside. */
   private pinkPos(t: number) {
     const T = this.T, k = prog(t, T.s - 0.25, T.reach - 0.05, ease.outCubic);
-    const p = new THREE.Vector3(-5.2, -3.6, 13).lerp(new THREE.Vector3(-0.95, 0, 0.1), k);
-    p.y += Math.sin(Math.PI * k) * 0.9;
+    const p = new THREE.Vector3(-4.6, -1.8, 9.5).lerp(new THREE.Vector3(-0.95, 0, 0.1), k);
+    p.y -= Math.sin(Math.PI * k) * 0.5;
     return p;
   }
 
   /**
-   * Camera without the handheld float (flying frame, the pair at the origin flying toward -z): from the
-   * side of the lone flyer, round and under the two of them, behind them through the nebula, then out to
-   * their left, below, with the golden light ahead.
+   * Camera without the handheld float (flying frame: the pair at the origin flying toward -z, bellies down).
+   * It orbits the line of flight from below: `phi` is the angle round the flight axis from straight below
+   * toward their right, `beta` how far it hangs back. Screen-up is the direction of flight, so they climb
+   * up through the frame, the stars streaming down past them.
    */
   private camBase(t: number): CamPose {
     const T = this.T;
-    const pos = spline3(t, [
-      [T.s, [6.4, -0.6, 0.3]],
-      [T.reach, [5.2, -2.0, 2.5]],
-      [T.touch, [3.9, -2.8, 3.5]],
-      [T.through, [2.1, -2.6, 5.0]],
-      [T.colors, [1.2, -2.3, 5.4]],
-      [T.blue, [0.3, -2.5, 5.0]],
-      [T.g1, [-1.6, -2.8, 4.5]],
-      [T.golden2, [-3.0, -2.3, 3.7]],
-      [T.e, [-3.5, -1.6, 3.2]],
-    ]);
-    const hero = new THREE.Vector3(0.9, 0, -0.25), mid = new THREE.Vector3(0, 0, -0.3);
+    const K = (vals: number[]) => spline(t, [T.s - 0.45, T.s + 0.5, T.reach, T.touch, T.through, T.colors, T.blue, T.g1, T.golden2, T.e].map((k, i) => [k, vals[i]!] as [number, number]));
+    const phi = K([50, 46, 34, 22, 14, 10, 8, 14, 10, 6]) * DEG;
+    const beta = K([22, 24, 30, 34, 40, 42, 36, 32, 38, 40]) * DEG;
+    const R = K([5.2, 5.0, 4.7, 4.4, 4.4, 4.4, 4.5, 4.4, 4.2, 4.1]);
+    const radial = new THREE.Vector3(Math.sin(phi), -Math.cos(phi), 0);
+    const pos = radial.clone().multiplyScalar(R * Math.cos(beta)).add(new THREE.Vector3(0, 0, R * Math.sin(beta)));
+    const hero = new THREE.Vector3(0.9, 0, -0.3), mid = new THREE.Vector3(0, 0, -0.3);
     const target = hero.lerp(mid, prog(t, T.s, T.touch, ease.inOutCubic));
     // the pair sits in the upper part of the frame, the lyrics have the lower third
-    aim(this.st.cam, pos, target, 0);
+    const FWD = { x: 0, y: 0, z: -1 };
+    aim(this.st.cam, pos, target, 0, FWD);
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.st.cam.quaternion);
-    target.addScaledVector(up, -0.22 * pos.distanceTo(target) * Math.tan((FOV / 2) * DEG));
-    const roll = spline(t, [[T.s, 0.16], [T.touch, 0.1], [T.blue, -0.02], [T.e, -0.12]]);
-    aim(this.st.cam, pos, target, roll);
+    target.addScaledVector(up, -0.2 * pos.distanceTo(target) * Math.tan((FOV / 2) * DEG));
+    // rolled so the flight runs diagonally up and to the right
+    const roll = K([-0.5, -0.5, -0.48, -0.45, -0.42, -0.4, -0.4, -0.42, -0.4, -0.38]);
+    aim(this.st.cam, pos, target, roll, FWD);
     return { pos, target, q: this.st.cam.quaternion.clone(), roll };
   }
 
@@ -271,7 +269,7 @@ export default class Fall extends Scene {
     // ---- camera: flies with them, a slow float on top ----
     const cb = this.camBase(t);
     const drift = new THREE.Vector3(noise1(t * 0.3, 11), noise1(t * 0.27, 12), noise1(t * 0.33, 13)).multiplyScalar(0.12);
-    aim(cam, cb.pos.clone().add(drift), cb.target, cb.roll + noise1(t * 0.19, 14) * 0.025);
+    aim(cam, cb.pos.clone().add(drift), cb.target, cb.roll + noise1(t * 0.19, 14) * 0.025, { x: 0, y: 0, z: -1 });
     this.sky.position.copy(cam.position);
     this.far.position.copy(cam.position);
 
@@ -357,7 +355,7 @@ export default class Fall extends Scene {
     this.neb.setLight(2, hands, flareC.clone().multiplyScalar(0.3), 2.0);
 
     // ---- space: night-blue, a blue glow beyond the nebula, then the golden light ahead ----
-    const sunDir = new THREE.Vector3(0.12, 0.16, -1).normalize();
+    const sunDir = new THREE.Vector3(0.1, 0.24, -1).normalize();
     const sunK = smoothstep(T.g1 - 0.2, T.g1 + 2.5, t) * 0.25 + 0.75 * prog(t, T.g2 - 0.6, T.e, ease.inOutQuad);
     const su = (this.sky.material as THREE.ShaderMaterial).uniforms;
     const deep = col('night').lerp(col('blue', 0.06), blue);
@@ -370,12 +368,12 @@ export default class Fall extends Scene {
     const sunPos = sunDir.clone().multiplyScalar(300).add(cam.position);
     this.sun.position.copy(sunPos);
     this.sun.quaternion.copy(cam.quaternion);
-    this.sun.scale.setScalar(lerp(60, 520, sunK));
-    spriteColor(this.sun).copy(col('gold', 0.9).lerp(col('ember', 0.9), 0.25)).multiplyScalar(sunK * (0.8 + 0.6 * warm));
+    this.sun.scale.setScalar(lerp(50, 360, sunK));
+    spriteColor(this.sun).copy(col('gold', 0.55).lerp(col('ember', 0.55), 0.3)).multiplyScalar(sunK * (0.7 + 0.5 * warm));
     this.sunCore.position.copy(sunPos);
     this.sunCore.quaternion.copy(cam.quaternion);
-    this.sunCore.scale.setScalar(lerp(16, 120, sunK));
-    spriteColor(this.sunCore).copy(col('#fff2cc', 2.5)).multiplyScalar(sunK);
+    this.sunCore.scale.setScalar(lerp(10, 46, sunK));
+    spriteColor(this.sunCore).copy(col('#fff2cc', 2.2)).multiplyScalar(sunK);
     const fogC = deep.clone().lerp(col('ember', 0.05), warm);
     this.fog.color.copy(fogC);
     this.neb.setFog(fogC, 0.0065, 0.85);
@@ -460,7 +458,7 @@ export default class Fall extends Scene {
       ly.neon.visible = vis;
       if (!vis) continue;
       const age = t - appear;
-      const p = new THREE.Vector3((0.02 - 0.012 * age) * halfW + noise1(t * 0.3, 200 + ly.line.i) * 0.01, (-0.7 + 0.04 * age) * halfH, -TEXT_DIST).applyQuaternion(cb.q).add(cb.pos);
+      const p = new THREE.Vector3((0.36 - 0.01 * age) * halfW + noise1(t * 0.3, 200 + ly.line.i) * 0.01, (-0.74 + 0.035 * age) * halfH, -TEXT_DIST).applyQuaternion(cb.q).add(cb.pos);
       ly.neon.position.copy(p);
       ly.neon.quaternion.copy(cb.q).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, noise1(t * 0.17, 220 + ly.line.i) * 0.06, noise1(t * 0.23, 230 + ly.line.i) * 0.01)));
       const fadeOut = ly.last ? 1 : 1 - smoothstep(ly.t1 + 0.15, gone, t);
@@ -469,8 +467,6 @@ export default class Fall extends Scene {
       for (const r of ly.neon.rows) for (const wd of r.sign.words) (wd.mat.uniforms.glass!.value as THREE.Color).copy(ly.glass).multiplyScalar(glass);
     }
 
-    /*DBGHIDE*/ for (const o of [this.far]) o.visible = t > 159.35;
-    if (t < 159.35) { const hp = this.figs[1]!.getWorldPosition(new THREE.Vector3()); const pp = this.figs[0]!.getWorldPosition(new THREE.Vector3()); console.error('DBG', t.toFixed(3), 'cam', cam.position.toArray().map((x) => x.toFixed(2)).join(','), 'hero', hp.toArray().map((x) => x.toFixed(2)).join(','), 'pink', pp.toArray().map((x) => x.toFixed(2)).join(','), 'fov', cam.fov, 'tgt', cb.target.toArray().map((x) => x.toFixed(2)).join(',')); }
     this.st.render(this.ctx.renderer, out);
     return {
       bloom: 0.9 + 0.3 * warm, bloomThreshold: 0.8, bloomRadius: 0.85, halation: 0.12 + 0.16 * warm,

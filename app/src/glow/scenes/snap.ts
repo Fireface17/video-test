@@ -99,7 +99,7 @@ export default class Snap extends Scene {
     const { params, audio, start, end } = this.ctx;
     this.n = params.n === 2 ? 2 : 1;
     this.beats = audio.beats.filter((b) => b >= start - 0.01 && b <= end + 0.01);
-    this.snapT = end - 0.2;
+    this.snapT = end - (this.n === 2 ? 0.24 : 0.2);
     const S = this.st.scene;
     const fogCol = col('dusk', this.n === 1 ? 0.55 : 0.8);
     this.st.bg.copy(fogCol);
@@ -191,7 +191,7 @@ export default class Snap extends Scene {
       this.place(w, this.frames[i]!.clone().add(new THREE.Vector3((lx + bw / Wp / 2 - 0.5) * Wp, (0.5 - ty) * Hp, 0)));
     });
     // the hand swoops up into frame at the cut; then from line to line
-    this.enter(a, this.frames[0]!.clone().add(new THREE.Vector3(0.0, -0.36, 0.03)), Math.max(0.15, L4.words[0]!.start - start), ease.outCubic);
+    this.enter(a, this.frames[0]!.clone().add(new THREE.Vector3(0.1, -0.2, 0.03)), Math.max(0.3, L4.words[0]!.start - (start - 0.35)), ease.inOutCubic);
     [b, c, d].forEach((w, i) => {
       const prev = [a, b, c][i]!;
       this.enter(w, this.lineEnd(prev), clamp(w.pen.tStart - prev.pen.tEnd, 0.15, 0.6));
@@ -226,19 +226,19 @@ export default class Snap extends Scene {
     const cam = this.st.cam;
     cam.fov = 40;
     cam.updateProjectionMatrix();
-    // camera: from far behind the crowd, creeping in and up until the line; B is where it ends
-    this.camA.pos.set(0.3, 1.02, 3.1); this.camA.tgt.set(0.05, 2.0, -6);
-    this.camB.pos.set(0.2, 1.3, 1.15); this.camB.tgt.set(-0.05, 2.25, -6);
+    // camera: low behind the crowd, creeping in and up through the build; B is the framing for the line
+    this.camA.pos.set(0.35, 0.92, 5.0); this.camA.tgt.set(0.1, 2.6, -8);
+    this.camB.pos.set(0.15, 1.18, 2.5); this.camB.tgt.set(-0.05, 3.25, -6);
     // a dark hall: haze far ahead (the stage side), nothing else lit
-    this.sky = skyDome(col('night'), col('dusk', 1.3), col('night', 0.6), 120);
-    (this.sky.material as THREE.ShaderMaterial).uniforms.glowDir!.value.set(0, 0.12, -1).normalize();
+    this.sky = skyDome(col('night'), col('dusk', 1.6), col('night', 0.6), 120);
+    (this.sky.material as THREE.ShaderMaterial).uniforms.glowDir!.value.set(0, 0.1, -1).normalize();
     S.add(this.sky);
 
-    // the line, written over the heads in the upper left of the final framing, by a front-row figure
+    // the line, written above the heads in the upper left of the final framing, by a front-row figure
     const L22 = lyrics.get('Oh, here we go, here we go');
-    const w = this.makeLine(L22, [[0, 1, 2, 3], [4, 5, 6]], col('cyan'), { endBy: this.snapT - 0.03, size: 0.13 });
+    const w = this.makeLine(L22, [[0, 1, 2, 3], [4, 5, 6]], col('cyan'), { endBy: this.snapT - 0.03, size: 0.15 });
     aim(cam, this.camB.pos, this.camB.tgt);
-    const zText = -0.75;
+    const zText = -0.3;
     const at = (sx: number, sy: number) => {
       // screen fractions (0..1 from the left / top) -> point on the plane z = zText
       const p = new THREE.Vector3(sx * 2 - 1, 1 - sy * 2, 0.5).unproject(cam);
@@ -246,36 +246,37 @@ export default class Snap extends Scene {
       return cam.position.clone().addScaledVector(dir, (zText - cam.position.z) / dir.z);
     };
     const bw = w.pen.box.x1 - w.pen.box.x0;
-    const frac = bw / at(0.9, 0.3).distanceTo(at(0.1, 0.3)) * 0.8; // block width as a fraction of the frame width
-    this.place(w, at(0.1 + frac / 2, 0.3));
+    const frac = (bw / at(0.9, 0.27).distanceTo(at(0.1, 0.27))) * 0.8; // block width as a fraction of the frame width
+    this.place(w, at(0.13 + frac / 2, 0.25));
     // the writer stands below and right of the block, facing the stage
-    this.writerAt.set(w.center.x + bw * 0.42, 0, zText + 0.42);
+    this.writerAt.set(w.center.x + bw * 0.42, 0, zText + 0.32);
     this.body = new THREE.Mesh(writerBodyGeometry(0.88), this.silMat);
-    this.body.position.copy(this.writerAt);
     this.body.rotation.y = Math.PI;
-    this.body.scale.setScalar(1.04);
+    this.body.scale.setScalar(1.1);
     this.body.frustumCulled = false;
     S.add(this.body);
-    this.handOffset.set(0.06, -0.2, 0.08);
-    this.enter(w, this.writerShoulder(0).add(new THREE.Vector3(-0.05, 0.62, -0.12)), 0.5);
+    this.handOffset.set(0.05, -0.21, 0.07);
+    this.enter(w, this.writerShoulder(0).add(new THREE.Vector3(-0.08, 0.66, -0.1)), 0.5);
 
     // the crowd: rows of figures from behind, arms up
     const r = mulberry32(23);
     const geos = [figureGeometry(0.93), figureGeometry(1.0), figureGeometry(0.86)];
     const rows: Fig[][] = [[], [], []];
-    for (let j = 0; j < 13; j++) {
-      const z = -1.0 - j * 1.05 - r() * 0.3;
-      const half = 1.8 + (-z) * 0.78;
-      for (let x = -half + r() * 0.5; x < half; x += 0.78 + r() * 0.35) {
+    for (let j = 0; j < 14; j++) {
+      const z = -0.9 - j * 1.0 - r() * 0.3;
+      const half = 2.2 + (-z) * 0.8;
+      for (let x = -half + r() * 0.5; x < half; x += 0.72 + r() * 0.35) {
         const g = Math.floor(r() * 3);
         const fx = x + (r() - 0.5) * 0.2, fz = z + (r() - 0.5) * 0.35;
-        const keep = Math.hypot(fx - this.writerAt.x, fz - this.writerAt.z) >= 0.75;
-        const fig = { x: fx, z: fz, s: 0.93 + r() * 0.16, seed: r(), ry: Math.PI + (r() - 0.5) * 0.5, c: col(STICKS[Math.floor(r() * 4)]!), v: r() };
+        const keep = Math.hypot(fx - this.writerAt.x, fz - this.writerAt.z) >= 0.8;
+        const fig = { x: fx, z: fz, s: 0.92 + r() * 0.16, seed: r(), ry: Math.PI + (r() - 0.5) * 0.5, c: col(STICKS[Math.floor(r() * 4)]!), v: r() };
         if (keep) rows[g]!.push(fig);
       }
     }
+    const crowdMat = silhouetteMaterial(this.L, new THREE.Color(0.0016, 0.0018, 0.004), 4.5, 0.6);
+    for (const m of [this.body, this.fist, this.fore.body, this.fore.ballA, this.upper.body, this.upper.ballA]) m.material = crowdMat;
     rows.forEach((figs, g) => {
-      const im = new THREE.InstancedMesh(geos[g]!, this.silMat, figs.length);
+      const im = new THREE.InstancedMesh(geos[g]!, crowdMat, figs.length);
       im.frustumCulled = false;
       im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       this.crowd.push(im);
@@ -283,13 +284,14 @@ export default class Snap extends Scene {
       S.add(im);
     });
     const total = rows.reduce((s, f) => s + f.length, 0);
-    this.crowdSticks = new StickSwarm(total, 0.24, 0.011, this.L, { gripY: -0.08, radial: 7 });
+    this.crowdSticks = new StickSwarm(total, 0.3, 0.014, this.L, { gripY: -0.1, radial: 8 });
+    this.crowdSticks.u.uCapDim.value = 0.12;
     S.add(this.crowdSticks);
   }
 
   /** The n = 2 writer's right shoulder (world); `lean` shifts the body toward the pen. */
   private writerShoulder(lean: number) {
-    return new THREE.Vector3(this.writerAt.x + 0.24 + lean, 1.41, this.writerAt.z);
+    return new THREE.Vector3(this.writerAt.x + 0.26 + lean, 1.52, this.writerAt.z);
   }
 
   // ------------------------------------------------------------------ the writer (arm + stick + pen)
@@ -479,7 +481,8 @@ export default class Snap extends Scene {
   /** The white-out into the chorus (and the snap's pop), common to both entries. */
   private snapPost(t: number, sn: number, extra: PostOverrides = {}): PostOverrides {
     const { end } = this.ctx;
-    const flash = 1.8 * ease.inCubic(prog(t, end - 0.15, end)) + (sn > 0 ? 0.06 * Math.exp(-sn / 0.03) : 0);
+    // white-out peaking on the cut (the entry is still drawn under the next one's 'light' transition after it)
+    const flash = t <= end ? 1.8 * ease.inCubic(prog(t, end - 0.15, end)) : 1.8 * Math.exp(-(t - end) / 0.03);
     return {
       bloom: 0.95 + (sn > 0 ? 0.35 : 0), bloomThreshold: 0.8, bloomRadius: 0.85, halation: 0.14, vignette: 0.5, grain: 0.05, ca: 0.8,
       flash, exposure: 1 + (sn > 0 ? 0.25 * prog(sn, 0, 0.16) : 0),
@@ -496,10 +499,10 @@ export default class Snap extends Scene {
     const tens = this.tension(t, L7.pen.tStart - 0.05);
     const bend = (tens.k / Math.max(1, tens.n)) * 3.4;
     const sn = t - this.snapT;
-    const kink = 0;
+    const kink = sn > 0 ? 0.75 * springStep(sn, 7, 0.45) : 0;
     const su = this.stick.u;
     su.uTime.value = t;
-    su.uFlood.value = 0;
+    su.uFlood.value = sn > 0 ? 1.4 : 0;
     su.uFloodR.value = sn > 0 ? STICK_L * 1.2 * ease.outQuad(clamp(sn / 0.09)) : 0;
     su.uStress.value = 0.1 * (tens.k / Math.max(1, tens.n)) * (1 + 1.5 * audio.hit('kick', t, 0.1)) + (sn > -0.25 && sn < 0 ? 0.6 * prog(sn, -0.25, 0, ease.inQuad) : 0);
     // gold crack along the stick, from "pain" to "gold"
@@ -524,13 +527,13 @@ export default class Snap extends Scene {
       tgt.lerp(g.tgt, k);
     }
     // opening: the camera rises with the hand
-    const open = prog(t, start, ls[0]!.pen.tStart + 0.6, ease.outCubic);
+    const open = prog(t, start - 0.35, ls[0]!.pen.tStart + 0.6, ease.inOutCubic);
     pos.y -= (1 - open) * 0.1;
     pos.z += (1 - open) * 0.08;
     tgt.y -= (1 - open) * 0.05;
     // "Here we go": a push on every beat toward the stick, then a last rush into the snap
     const focus = tgt.clone().lerp(kpEst, 0.5);
-    const push = clamp(tens.k * 0.026, 0, 0.2);
+    const push = clamp(tens.k * 0.035, 0, 0.22);
     pos.lerp(focus, push);
     tgt.lerp(focus, push * 1.5);
     const rush = ease.inOutCubic(prog(t, this.snapT - 0.1, end));
@@ -551,8 +554,9 @@ export default class Snap extends Scene {
       // the snap lights everything
       const kp = this.kinkPoint();
       this.L.uLightPos.value.copy(kp);
-      this.L.uLightCol.value.setRGB(0, 0, 0);
-      for (let i = 0; i < this.sparks.n; i++) this.sparks.hide(i);
+      this.L.uLightCol.value.copy(su.uColor.value).multiplyScalar(6 * Math.min(1, sn / 0.04));
+      this.burst(t, this.snapT, kp, 0, 220, 7, col('pink', 1.2), 2.2);
+      this.burst(t, this.snapT + 0.012, kp, 220, 100, 9, col('gold', 1.1), 1.4, 0.004);
     } else for (let i = 0; i < this.sparks.n; i++) this.sparks.hide(i);
     this.sparks.commit();
 
@@ -589,19 +593,29 @@ export default class Snap extends Scene {
     const { audio, start, end } = this.ctx;
     const w = this.lines[0]!;
     const sn = t - this.snapT;
-    const b = audio.beatAt(t) - audio.beatAt(start); // beats into the build
-    const nb = audio.beatAt(end) - audio.beatAt(start);
+    const b0 = audio.beatAt(start);
+    const b = audio.beatAt(t) - b0; // beats into the build
+    const nb = audio.beatAt(end) - b0;
     const build = clamp(b / nb);
-    // sway rate (cycles per beat) doubles every two bars: phase is its integral
-    const seg = [[0, 0.25], [8, 0.5], [16, 1], [24, 2]] as const;
-    let phase = 0;
-    for (let i = 0; i < seg.length; i++) {
-      const [b0, r] = seg[i]!;
-      const b1 = seg[i + 1]?.[0] ?? 1e9;
-      if (b > b0) phase += (Math.min(b, b1) - b0) * r;
-    }
+    // sway rates (cycles per beat) double every two bars: phases are their integrals
+    const integ = (seg: readonly (readonly [number, number])[]) => {
+      let ph = 0;
+      for (let i = 0; i < seg.length; i++) {
+        const [s0, r] = seg[i]!;
+        const s1 = seg[i + 1]?.[0] ?? 1e9;
+        if (b > s0) ph += (Math.min(b, s1) - s0) * r;
+      }
+      return ph;
+    };
+    const phase = integ([[0, 0.25], [8, 0.5], [16, 1]]); // bodies
+    const sphase = integ([[0, 0.5], [8, 1], [16, 2]]); // sticks (wrists)
     const snare = audio.hit('snare', t, 0.09), kick = audio.hit('kick', t, 0.12);
     const kinkAll = sn > 0 ? 0.8 * springStep(sn, 7, 0.45) : 0;
+    // waves of faint light run through the sticks from the back rows to the front: on the beats, then the 8ths
+    const rate = b >= 16 ? 2 : 1;
+    const wi = Math.floor(b * rate);
+    const waves = [wi, wi - 1].map((k) => t - audio.timeOfBeat(b0 + k / rate)).filter((age) => age >= 0 && age < 0.6);
+    const amp = (0.03 + 0.22 * build * build) * (sn > 0 ? 0 : 1);
 
     // ---- camera: low behind the crowd, creeping forward and up until the line, then pushing on beats
     const cam = this.st.cam;
@@ -610,18 +624,18 @@ export default class Snap extends Scene {
     const tgt = this.camA.tgt.clone().lerp(this.camB.tgt, kc);
     pos.x += noise1(t * 0.3, 1) * 0.03; pos.y += noise1(t * 0.27, 2) * 0.015;
     const jolt = audio.downbeats.reduce((m, d) => (d >= start - 0.01 && d <= t ? Math.max(m, pulse(t, d, 0.12)) : m), 0);
-    pos.y += jolt * 0.015 * (0.4 + build);
+    pos.y += jolt * 0.02 * (0.4 + build);
     const tens = this.tension(t, w.pen.tStart - 0.05);
-    pos.lerp(tgt, tens.k * 0.008 + ease.inOutCubic(prog(t, this.snapT - 0.1, end)) * 0.08);
+    pos.lerp(tgt, tens.k * 0.004 + ease.inOutCubic(prog(t, this.snapT - 0.1, end)) * 0.03);
     aim(cam, pos, tgt, Math.sin(phase * TAU * 0.5) * 0.012 * build + noise1(t * 0.2, 6) * 0.015);
 
-    // ---- haze ahead pulses with the kick, brighter as the build rises
-    const haze = 0.35 + 0.65 * build;
+    // ---- haze ahead breathes with the kick, brighter as the build rises
+    const haze = 0.4 + 0.6 * build;
     const skyU = (this.sky!.material as THREE.ShaderMaterial).uniforms;
-    (skyU.glow!.value as THREE.Color).copy(col('violet', 0.05 * haze * (0.6 + 0.6 * kick))).lerp(col('blue', 0.05 * haze), 0.4);
-    this.L.uRimCol.value.copy(col('violet', 0.1 * haze * (0.55 + 0.7 * kick + 0.3 * snare * build))).lerp(col('cyan', 0.06 * haze), 0.3);
+    (skyU.glow!.value as THREE.Color).copy(col('violet', 0.09 * haze * (0.55 + 0.75 * kick))).lerp(col('blue', 0.08 * haze), 0.4);
+    this.L.uRimCol.value.copy(col('violet', 0.12 * haze * (0.55 + 0.7 * kick + 0.3 * snare * build))).lerp(col('cyan', 0.07 * haze), 0.3);
     this.L.uRimDir.value.set(0, 0.55, -1).normalize();
-    this.L.uFogCol.value.copy(col('dusk', 0.8)).lerp(col('violet', 0.05), 0.25 * haze * (0.6 + 0.4 * kick));
+    this.L.uFogCol.value.copy(col('dusk', 0.85)).lerp(col('violet', 0.06), 0.3 * haze * (0.6 + 0.4 * kick));
     this.st.bg.copy(this.L.uFogCol.value);
 
     // ---- the crowd
@@ -632,19 +646,23 @@ export default class Snap extends Scene {
       const figs = this.figs[g]!;
       figs.forEach((fg, i) => {
         const sway = Math.sin((phase + fg.seed * 0.35) * TAU) * (0.04 + 0.06 * build) * (0.7 + 0.6 * fg.v);
-        const bounce = Math.abs(Math.sin(Math.PI * (b + fg.seed * 0.2))) * 0.05 * build * (0.5 + fg.v);
+        const bounce = Math.pow(Math.abs(Math.sin(Math.PI * (b + fg.seed * 0.15))), 2) * (0.03 + 0.09 * build) * (0.5 + fg.v);
         _q.setFromEuler(new THREE.Euler(0, fg.ry, sway));
         _m.compose(_w.set(fg.x, bounce, fg.z), _q, _v.setScalar(fg.s));
         im.setMatrixAt(i, _m);
         // the stick in the right hand, waving and bending with the build
         const hand = handL.clone().applyMatrix4(_m);
-        const wave = Math.sin((phase * 2 + fg.seed) * TAU) * (0.15 + 0.35 * build) + (fg.v - 0.5) * 0.6;
+        const wave = Math.sin((sphase + fg.seed) * TAU) * (0.15 + 0.3 * build) + (fg.v - 0.5) * 0.6;
         const q2 = _q.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0.25 + (fg.seed - 0.5) * 0.5, 0, 0.35 + wave)));
         const sm = new THREE.Matrix4().compose(hand, q2, _v.setScalar(fg.s));
-        const bendK = (0.6 + 3.5 * build * build) * (0.5 + 0.5 * Math.sin((phase * 2 + fg.seed * 1.7) * TAU)) + 2.5 * snare * build;
-        const pre = sn > 0 ? 0 : clamp(0.05 * build + 0.3 * snare * build * build * (hash(fg.seed * 100, Math.floor(b * 2)) > 0.6 ? 1 : 0.2), 0, 0.4);
-        const flood = sn > 0 ? 1.5 * smoothstep(0, 0.05 + fg.v * 0.04, sn) : pre;
-        sticks.setStick(si++, sm, sn > 0 ? 3 : bendK, kinkAll * (0.7 + 0.6 * fg.v), flood, fg.seed, fg.c);
+        const bendK = (0.3 + 1.5 * build * build) * Math.sin((sphase + fg.seed * 1.7) * TAU) + 1.0 * snare * build;
+        let pre = 0.012;
+        for (const age of waves) {
+          const zf = -16 + age * 42; // front sweeps from the back rows toward the camera
+          pre += amp * Math.exp(-(((fg.z - zf) / 1.6) ** 2)) * (0.6 + 0.8 * fg.v);
+        }
+        const flood = sn > 0 ? 1.1 * smoothstep(0, 0.03 + fg.v * 0.03, sn) : Math.min(pre, 0.35);
+        sticks.setStick(si++, sm, sn > 0 ? 2.2 : bendK, kinkAll * (0.7 + 0.6 * fg.v), flood, fg.seed, fg.c);
       });
       im.instanceMatrix.needsUpdate = true;
     });
@@ -657,41 +675,46 @@ export default class Snap extends Scene {
     su.uTime.value = t;
     su.uFlood.value = sn > 0 ? 1.4 : 0;
     su.uFloodR.value = sn > 0 ? STICK_L * 1.2 * ease.outQuad(clamp(sn / 0.09)) : 0;
-    su.uStress.value = 0.1 * build * (1 + snare);
+    su.uStress.value = 0.1 * build * (1 + snare) + waves.reduce((m, age) => m + amp * Math.exp(-(((this.writerAt.z - (-16 + age * 42)) / 1.6) ** 2)), 0);
     su.uCrack.value = 0;
     const pp = this.penPose(t);
     // before the line the writer's stick sways with the crowd's
     const free = 1 - prog(t, this.tApproach(w), w.pen.tStart, ease.inOutCubic);
-    const swayX = Math.sin((phase * 2 + 0.3) * TAU) * (0.05 + 0.08 * build) * free;
+    const swayX = Math.sin((sphase + 0.3) * TAU) * (0.05 + 0.06 * build) * free;
     pp.pen.x += swayX;
     pp.anchor.x += swayX * 0.5;
     pp.u.copy(pp.pen).sub(pp.anchor).normalize();
-    const lean = clamp((pp.anchor.x - this.writerAt.x - 0.24) * 0.35, -0.12, 0.12);
-    this.body!.position.set(this.writerAt.x + lean * 0.6, Math.abs(Math.sin(Math.PI * b)) * 0.03 * build * free, this.writerAt.z);
+    const lean = clamp((pp.anchor.x - this.writerAt.x - 0.26) * 0.45, -0.18, 0.18);
+    this.body!.position.set(this.writerAt.x + lean * 0.6, Math.pow(Math.abs(Math.sin(Math.PI * b)), 2) * (0.03 + 0.06 * build) * free, this.writerAt.z);
     this.body!.rotation.z = -lean * 0.5;
-    const { pen } = this.poseWriter(pp, bend, sn > 0 ? kinkAll : 0, this.writerShoulder(lean));
+    const { pen } = this.poseWriter(pp, bend, sn > 0 ? kinkAll : 0, this.writerShoulder(lean).add(_v.set(0, this.body!.position.y, 0)));
     this.drawTrails(t);
     this.drawHead(t, pen, pp.li, (sn > 0 ? Math.max(0, 1 - sn / 0.05) : 1) * (1 - free * 0.85));
 
     // ---- sparks from every stick at the snap
     if (sn > 0) {
       const kp = this.kinkPoint();
-      this.burst(t, this.snapT, kp, 0, 160, 7, col('cyan', 1.2), 2.0);
-      let k = 160;
+      this.burst(t, this.snapT, kp, 0, 140, 7, col('cyan', 1.2), 1.8);
+      let k = 140;
       this.crowd.forEach((im, g) => this.figs[g]!.forEach((fg, i) => {
-        if (k + 8 > this.sparks.n) return;
+        if (k + 6 > this.sparks.n) return;
         im.getMatrixAt(i, _m);
-        const p = handL.clone().add(_v.set(0, 0.1, 0)).applyMatrix4(_m);
-        this.burst(t, this.snapT + fg.v * 0.03, p, k, 8, 31 + Math.floor(fg.seed * 1000), fg.c, 1.8, 0.012);
-        k += 8;
+        const p = handL.clone().add(_v.set(0, 0.12, 0)).applyMatrix4(_m);
+        this.burst(t, this.snapT + fg.v * 0.03, p, k, 6, 31 + Math.floor(fg.seed * 1000), fg.c, 1.5, 0.01);
+        k += 6;
       }));
       for (; k < this.sparks.n; k++) this.sparks.hide(k);
       this.L.uLightPos.value.copy(kp);
-      this.L.uLightCol.value.copy(col('cyan', 5 * Math.min(1, sn / 0.04)));
+      this.L.uLightCol.value.copy(col('cyan', 2 * Math.min(1, sn / 0.04)));
     } else for (let i = 0; i < this.sparks.n; i++) this.sparks.hide(i);
     this.sparks.commit();
 
     this.drawDust(t, new THREE.Vector3(0, 2.2, -2.5), 7, 3.5, 8, 0.06 + 0.06 * build);
-    return this.snapPost(t, sn, { exposure: 1 + (sn > 0 ? 0.25 * prog(sn, 0, 0.16) : 0) + 0.12 * kick * build, shake: [jolt * 3 * build * (hash(frameIdx(t), 4) - 0.5), jolt * 3 * build * (hash(frameIdx(t), 5) - 0.5)] });
+    const roll = snare * build * build * 2.5;
+    return this.snapPost(t, sn, {
+      bloom: 0.95 + (sn > 0 ? 0.15 : 0),
+      exposure: 1 + (sn > 0 ? 0.15 * prog(sn, 0, 0.16) : 0) + 0.12 * kick * build,
+      shake: [(jolt * 3 * build + roll) * (hash(frameIdx(t), 4) - 0.5), (jolt * 3 * build + roll) * (hash(frameIdx(t), 5) - 0.5)],
+    });
   }
 }

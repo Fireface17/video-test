@@ -16,7 +16,7 @@
 import * as THREE from 'three';
 import { Scene, type Frame } from '../../engine/scene';
 import type { Line } from '../../engine/lyrics';
-import { clamp, ease, frameIdx, hash, lerp, noise1, prog, pulse, smoothstep, springStep } from '../../engine/util';
+import { clamp, ease, hash, lerp, noise1, prog, pulse, smoothstep, springStep } from '../../engine/util';
 import { Stage, aim } from '../lib/stage';
 import { col } from '../lib/palette';
 import { flickerOn } from '../lib/neon';
@@ -26,7 +26,7 @@ import { Billboard, Dashboard, Gantry, Station, makeSun } from './highway-props'
 const FOG = 0.013;
 const EYE = 1.1;
 const V_BASE = 2.0; // sign-world speed while a line is sung (m/s)
-const V_ROAD = 11.5; // the road world streams this much faster
+const V_ROAD = 15; // the road world streams this much faster
 const FOV = 40;
 const DEG = Math.PI / 180;
 const DASH_PITCH = 3.6 * DEG; // camera pitch the dashboard was laid out for
@@ -98,7 +98,7 @@ export default class Highway extends Scene {
     // the three sign gantries
     const specs = [
       { rows: [[0, 1, 2], [3, 4, 5, 6]], color: col('pink', 2.3), inkWidth: 10.2, centerY: 5.4 },
-      { rows: [[0, 1, 2], [3, 4, 5, 6, 7]], color: col('phosphor', 2.0), inkWidth: 10.8, centerY: 5.5 },
+      { rows: [[0, 1, 2], [3, 4, 5, 6, 7]], color: col('phosphor', 2.0), inkWidth: 10.8, centerY: 6.3 },
       { rows: [[0, 1, 2, 3], [4, 5, 6, 7]], color: col('cyan', 2.3), inkWidth: 11.0, centerY: 5.9 },
     ];
     specs.forEach((sp, i) => {
@@ -125,9 +125,10 @@ export default class Highway extends Scene {
     plan.forEach((p, i) => {
       const b = new Billboard(p.day, 31 + i * 7, { board, steel });
       const t0 = p.strokes[0]?.[0] ?? w[7]!.start;
-      // the board is ~38 m ahead when its first stroke starts (the last, unpainted one trails WED)
-      const u = this.sRoad(t0) + 38 + (i === 3 ? 20 : 0);
-      b.rotation.y = -p.side * 0.42;
+      // the board is ~40 m ahead when its first stroke starts (the last, unpainted one trails WED)
+      const u = this.sRoad(t0) + 40 + (i === 3 ? 22 : 0);
+      b.rotation.y = -p.side * 0.4;
+      b.scale.setScalar(1.25);
       S.add(b);
       this.boards.push({ b, u, side: p.side, strokes: p.strokes });
     });
@@ -216,7 +217,6 @@ export default class Highway extends Scene {
   // ---------------------------------------------------------------- camera
 
   private camera(t: number, f: Frame) {
-    const { audio } = this.ctx;
     const sS = this.sSign(t);
     const i = this.seg(t);
     // lateral: gentle sway, a lane drift in each whoosh, and a move to the right lane for the station
@@ -249,13 +249,14 @@ export default class Highway extends Scene {
     for (const bd of this.boards) {
       if (!bd.strokes.length) continue;
       const k = smoothstep(bd.strokes[0]![0] - 0.25, bd.strokes[0]![0] + 0.25, t) * (1 - smoothstep(bd.strokes[3]![1] - 0.1, bd.strokes[3]![1] + 0.35, t));
-      yaw += bd.side * 0.05 * k;
+      yaw += bd.side * 0.045 * k;
     }
     const dP = this.S[3]! - sS;
     const yP = Math.atan2(this.pylonX - x, Math.max(dP, 2));
     yaw += toStation * clamp(yP * 0.6, 0, 0.5) * (1 - smoothstep(this.tw[3]!, this.ctx.end + 0.3, t) * 0.5);
-    // roll: slow sway, a lean through each whoosh, a kick on downbeats
-    let roll = noise1(t * 0.31, 11) * 0.008;
+    // roll: a slow lean that swings with the bars (the car breathing with the music), a lean through
+    // each whoosh, a kick on downbeats
+    let roll = noise1(t * 0.31, 11) * 0.006 + 0.008 * Math.sin(Math.PI * f.bar);
     for (let k = 0; k < 3; k++) roll += (k % 2 ? 1 : -1) * 0.035 * Math.sin(prog(t, this.tw[k]!, this.ta[k]! + 0.2, ease.inOutQuad) * Math.PI);
     for (const d of this.downbeats) if (t > d && t < d + 1) roll += 0.006 * Math.sin((t - d) * 18) * Math.exp(-(t - d) * 5) * (hash(d, 3) > 0.5 ? 1 : -1);
     const dir = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
@@ -293,6 +294,7 @@ export default class Highway extends Scene {
     const sunDir = new THREE.Vector3(0, Math.sin(sunEl), -Math.cos(sunEl));
     (this.sky.uSunDir.value as THREE.Vector3).copy(sunDir);
     this.sky.uSun.value.copy(col('gold', 1.25 * warm)).lerp(col('ember', 1.25 * warm), 0.35);
+    this.sky.uRose.value.copy(col('pink', 0.05 * warm)).lerp(col('violet', 0.05 * warm), 0.55);
     this.sky.uWarm.value = warm;
     this.sun.visible = rise > 0.001;
     if (this.sun.visible) {
@@ -311,21 +313,18 @@ export default class Highway extends Scene {
     // ---- gantries: karaoke, spill light, reflections on the wet road
     this.spill.intensity = 0;
     this.road.clearGlint(0);
-    this.road.clearGlint(1);
     this.gantries.forEach((g, k) => {
       const d = this.S[k]! - sS;
       g.visible = d > -8 && d < 260;
       if (!g.visible) return;
-      // flown past: the light dies with the line (it's behind us anyway)
       const lit = g.update(t, fogAt(d));
-      if (k === seg || (k === seg - 1 && d > -6)) {
-        const c = (g.sign.rows[0]!.sign.words[0]!.mat.uniforms.color!.value as THREE.Color);
-        this.road.setGlint(k === seg ? 0 : 1, 0, g.cy, g.position.z + 0.9, g.inkW * 0.3, g.inkH / 2, c, 0.22 * lit * fogAt(Math.max(d, 0)));
-        if (k === seg) {
-          this.spill.color.copy(c).multiplyScalar(1 / Math.max(c.r, c.g, c.b));
-          this.spill.position.set(0, g.cy - 0.4, g.position.z + 4.5);
-          this.spill.intensity = 22 * lit;
-        }
+      if (k === seg) {
+        // the sign of the line being sung lights the wet road and its own bridge
+        const c = g.sign.rows[0]!.sign.words[0]!.mat.uniforms.color!.value as THREE.Color;
+        this.road.setGlint(0, 0, g.cy, g.position.z + 0.9, g.inkW * 0.3, g.inkH / 2, c, 0.22 * lit * fogAt(Math.max(d, 0)));
+        this.spill.color.copy(c).multiplyScalar(1 / Math.max(c.r, c.g, c.b));
+        this.spill.position.set(0, g.cy - 0.4, g.position.z + 4.5);
+        this.spill.intensity = 22 * lit;
       }
     });
 
@@ -350,7 +349,7 @@ export default class Highway extends Scene {
       const z = off - bd.u, d = bd.u - sR;
       bd.b.visible = d > -10 && d < 200;
       if (!bd.b.visible) continue;
-      bd.b.position.set(bd.side * 11.6, 0, z);
+      bd.b.position.set(bd.side * 13.6, 0, z);
       const p = bd.strokes.map(([a, b]) => prog(t, a, b, ease.inOutQuad)) as number[];
       while (p.length < 4) p.push(0);
       bd.b.update(fogAt(Math.max(d, 0)) * (0.9 + 0.1 * noise1(t * 7, bd.u)), p as [number, number, number, number], 1);
@@ -365,10 +364,13 @@ export default class Highway extends Scene {
     this.station.visible = dP > -30 && dP < 300;
     if (this.station.visible) {
       const l3 = this.stationLine, w3 = l3.words;
-      const power = 0.15 + 0.85 * smoothstep(this.tw[2]! - 0.6, this.lines[3]!.start, t);
+      const on = this.tw[2]! + 0.12;
+      const power = flickerOn(t, on, 41) * (0.55 + 0.45 * smoothstep(on, on + 0.35, t));
       this.station.update(t, (k) => flickerOn(t, w3[k]!.start, k * 7 + l3.i), w3[2]!.start, [w3[3]!.start, w3[4]!.start], power);
       this.station.fascia.color.copy(col('cyan', 1.7 * power));
-      this.station.under.color.copy(col('#dff3ff', 1.5 * power));
+      this.station.under.color.copy(col('#9fc8f0', 0.22 * power));
+      this.station.spots.color.copy(col('#e8f6ff', 2.4 * power));
+      this.station.pumpScreens.forEach((m, k) => m.color.copy(col(k % 2 ? 'cyan' : 'pink', 1.4 * power)));
       this.station.light.intensity = 140 * power;
       const cz = this.station.position.z + this.station.canopy.position.z;
       this.road.setGlint(4, this.pylonX + 12.5, 5.9, cz + 9.5, 7.5, 0.5, col('cyan'), 0.35 * power * fogAt(Math.max(dP, 0)));
@@ -391,7 +393,7 @@ export default class Highway extends Scene {
     }
     const rush = clamp((speed - 8) / 70, 0, 1);
     return {
-      bloom: 0.9, bloomThreshold: 0.8, bloomRadius: 0.85 - 0.1 * warm, halation: 0.12,
+      bloom: 0.9, bloomThreshold: 0.8, bloomRadius: 0.85 - 0.12 * warm, halation: 0.12 - 0.06 * warm,
       vignette: 0.45 + 0.1 * rush, grain: 0.05, ca: 0.8 + 2.2 * rush,
       zoom: 1 + 0.012 * f.a.kick + 0.02 * rush, shake,
     };

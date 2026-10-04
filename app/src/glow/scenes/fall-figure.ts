@@ -50,7 +50,7 @@ export function figureMaterial(color: THREE.Color) {
         vec4 w = modelMatrix * vec4(position, 1.0);
         vW = w.xyz;
         vec4 mvPosition = viewMatrix * w;
-        vN = normalize(normalMatrix * normal); vV = normalize(-mvPosition.xyz);
+        vN = normalMatrix * normal; vV = -mvPosition.xyz;
         gl_Position = projectionMatrix * mvPosition;
         #include <fog_vertex>
       }`,
@@ -59,7 +59,10 @@ export function figureMaterial(color: THREE.Color) {
       uniform vec3 color, tint, gold, goldO; uniform float tintK, goldR, level;
       varying vec3 vN; varying vec3 vV; varying vec3 vW;
       void main() {
-        float f = abs(dot(normalize(vN), normalize(vV)));
+        // guarded: an interpolated normal can vanish inside a triangle, and pow() of a negative is NaN
+        float ln = length(vN), lv = length(vV);
+        vec3 n = ln > 1e-5 ? vN / ln : vec3(0.0, 0.0, 1.0), v = lv > 1e-5 ? vV / lv : vec3(0.0, 0.0, 1.0);
+        float f = clamp(abs(dot(n, v)), 0.0, 1.0);
         float rim = 1.0 - f;
         float gk = 1.0 - smoothstep(goldR - 0.5, goldR, distance(vW, goldO));
         vec3 c = mix(color, tint, tintK);

@@ -6,6 +6,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { Line } from '../../engine/lyrics';
 import type { StrokeFontName } from '../../engine/stroke';
 import { F, font } from '../../engine/type';
+import { SCALE } from '../../engine/gl';
 import { mulberry32, smoothstep } from '../../engine/util';
 import { col } from '../lib/palette';
 import { NeonLine, NeonSign, neonMaterial } from '../lib/neon';
@@ -244,9 +245,9 @@ export class Dashboard extends THREE.Group {
     }
     // E and F
     for (const [s, f, c] of [['E', 0, col('pink', 2.2)], ['F', 1, col('cyan', 2.0)]] as const) {
-      const L = new NeonSign(s, { font: 'sans', size: R * 0.3, align: 'center', color: c, radius: R * 0.012 });
+      const L = new NeonSign(s, { font: 'sans', size: R * 0.32, align: 'center', color: c, radius: R * 0.013 });
       const a = Dashboard.A0 + (Dashboard.A1 - Dashboard.A0) * f;
-      L.position.set(cx + Math.cos(a) * R * 0.62, cy + Math.sin(a) * R * 0.62 - R * 0.1, cz + 0.003);
+      L.position.set(cx + Math.cos(a) * R * 1.36, cy + Math.sin(a) * R * 1.36 - R * 0.1, cz + 0.003);
       L.setAll(1);
       this.add(L);
       this.letters.push(L);
@@ -315,7 +316,7 @@ function smileyStrokes(seed: number): THREE.Vector2[][] {
   }
   const eye = (x: number) => {
     const p: THREE.Vector2[] = [];
-    for (let i = 0; i <= 6; i++) p.push(new THREE.Vector2(x + 0.02 * Math.sin(i), 0.42 - (i / 6) * 0.26));
+    for (let i = 0; i <= 6; i++) p.push(new THREE.Vector2(x + 0.015 * Math.sin(i), 0.46 - (i / 6) * 0.3));
     return p;
   };
   const smile: THREE.Vector2[] = [];
@@ -397,7 +398,7 @@ export class Billboard extends THREE.Group {
   constructor(day: string, seed: number, mats: { board: THREE.Material; steel: THREE.Material }) {
     super();
     const { W, H } = this;
-    const y0 = 1.2; // board bottom
+    const y0 = 0.8; // board bottom
     const board = new THREE.Mesh(new THREE.BoxGeometry(W, H, 0.25), mats.board);
     board.position.set(0, y0 + H / 2, 0);
     this.add(board);
@@ -420,7 +421,7 @@ export class Billboard extends THREE.Group {
     const rule = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.84, 0.07), this.rule);
     rule.position.set(0, y0 + H - 1.3, 0.14);
     this.add(rule);
-    this.paint = new Paint(smileyStrokes(seed), 0.13, col('phosphor', 2.2));
+    this.paint = new Paint(smileyStrokes(seed), 0.15, col('phosphor', 2.2));
     this.paint.scale.setScalar(1.55);
     this.paint.position.set(0, y0 + (H - 1.3) / 2 - 0.02, 0.15);
     this.add(this.paint);
@@ -436,20 +437,21 @@ export class Billboard extends THREE.Group {
 
 // ------------------------------------------------------------------ the gas station
 
-/** Glyph strip for the price drums: digits, then each target letter between blanks. */
-const DRUM = '0123456789 A N Y C O S T ';
+/** Glyph strip for the price drums: digits, then each target letter after two blanks (so a drum landing
+ * on a letter, motion blur included, never shows another letter). */
+const DRUM = '0123456789  A  N  Y  C  O  S  T  ';
 export const drumIndex = (ch: string) => DRUM.indexOf(ch);
 
 function drumAtlas() {
-  const gw = 128, gh = 168, n = DRUM.length;
+  const k = Math.min(1.7, SCALE), gw = Math.round(112 * k), gh = Math.round(144 * k), n = DRUM.length; // (taller than 8192 px fails)
   const cv = document.createElement('canvas');
   cv.width = gw; cv.height = gh * n;
   const c = cv.getContext('2d')!;
   c.fillStyle = '#fff';
   c.textAlign = 'center';
   c.textBaseline = 'alphabetic';
-  c.font = font(F.archivo(87.5, 900), 132);
-  for (let i = 0; i < n; i++) if (DRUM[i] !== ' ') c.fillText(DRUM[i]!, gw / 2, gh * i + gh * 0.5 + 132 * 0.36);
+  c.font = font(F.archivo(87.5, 900), 114 * k);
+  for (let i = 0; i < n; i++) if (DRUM[i] !== ' ') c.fillText(DRUM[i]!, gw / 2, gh * i + gh * 0.5 + 114 * k * 0.36);
   const t = new THREE.CanvasTexture(cv);
   t.colorSpace = THREE.NoColorSpace;
   t.wrapT = THREE.RepeatWrapping;
@@ -462,7 +464,7 @@ function drumAtlas() {
 function drumMaterial(atlas: THREE.Texture, c: THREE.Color) {
   return new THREE.ShaderMaterial({
     fog: true,
-    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { atlas: { value: null }, n: { value: DRUM.length }, pos: { value: 0 }, blur: { value: 0 }, c: { value: c.clone() }, k: { value: 1 } }]),
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { atlas: { value: null }, n: { value: DRUM.length }, wrap: { value: DRUM.length }, pos: { value: 0 }, blur: { value: 0 }, c: { value: c.clone() }, k: { value: 1 } }]),
     vertexShader: /* glsl */ `
       #include <fog_pars_vertex>
       varying vec2 vUv;
@@ -471,17 +473,17 @@ function drumMaterial(atlas: THREE.Texture, c: THREE.Color) {
       }`,
     fragmentShader: /* glsl */ `
       #include <fog_pars_fragment>
-      uniform sampler2D atlas; uniform float n, pos, blur, k; uniform vec3 c; varying vec2 vUv;
+      uniform sampler2D atlas; uniform float n, wrap, pos, blur, k; uniform vec3 c; varying vec2 vUv;
       void main(){
         float a = 0.0;
         for (int i = 0; i < 7; i++) {
-          float q = pos + (1.0 - vUv.y) + (float(i) / 6.0 - 0.5) * blur;
+          float q = mod(pos + (1.0 - vUv.y) + (float(i) / 6.0 - 0.5) * blur, wrap); // spinning: digits only
           a += texture2D(atlas, vec2(vUv.x, 1.0 - q / n)).a;
         }
         a /= 7.0;
         // the window: dark glass with a faint inner shade at top and bottom (the drum's curvature)
         float shade = smoothstep(0.0, 0.18, vUv.y) * smoothstep(1.0, 0.82, vUv.y);
-        vec3 glass = vec3(0.006, 0.008, 0.02) * (0.6 + 0.4 * shade);
+        vec3 glass = vec3(0.016, 0.022, 0.05) * (0.5 + 0.5 * shade);
         gl_FragColor = vec4(glass + c * k * a * (0.55 + 0.45 * shade), 1.0);
         #include <fog_fragment>
       }`,
@@ -501,6 +503,7 @@ export class Station extends THREE.Group {
   dots: THREE.MeshBasicMaterial[] = [];
   fascia: THREE.MeshBasicMaterial;
   under: THREE.MeshBasicMaterial;
+  spots!: THREE.MeshBasicMaterial;
   pumpScreens: THREE.MeshBasicMaterial[] = [];
   frame: THREE.ShaderMaterial;
   frameGlow: THREE.ShaderMaterial;
@@ -514,7 +517,7 @@ export class Station extends THREE.Group {
   constructor(line: Line, mats: { steel: THREE.Material; board: THREE.Material; slab: THREE.Material }) {
     super();
     const { panelW: PW, panelH: PH } = this;
-    const pole = 3.2;
+    const pole = 2.7;
     this.panelY = pole + PH / 2;
     // pylon: two legs and the panel
     const parts: THREE.BufferGeometry[] = [];
@@ -532,9 +535,9 @@ export class Station extends THREE.Group {
     this.add(frame);
     // header: the sung words "And I'd pay"
     const words = line.words.map((w) => w.w);
-    this.header = new NeonSign(words.slice(0, 3).join(' '), { font: 'script', size: 1.55, align: 'center', color: col('pink', 2.1), radius: 0.032 });
-    this.header.scale.x = 0.92;
-    this.header.position.set(0, this.panelY + PH / 2 - 1.75, 0.22);
+    this.header = new NeonSign(words.slice(0, 3).join(' '), { font: 'script', size: 1.28, align: 'center', color: col('pink', 2.1), radius: 0.03 });
+    this.header.scale.x = 0.9;
+    this.header.position.set(0, this.panelY + PH / 2 - 1.85, 0.22);
     this.add(this.header);
     this.frameGlow = glowCard(col('pink'), 0.5);
     const hg = new THREE.Mesh(new THREE.PlaneGeometry(PW * 0.95, 2.2), this.frameGlow);
@@ -582,6 +585,16 @@ export class Station extends THREE.Group {
     ul.rotation.x = Math.PI / 2;
     ul.position.set(0, cy - 0.01, 0);
     this.canopy.add(ul);
+    // downlights: a grid of bright discs under the roof
+    this.spots = new THREE.MeshBasicMaterial({ color: col('#e8f6ff', 2.4) });
+    const spotG: THREE.BufferGeometry[] = [];
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 4; j++) {
+      const g = new THREE.CircleGeometry(0.32, 16);
+      g.rotateX(Math.PI / 2);
+      g.translate((i - 1) * cwid * 0.3, cy - 0.03, (j - 1.5) * cdep * 0.22);
+      spotG.push(g);
+    }
+    this.canopy.add(new THREE.Mesh(merged(spotG), this.spots));
     const cparts: THREE.BufferGeometry[] = [];
     for (const x of [-cwid * 0.3, cwid * 0.3]) for (const z of [-cdep * 0.3, cdep * 0.3]) box(cparts, 0.45, cy, 0.45, x, cy / 2, z);
     // pump islands
@@ -633,6 +646,7 @@ export class Station extends THREE.Group {
       }
       d.mat.uniforms.pos!.value = pos;
       d.mat.uniforms.blur!.value = blur;
+      d.mat.uniforms.wrap!.value = t < land ? 10 : DRUM.length;
       d.mat.uniforms.k!.value = power * (t >= land ? 1.25 : 1);
     }
     this.dots.forEach((m, r) => m.color.copy(col('cyan', 2.0 * power * (1 - smoothstep(roll0, roll0 + 0.2, t)) * (t < lands[r]! ? 1 : 0))));

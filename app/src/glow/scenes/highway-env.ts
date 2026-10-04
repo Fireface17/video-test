@@ -22,7 +22,7 @@ export const ROAD = {
 
 /** Sky colour by direction, shared by the dome and the far haze of the road (so they meet seamlessly). */
 export const SKY_GLSL = /* glsl */ `
-uniform vec3 uTop, uHor, uCity, uSun, uSunDir;
+uniform vec3 uTop, uHor, uCity, uSun, uRose, uSunDir;
 uniform float uWarm;
 vec3 skyCol(vec3 d) {
   float yy = max(d.y, 0.0);
@@ -31,8 +31,10 @@ vec3 skyCol(vec3 d) {
   float az = atan(d.x, -d.z);
   c += uCity * exp(-az * az * 6.0) * exp(-yy * 16.0);            // the distant city ahead
   float g = max(dot(d, uSunDir), 0.0);
-  c += uSun * (0.06 * pow(g, 24.0) + 0.3 * pow(g, 160.0) + 1.0 * pow(g, 1400.0));
-  c += uSun * uWarm * (0.2 * exp(-az * az * 5.0) * exp(-yy * 26.0) + 0.05 * exp(-az * az * 1.5) * exp(-yy * 9.0)); // the horizon turns gold
+  // the sun: a tight gold glow, a wider rose-violet halo fading into the night (no muddy brown)
+  c += uSun * (0.3 * pow(g, 180.0) + 1.0 * pow(g, 1400.0));
+  c += uRose * (0.5 * pow(g, 9.0) + 0.6 * exp(-az * az * 1.4) * exp(-yy * 11.0));
+  c += uSun * uWarm * 0.2 * exp(-az * az * 7.0) * exp(-yy * 34.0); // the horizon turns gold
   return c;
 }`;
 
@@ -43,6 +45,7 @@ export function skyUniforms() {
     uHor: { value: col('dusk', 1.05) },
     uCity: { value: col('blue', 0.05).add(col('violet', 0.02)) },
     uSun: { value: new THREE.Color(0, 0, 0) },
+    uRose: { value: new THREE.Color(0, 0, 0) },
     uSunDir: { value: new THREE.Vector3(0, -0.06, -1).normalize() },
     uWarm: { value: 0 },
   };
