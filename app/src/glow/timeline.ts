@@ -43,6 +43,9 @@ export function makeTimeline(ly: Lyrics, au: AudioData): TimelineEntry[] {
 
   const E = (id: string, file: string, start: number, end: number, extra: Partial<TimelineEntry> = {}): TimelineEntry =>
     ({ id, load: scene(file), start, end, ...extra });
+  // ?lab=<scene> (render.ts --lab): a test timeline of that one scene over the whole song
+  const lab = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('lab') : null;
+  if (lab) return [E('lab', lab, 0, au.duration)];
   // how each scene comes in (engine/transitions.ts); the overlap is centred on the cut
   const X = (kind: TransitionSpec['kind'], dur: number, o: Partial<TransitionSpec> = {}): { transition: TransitionSpec } => ({ transition: { kind, dur, ...o } });
 

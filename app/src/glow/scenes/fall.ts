@@ -13,7 +13,7 @@ import { Stage, aim, skyDome } from '../lib/stage';
 import { col } from '../lib/palette';
 import { NeonLine } from '../lib/neon';
 import { GlowPoints } from '../lib/points';
-import { GlowFigure, bend, limbDir } from './fall-figure';
+import { RealFigure, bend, limbDir, loadBody } from '../lib/people';
 import { CloudPuffs, puffAtlas, type PuffLook, type PuffSpec } from './fall-clouds';
 import { StarStreaks } from './fall-stars';
 import { nebulaMap, nebulaSphere } from './fall-sky';
@@ -68,7 +68,7 @@ export default class Fall extends Scene {
   nebSky!: THREE.Mesh;
   fog = new THREE.FogExp2(0x000000, 0.004);
   pair = new THREE.Group();
-  figs: GlowFigure[] = []; // 0 = pink (left, arrives), 1 = cyan-blue (the hero)
+  figs: RealFigure[] = []; // 0 = pink (left, arrives), 1 = cyan-blue (the hero)
   halos: THREE.Mesh[] = [];
   flare!: THREE.Mesh;
   sun!: THREE.Mesh;
@@ -117,8 +117,9 @@ export default class Fall extends Scene {
 
     // the two figures of light in one group (the formation banks as a whole)
     S.add(this.pair);
-    for (const c of [col('pink', 1.2), col('cyan', 1.15).lerp(col('blue', 1.3), 0.3)]) {
-      const f = new GlowFigure(c);
+    const bodies = await Promise.all([loadBody('michelle'), loadBody('rpm')]);
+    for (const [k, c] of [col('pink', 1.2), col('cyan', 1.15).lerp(col('blue', 1.3), 0.3)].entries()) {
+      const f = new RealFigure(bodies[k]!, k === 0 ? 'michelle' : 'rpm', c);
       this.figs.push(f);
       this.pair.add(f);
       const h = softSprite(c.clone().multiplyScalar(0.1), 3.0);
@@ -310,6 +311,7 @@ export default class Fall extends Scene {
         const ls = k === 0 ? -1 : 1;
         const u1 = limbDir(ls, 0.07 + 0.03 * nz(0.5, 90 + k), -0.14 - 0.08 * nz(0.41, 95 + k));
         fig.setLeg(k, u1, bend(u1, new THREE.Vector3(0, 0, -1), 0.22 + 0.16 * (0.5 + 0.5 * Math.sin(t * 4.2 + k * 2.4 + i)) + (ls === s ? 0.15 : 0)));
+        fig.setFoot(k, 0.85);
       }
       // outer arm reaches forward (superman); it opens out to the side once they are golden
       const inner = s > 0 ? 1 : 0, outer = 1 - inner;
@@ -319,6 +321,8 @@ export default class Fall extends Scene {
       const openIn = i === 1 ? prog(t, T.s + 0.3, T.reach, ease.inOutQuad) : 0.8 + 0.2 * arrive;
       const ui = limbDir(s, lerp(0.35, 1.45, openIn) + 0.08 * nz(0.44, 107), lerp(-0.1, 0.25, openIn));
       fig.setArm(inner, ui, bend(ui, new THREE.Vector3(0, 0.3, 1), 0.35));
+      fig.setHand(outer, 0.1);
+      fig.setHand(inner, 0.15 + 0.45 * holdK);
     });
     // the hands meet between the inner shoulders, a little ahead and below
     this.pair.updateMatrixWorld(true);
@@ -434,7 +438,7 @@ export default class Fall extends Scene {
       const fig = this.figs[i]!;
       const baseC = (fig.mat.uniforms.color!.value as THREE.Color).clone().lerp(tint, 0.35 * colIn).lerp(goldCol, clamp(spread / 1.2));
       // contrails: most sparks leave the two feet, the rest anywhere on the body
-      const feet = [0, 1].map((f) => new THREE.Vector3(0, -GlowFigure.SHIN - 0.08, 0.03).applyMatrix4(fig.kn[f]!.matrixWorld));
+      const feet = [0, 1].map((f) => fig.foot(f));
       const b0 = Math.ceil((t - SPARK_LIFE - T.s) / SPARK_DT), b1 = Math.floor((t - T.s) / SPARK_DT);
       for (let b = b0; b <= b1 && k < N_SPARK - 24; b++) {
         const r = mulberry32(b * 7919 + i * 104729 + 3);
