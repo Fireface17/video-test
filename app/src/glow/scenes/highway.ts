@@ -661,6 +661,15 @@ export default class Highway extends Scene {
       renderer.render(this.scene, this.backCam);
       this.cabin.visible = true;
       for (const g of this.gantries) g.visible = true;
+      if ((globalThis as { __dbgMirror?: boolean }).__dbgMirror !== false && Math.abs(t - 30.58) < 0.005) {
+        const W = this.mirrorRT.width, Hh = this.mirrorRT.height;
+        const buf = new Uint16Array(W * Hh * 4);
+        renderer.readRenderTargetPixels(this.mirrorRT, 0, 0, W, Hh, buf);
+        const h2f = (h: number) => { const s = (h & 0x8000) ? -1 : 1, e = (h >> 10) & 0x1f, f = h & 0x3ff; return e === 0 ? s * 6.1e-5 * (f / 1024) : e === 31 ? (f ? NaN : s * Infinity) : s * Math.pow(2, e - 15) * (1 + f / 1024); };
+        let bad = 0, mx = 0, mxAt = '';
+        for (let i = 0; i < W * Hh; i++) for (let c = 0; c < 3; c++) { const v = h2f(buf[i * 4 + c]!); if (!Number.isFinite(v)) { bad++; if (bad < 4) console.error('MIRROR bad at', i % W, Math.floor(i / W), v); } else if (v > mx) { mx = v; mxAt = (i % W) + ',' + Math.floor(i / W); } }
+        console.error('MIRROR stats bad', bad, 'max', mx, 'at', mxAt, W, Hh);
+      }
     }
     this.road.u.reflK!.value = 1;
     this.road.u.tR!.value = this.refl.rt.texture; this.road.u.tRB!.value = this.refl.blur.texture; this.road.u.texMat!.value = this.refl.texMat;

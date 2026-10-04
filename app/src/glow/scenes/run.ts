@@ -30,7 +30,7 @@ import { GlowLines } from '../lib/stars';
 import { CycleMotion, Route, holdHands, inOut, loadCycle, loadSpan } from './run-motion';
 import { Folk, type Joiner, poseStride, reachTo, type Stride } from './run-people';
 import { Handprints } from './run-prints';
-import { BrokenWindow, Pigeons, Splashes, placeKit, stairKit, taxiKit } from './run-props';
+import { BrokenWindow, Pigeons, Splashes, mirrorOnly, placeKit, stairKit, taxiKit } from './run-props';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const UP = V(0, 1, 0);
@@ -214,6 +214,8 @@ export default class Run extends Scene {
     S.add(this.pigeons);
     this.addSplashes();
     S.add(this.splashes);
+    // the wet street's reflection (the city renders the scene again, mirrored): only the two of them in it
+    mirrorOnly(this.city, [this.folk.crowd, this.prints, this.splashes, this.pigeons, this.trails, this.window]);
   }
 
   // ------------------------------------------------------------------ setup helpers

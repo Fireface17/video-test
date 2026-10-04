@@ -24,6 +24,17 @@ export function placeKit(city: City, k: KitBuilder, x: number, y: number, z: num
   return m;
 }
 
+/** Leave these out of the city's wet-street reflection (it renders the scene a second time; they are costly or tiny). */
+export function mirrorOnly(city: City, hide: THREE.Object3D[]) {
+  const g = city.ground, orig = g.onBeforeRender;
+  g.onBeforeRender = function (this: THREE.Object3D, ...args: Parameters<THREE.Object3D['onBeforeRender']>) {
+    const vis = hide.map((o) => o.visible);
+    hide.forEach((o) => (o.visible = false));
+    orig.apply(g, args);
+    hide.forEach((o, i) => (o.visible = vis[i]!));
+  };
+}
+
 /** A yellow cab, nose toward local +x (4.7 m long), wheels on y = 0. */
 export function taxiKit() {
   const k = new KitBuilder();
