@@ -184,3 +184,36 @@ export function charTimes(st: StrokeText, line: Line, maxDur = 0.55): [number, n
   }
   return out;
 }
+
+/**
+ * Points along a text's strokes (a stroke font), `spacing` world units apart, for particles that gather into
+ * words: positions in the XY plane (centred on x, baseline y = 0) and the word index of each point.
+ */
+export function sampleStrokeText(text: string, font: StrokeFontName, size: number, spacing: number) {
+  const st = strokeText(text, font, 100);
+  const s = size / 100, ox = -st.width * s / 2;
+  const chars = Array.from(text);
+  const wordOf: number[] = [];
+  let w = 0;
+  chars.forEach((ch, i) => { if (ch === ' ' && i > 0 && chars[i - 1] !== ' ') w++; wordOf.push(ch === ' ' ? -1 : w); });
+  const pts: THREE.Vector2[] = [], word: number[] = [];
+  st.strokes.forEach((stroke, si) => {
+    const wi = Math.max(0, wordOf[st.charOf[si]!] ?? 0);
+    const put = (x: number, y: number) => { pts.push(new THREE.Vector2(x * s + ox, -y * s)); word.push(wi); };
+    // walk the polyline, dropping a point every `spacing` (long straight segments get their share too)
+    put(stroke[0]!.x, stroke[0]!.y);
+    let next = spacing / s, run = 0;
+    for (let i = 1; i < stroke.length; i++) {
+      const a = stroke[i - 1]!, b = stroke[i]!, seg = Math.hypot(b.x - a.x, b.y - a.y);
+      while (run + seg >= next) {
+        const u = (next - run) / Math.max(seg, 1e-9);
+        put(a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u);
+        next += spacing / s;
+      }
+      run += seg;
+    }
+    const last = stroke[stroke.length - 1]!;
+    if (run + spacing / s * 0.5 < next) put(last.x, last.y);
+  });
+  return { pts, word, width: st.width * s };
+}

@@ -55,7 +55,7 @@ export function makeTimeline(ly: Lyrics, au: AudioData): TimelineEntry[] {
     // the camera tilts down out of the sky onto the road
     E('highway', 'highway', b.verse1, b.pre1, X('whip', 0.5, { dir: [0, 1] })),
     // the night drive burns away in embers, leaving the dark and one glow stick
-    E('snap1', 'snap', b.pre1, b.chorus1, { params: { n: 1 }, ...X('sparks', 0.7, { color: lin('ember', 1.4), seed: 3 }) }),
+    E('snap1', 'rooftop', b.pre1, b.chorus1, X('sparks', 0.7, { color: lin('ember', 1.4), seed: 3 })),
     // the stick snaps: light
     E('chorus1', 'chorus', b.chorus1, b.drop1, { params: { n: 1 }, ...X('light', 0.36) }),
     // the drop breaks the chorus like glass
