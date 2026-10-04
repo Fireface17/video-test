@@ -28,7 +28,7 @@ export function lightBodyMaterial(gain = 1) {
       uniform float gain;
       varying vec3 vN; varying vec3 vV; varying vec3 vC;
       void main() {
-        float f = 1.0 - abs(dot(normalize(vN + vec3(0.0, 0.0, 1e-5)), normalize(vV)));
+        float f = clamp(1.0 - abs(dot(normalize(vN + vec3(0.0, 0.0, 1e-5)), normalize(vV))), 0.0, 1.0);
         vec3 c = vC * gain * (0.12 + 1.6 * pow(f, 2.2) + 2.5 * pow(f, 8.0));
         gl_FragColor = vec4(c, 1.0);
         #include <fog_fragment>

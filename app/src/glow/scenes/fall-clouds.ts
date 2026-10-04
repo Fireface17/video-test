@@ -1,16 +1,14 @@
-// Soft cloud / nebula puffs for the bridge (`fall`): camera-facing billboards over a baked noise atlas, sorted back
-// to front every frame and blended "over" (premultiplied). Each puff is shaded as a soft sphere (a normal
-// from the billboard coordinate), lit by a dim sky from above, a warm sun from below (the golden finale) and
-// up to three point glows (the figures and their joined hands). Near the glows the puffs lose opacity but
-// keep the light, so a figure inside a cloud reads as a lantern in fog instead of being sliced by the planes.
+// Soft nebula puffs for the bridge (`fall`): camera-facing billboards over a baked noise atlas, sorted back
+// to front every frame and blended "over" (premultiplied), so gas both glows and veils what is behind it.
+// Light is computed per vertex (a puff is a soft blob, a bilinear gradient is plenty): a dim sky, a
+// directional "sun" (the golden light ahead) and up to three point glows (the figures and their joined hands).
+// Per pixel there is only the texture and a thinning right round the figures, so a billboard plane passing
+// through one never slices it.
 import * as THREE from 'three';
 import { clamp, fbm2, smoothstep } from '../../engine/util';
 
-/**
- * 2x2 atlas of soft puffs (density in the red channel), zero at every cell edge: 'cloud' is billowy
- * cumulus, 'nebula' is smooth gas with a domain-warped, wispy body.
- */
-export function puffAtlas(n = 128, style: 'cloud' | 'nebula' = 'cloud'): THREE.Texture {
+/** 2x2 atlas of soft, domain-warped, wispy puffs (density in the red channel), zero at every cell edge. */
+export function puffAtlas(n = 128): THREE.Texture {
   const N = n * 2;
   const cv = document.createElement('canvas');
   cv.width = cv.height = N;
@@ -21,18 +19,11 @@ export function puffAtlas(n = 128, style: 'cloud' | 'nebula' = 'cloud'): THREE.T
       for (let x = 0; x < n; x++) {
         const u = ((x + 0.5) / n) * 2 - 1, v = ((y + 0.5) / n) * 2 - 1;
         const r = Math.hypot(u, v);
-        let d: number;
-        if (style === 'cloud') {
-          const lump = fbm2(u * 1.6 + cell * 7.3, v * 1.6 - cell * 3.1, 4, 11 + cell);
-          d = 1 - smoothstep(0.2, 0.92, r + 0.36 * lump);
-          d *= 0.7 + 0.3 * (fbm2(u * 4.5 + 9, v * 4.5 - cell, 3, 40 + cell) * 0.5 + 0.5);
-        } else {
-          const wx = fbm2(u * 1.1 + cell * 5.1, v * 1.1 - cell * 2.3, 3, 21 + cell), wy = fbm2(u * 1.1 - 4.7, v * 1.1 + cell * 1.9, 3, 31 + cell);
-          const rr = Math.hypot(u + 0.35 * wx, v + 0.35 * wy);
-          d = Math.pow(1 - smoothstep(0.0, 0.92, rr), 1.7);
-          const wisp = fbm2((u + wx) * 2.6, (v + wy) * 2.6, 4, 50 + cell) * 0.5 + 0.5;
-          d *= 0.45 + 0.75 * wisp * wisp;
-        }
+        const wx = fbm2(u * 1.1 + cell * 5.1, v * 1.1 - cell * 2.3, 3, 21 + cell), wy = fbm2(u * 1.1 - 4.7, v * 1.1 + cell * 1.9, 3, 31 + cell);
+        const rr = Math.hypot(u + 0.35 * wx, v + 0.35 * wy);
+        let d = Math.pow(1 - smoothstep(0.0, 0.92, rr), 1.7);
+        const wisp = fbm2((u + wx) * 2.6, (v + wy) * 2.6, 4, 50 + cell) * 0.5 + 0.5;
+        d *= 0.45 + 0.75 * wisp * wisp;
         d *= 1 - smoothstep(0.8, 0.99, r);
         const k = Math.round(clamp(d) * 255);
         const o = ((oy + y) * N + ox + x) * 4;
@@ -229,7 +220,7 @@ export class CloudPuffs extends THREE.Mesh {
     if (sunDir) (this.material.uniforms.sunDir!.value as THREE.Vector3).copy(sunDir).normalize();
   }
 
-  /** Distance haze; `alphaFade` 1 also thins the puffs with distance (space: far gas fades out, no wall). */
+  /** Distance haze; `alphaFade` 1 also thins the puffs with distance (far gas fades out instead of walling off the stars). */
   setFog(c: THREE.Color, density: number, alphaFade = 0) {
     (this.material.uniforms.fogCol!.value as THREE.Color).copy(c);
     this.material.uniforms.fogDen!.value = density;

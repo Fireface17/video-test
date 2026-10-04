@@ -1,6 +1,7 @@
-// Posable glowing figures for the bridge (`fall`): a jointed mannequin of tapered capsules and a lathed
+// Figures of light for the bridge (`fall`): a jointed mannequin of tapered capsules and lathed hips and
 // torso, posed every frame by limb directions (plus 2-bone IK for the held hands), drawn in a self-lit
-// glass material that can be tinted by the light around it and turned to gold from a point outward.
+// material (hot core, bright fresnel rim) that can be tinted by the light around it and turned to gold
+// from a point outward.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { clamp } from '../../engine/util';

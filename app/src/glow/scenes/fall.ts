@@ -25,7 +25,7 @@ const TEXT_DIST = 4.0; // the lyric line floats this far in front of the camera
 const TEXT_SIZE = 0.125;
 const N_STARS = 4600, STAR_R0 = 4.5, STAR_R1 = 80, STAR_Z0 = -215, STAR_LEN = 265; // flying-frame z in [-215, 50]
 const N_FAR = 1500;
-const SPARK_DT = 0.03, SPARK_LIFE = 1.15, SPARK_DRAG = 7; // sparks shed by the bodies drift back at 7 m/s
+const SPARK_DT = 0.016, SPARK_LIFE = 1.0, SPARK_DRAG = 7; // sparks shed by the bodies drift back at 7 m/s
 const N_SPARK = 2 * Math.ceil(SPARK_LIFE / SPARK_DT + 2) + 24;
 const BACKDROP = 0, COLORS = 1, BLUE = 2, GOLD = 3; // nebula groups
 /** A figure (built standing, facing +z) turned to fly head first along -z, belly down. */
@@ -43,8 +43,6 @@ function spline(t: number, ks: [number, number][]): number {
   const h = t1 - t0, u = (t - t0) / h, u2 = u * u, u3 = u2 * u;
   return (2 * u3 - 3 * u2 + 1) * p0 + (u3 - 2 * u2 + u) * h * m(i) + (-2 * u3 + 3 * u2) * p1 + (u3 - u2) * h * m(i + 1);
 }
-const spline3 = (t: number, ks: [number, [number, number, number]][]) =>
-  new THREE.Vector3(...([0, 1, 2].map((c) => spline(t, ks.map(([k, v]) => [k, v[c]!] as [number, number]))) as [number, number, number]));
 
 /** Additive soft disc (halo / flare / sun), a unit quad. */
 function softSprite(c: THREE.Color, fall = 5) {
@@ -130,6 +128,7 @@ export default class Fall extends Scene {
     }
     this.flare = softSprite(new THREE.Color(0, 0, 0), 9);
     this.flare.renderOrder = 6;
+    (this.flare.material as THREE.ShaderMaterial).depthTest = false; // a light at the hands: never cut by the arms
     S.add(this.flare);
 
     // nebulae along the route (world z; the flight moves them past at the travel distance)
@@ -169,7 +168,7 @@ export default class Fall extends Scene {
       const a = rnd() * TAU, r = 7 + Math.pow(rnd(), 0.9) * 42;
       add(Math.cos(a) * r, Math.sin(a) * r * 0.8, zg - 10 - rnd() * (total - (-zg) + 170), 10 + rnd() * 20, col('gold').lerp(col('ember'), rnd() * 0.6).multiplyScalar(0.07 + 0.1 * rnd()), 0.28 + 0.2 * rnd(), GOLD);
     }
-    this.neb = new CloudPuffs(specs, puffAtlas(128, 'nebula'));
+    this.neb = new CloudPuffs(specs, puffAtlas(128));
     this.neb.renderOrder = 1;
     (this.neb.material.uniforms.nearFade!.value as THREE.Vector2).set(1.0, 4.2); // big near puffs fade out early (and cost nothing)
     S.add(this.neb);
@@ -243,9 +242,9 @@ export default class Fall extends Scene {
   private camBase(t: number): CamPose {
     const T = this.T;
     const K = (vals: number[]) => spline(t, [T.s - 0.45, T.s + 0.5, T.reach, T.touch, T.through, T.colors, T.blue, T.g1, T.golden2, T.e].map((k, i) => [k, vals[i]!] as [number, number]));
-    const phi = K([50, 46, 34, 22, 14, 10, 8, 14, 10, 6]) * DEG;
-    const beta = K([22, 24, 30, 34, 40, 42, 36, 32, 38, 40]) * DEG;
-    const R = K([5.2, 5.0, 4.7, 4.4, 4.4, 4.4, 4.5, 4.4, 4.2, 4.1]);
+    const phi = K([50, 46, 34, 22, 26, 32, 20, 12, 6, 2]) * DEG;
+    const beta = K([22, 24, 30, 34, 38, 40, 34, 30, 34, 38]) * DEG;
+    const R = K([5.2, 5.0, 4.7, 4.3, 4.6, 4.8, 4.6, 4.2, 3.75, 4.2]);
     const radial = new THREE.Vector3(Math.sin(phi), -Math.cos(phi), 0);
     const pos = radial.clone().multiplyScalar(R * Math.cos(beta)).add(new THREE.Vector3(0, 0, R * Math.sin(beta)));
     const hero = new THREE.Vector3(0.9, 0, -0.3), mid = new THREE.Vector3(0, 0, -0.3);
@@ -266,7 +265,7 @@ export default class Fall extends Scene {
   private gold(t: number) {
     const T = this.T;
     const spread = t < T.golden1 - 0.05 ? -1 : lerp(0, 3.4, prog(t, T.golden1 - 0.05, T.golden1 + 1.4, ease.outCubic));
-    const warm = 0.3 * prog(t, T.golden1, T.g1end + 0.4, ease.inOutCubic) + 0.7 * prog(t, T.g2, T.e, ease.inOutQuad);
+    const warm = 0.35 * prog(t, T.golden1, T.g1end + 0.3, ease.inOutCubic) + 0.65 * smoothstep(T.g2 - 0.4, T.e - 0.1, t);
     return { spread, warm };
   }
 
@@ -368,15 +367,16 @@ export default class Fall extends Scene {
     this.neb.setLight(2, hands, flareC.clone().multiplyScalar(0.3), 2.0);
 
     // ---- space: night-blue, a blue glow beyond the nebula, then the golden light ahead ----
-    const sunDir = new THREE.Vector3(0.1, 0.24, -1).normalize();
-    const sunK = smoothstep(T.g1 - 0.2, T.g1 + 2.5, t) * 0.25 + 0.75 * prog(t, T.g2 - 0.6, T.e, ease.inOutQuad);
+    // the golden light rises ahead of them, above their heads in the frame
+    const sunDir = new THREE.Vector3(0.04, 0.55, -1).normalize();
+    const sunK = smoothstep(T.g1 - 0.2, T.golden1 + 1.5, t) * 0.3 + 0.7 * smoothstep(T.g2 - 0.5, T.e, t);
     const su = (this.sky.material as THREE.ShaderMaterial).uniforms;
     // (the warm sky arrives late, through a dark amber rather than a purple mix of blue and gold)
     const w2 = warm * warm, amber = col('ember', 0.05).lerp(col('gold', 0.07), w2);
-    const deep = col('night').lerp(col('blue', 0.06), blue).multiplyScalar(1 - 0.85 * smoothstep(0.1, 0.6, warm)).add(amber.clone().multiplyScalar(smoothstep(0.2, 1, warm)));
+    const deep = col('night').lerp(col('blue', 0.06), blue).multiplyScalar(1 - 0.85 * smoothstep(0.25, 0.75, warm)).add(amber.clone().multiplyScalar(smoothstep(0.3, 0.95, warm)));
     (su.top!.value as THREE.Color).copy(deep);
     (su.bottom!.value as THREE.Color).copy(deep);
-    (su.horizon!.value as THREE.Color).copy(col('dusk', 0.7).lerp(col('blue', 0.1), blue)).multiplyScalar(1 - 0.85 * smoothstep(0.1, 0.6, warm)).add(col('ember', 0.16).lerp(col('gold', 0.2), w2).multiplyScalar(smoothstep(0.2, 1, warm)));
+    (su.horizon!.value as THREE.Color).copy(col('dusk', 0.7).lerp(col('blue', 0.1), blue)).multiplyScalar(1 - 0.85 * smoothstep(0.25, 0.75, warm)).add(col('ember', 0.16).lerp(col('gold', 0.2), w2).multiplyScalar(smoothstep(0.3, 0.95, warm)));
     (su.glowDir!.value as THREE.Vector3).copy(sunDir);
     (su.glow!.value as THREE.Color).copy(col('gold', 1.4)).multiplyScalar(sunK * 0.9);
     this.st.bg.copy(deep);
@@ -391,39 +391,35 @@ export default class Fall extends Scene {
     spriteColor(this.sunCore).copy(col('#fff2cc', 2.2)).multiplyScalar(sunK);
     const fogC = deep.clone().lerp(col('ember', 0.05), warm);
     const nu = (this.nebSky.material as THREE.ShaderMaterial).uniforms;
-    nu.gain!.value = 1.5 + 0.5 * blue + 0.6 * warm;
-    (nu.tint!.value as THREE.Color).setRGB(1, 1, 1).lerp(new THREE.Color(0.6, 0.8, 1.4), blue).lerp(new THREE.Color(9, 4.2, 0.6), smoothstep(0.2, 1, warm));
+    nu.gain!.value = 1.5 + 0.5 * blue + 1.6 * warm;
+    (nu.tint!.value as THREE.Color).setRGB(1, 1, 1).lerp(new THREE.Color(0.6, 0.8, 1.4), blue);
+    nu.gk!.value = smoothstep(0.1, 0.75, warm);
     this.fog.color.copy(fogC);
     this.neb.setFog(fogC, 0.0065, 0.85);
     this.neb.setAmbient(new THREE.Color(0, 0, 0), col('gold', 0.5).multiplyScalar(sunK), sunDir);
 
     // ---- nebulae ----
     const off = new THREE.Vector3(0, 0, S);
-    this.neb.update(cam, off, (s, p, o: PuffLook) => {
-      let c: THREE.Color = s.color, k = 1, a = s.alpha;
-      if (s.group === GOLD) {
-        k = 0.12 + 2.2 * warm;
-        c = s.color.clone().lerp(col('blue', 0.05), 1 - smoothstep(0, 0.25, warm));
-      } else if (s.group === COLORS) {
-        k = 1 + 0.3 * pad;
-      } else {
-        c = s.color.clone().lerp(col('gold', 0.13).lerp(col('ember', 0.13), 0.35), smoothstep(0.15, 0.9, warm));
-      }
-      o.r = c.r * k; o.g = c.g * k; o.b = c.b * k; o.a = a;
+    const darkGas = col('blue', 0.05), warmGas = col('gold', 0.13).lerp(col('ember', 0.13), 0.35), pc = new THREE.Color();
+    const kGold = 0.12 + 2.2 * warm, kDark = 1 - smoothstep(0, 0.25, warm), kWarm = smoothstep(0.15, 0.9, warm);
+    this.neb.update(cam, off, (s, _p, o: PuffLook) => {
+      let k = 1;
+      if (s.group === GOLD) { k = kGold; pc.copy(s.color).lerp(darkGas, kDark); }
+      else if (s.group === COLORS) { k = 1 + 0.3 * pad; pc.copy(s.color); }
+      else pc.copy(s.color).lerp(warmGas, kWarm);
+      o.r = pc.r * k; o.g = pc.g * k; o.b = pc.b * k; o.a = s.alpha;
     }, 420);
 
     // ---- stars streaming past ----
     const ss = this.starSeed;
     const cWhite = col('#dfe6ff', 1.0), cBlue = col('#7f9cff', 1.0), cGold = col('gold', 1.2), cEmber = col('ember', 1.1);
+    const cCyan = col('cyan', 0.9), cPink = col('pink', 0.9), cViolet = col('violet', 1.0);
     const tmp = new THREE.Color();
     for (let i = 0; i < N_STARS; i++) {
       const o = i * 5, h = ss[o + 4]!;
-      const z = STAR_Z0 + ((ss[o + 2]! + S) % STAR_LEN);
+      const z = STAR_Z0 + ((((ss[o + 2]! + S) % STAR_LEN) + STAR_LEN) % STAR_LEN); // (S < 0 before the cut)
       const edge = smoothstep(STAR_Z0, STAR_Z0 + 40, z) * (1 - smoothstep(STAR_Z0 + STAR_LEN - 12, STAR_Z0 + STAR_LEN, z));
-      if (h < 0.08) tmp.copy(col('cyan', 0.9));
-      else if (h < 0.14) tmp.copy(col('pink', 0.9));
-      else if (h < 0.2) tmp.copy(col('violet', 1.0));
-      else tmp.copy(cWhite);
+      tmp.copy(h < 0.08 ? cCyan : h < 0.14 ? cPink : h < 0.2 ? cViolet : cWhite);
       tmp.lerp(cBlue, blue * 0.5);
       const gk = smoothstep(h * 0.7, h * 0.7 + 0.3, warm);
       tmp.lerp(h < 0.6 ? cGold : cEmber, gk);
@@ -436,20 +432,23 @@ export default class Fall extends Scene {
     let k = 0;
     for (let i = 0; i < 2; i++) {
       const fig = this.figs[i]!;
-      if (i === 0 && t < T.s + 0.05) continue;
       const baseC = (fig.mat.uniforms.color!.value as THREE.Color).clone().lerp(tint, 0.35 * colIn).lerp(goldCol, clamp(spread / 1.2));
+      // contrails: most sparks leave the two feet, the rest anywhere on the body
+      const feet = [0, 1].map((f) => new THREE.Vector3(0, -GlowFigure.SHIN - 0.08, 0.03).applyMatrix4(fig.kn[f]!.matrixWorld));
       const b0 = Math.ceil((t - SPARK_LIFE - T.s) / SPARK_DT), b1 = Math.floor((t - T.s) / SPARK_DT);
       for (let b = b0; b <= b1 && k < N_SPARK - 24; b++) {
         const r = mulberry32(b * 7919 + i * 104729 + 3);
         const te = T.s + b * SPARK_DT + r() * SPARK_DT, age = t - te;
         if (age < 0 || age > SPARK_LIFE) continue;
-        // born on the body (mostly legs and feet), left behind as they fly on
-        const q = new THREE.Vector3((r() - 0.5) * 0.36, -0.95 + r() * 1.5, (r() - 0.5) * 0.2).applyMatrix4(fig.matrixWorld);
+        const pick = r();
+        const q = pick < 0.7 ? feet[pick < 0.35 ? 0 : 1]!.clone()
+          : new THREE.Vector3((r() - 0.5) * 0.36, -0.9 + r() * 1.4, (r() - 0.5) * 0.2).applyMatrix4(fig.matrixWorld);
         q.z += SPARK_DRAG * age;
-        q.x += (r() - 0.5) * 0.7 * age;
-        q.y += (r() - 0.5) * 0.7 * age;
-        const fade = Math.pow(1 - age / SPARK_LIFE, 1.5) * smoothstep(0, 0.08, age);
-        this.sparks.set(k++, q.x, q.y, q.z, baseC, (0.5 + 0.7 * r()) * fade, 0.6 + 1.3 * r());
+        q.x += (r() - 0.5) * 0.35 * age;
+        q.y += (r() - 0.5) * 0.35 * age;
+        // (the pink one's trail grows in with it)
+        const fade = Math.pow(1 - age / SPARK_LIFE, 1.6) * smoothstep(0, 0.05, age) * (i === 0 ? smoothstep(T.s - 0.25, T.s + 0.25, te) : 1);
+        this.sparks.set(k++, q.x, q.y, q.z, baseC, (0.7 + 0.7 * r()) * fade, (pick < 0.7 ? 1.3 : 0.8) + 0.8 * r());
       }
     }
     for (let b = 0; b < 24 && k < N_SPARK; b++) {

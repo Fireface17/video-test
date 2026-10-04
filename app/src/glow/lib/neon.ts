@@ -74,7 +74,7 @@ export function neonMaterial(color: THREE.Color, glass = new THREE.Color(0.018, 
       uniform vec3 color, glass; uniform float on;
       varying vec3 vN; varying vec3 vV;
       void main() {
-        float f = abs(dot(normalize(vN + vec3(0.0, 0.0, 1e-5)), normalize(vV)));
+        float f = clamp(abs(dot(normalize(vN + vec3(0.0, 0.0, 1e-5)), normalize(vV))), 0.0, 1.0);
         vec3 dark = glass * (0.35 + 1.6 * pow(1.0 - f, 3.0)) + vec3(0.05) * pow(f, 40.0);
         float lum = max(max(color.r, color.g), color.b);
         vec3 lit = color * (0.55 + 1.1 * pow(f, 1.4)) + vec3(lum) * 0.9 * pow(f, 7.0);

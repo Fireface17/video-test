@@ -31,6 +31,10 @@ bun scripts/render.ts stills --t 21.3 --only highway --out ../out/wip/highway
 
 Scenes are classes extending `Scene` (`engine/scene.ts`); see `app/src/glow/scenes/ceiling.ts` for a complete example: init builds everything, render() poses it as a pure function of `f.t`, then `st.render(...)` and returns post overrides.
 
+## Transitions
+
+A timeline entry can carry `transition: { kind, dur, ... }` (`engine/transitions.ts`: `crossfade`, `zoom`, `whip`, `light`, `iris`, `glitch`, `sparks`, `shatter`). The overlap is centred on the cut: the incoming scene starts rendering at `start − dur/2` (`f.win[0]`) and the outgoing one keeps rendering until `end + dur/2` (`f.win[1]`), so anything a scene does on its first or last frame should key off `f.win`, not `ctx.start`/`ctx.end`. With `--only` the neighbour isn't loaded and that lead-in shows the transition against black — that's expected, not a bug in the scene.
+
 ## House style
 
 - Dark world, light comes from the glowing things themselves. Background `col('night')`, fog `col('dusk')` (FogExp2 ~0.03–0.08), surfaces dark blue-grey.

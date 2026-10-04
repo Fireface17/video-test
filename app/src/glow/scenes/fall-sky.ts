@@ -47,7 +47,7 @@ export function nebulaMap(w = 512, h = 256, scale = 4): THREE.Texture {
   return tex;
 }
 
-/** A sphere at infinity carrying the nebula map; `gain` and `tint` per frame. Additive over the sky dome. */
+/** A sphere at infinity carrying the nebula map; `gain`, `tint` and `gk` (toward `gold`) per frame. Additive over the sky dome. */
 export function nebulaSphere(map: THREE.Texture, scale = 4, radius = 480) {
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
@@ -55,18 +55,20 @@ export function nebulaSphere(map: THREE.Texture, scale = 4, radius = 480) {
     depthTest: true, // (behind the figures and the lettering, which write depth)
     transparent: true,
     blending: THREE.AdditiveBlending,
-    uniforms: { map: { value: map }, gain: { value: 1 }, tint: { value: new THREE.Color(1, 1, 1) }, scale: { value: 1 / scale } },
+    uniforms: { map: { value: map }, gain: { value: 1 }, tint: { value: new THREE.Color(1, 1, 1) }, scale: { value: 1 / scale }, gold: { value: new THREE.Color(1, 0.55, 0.08) }, gk: { value: 0 } },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
       void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: /* glsl */ `
-      uniform sampler2D map; uniform float gain, scale; uniform vec3 tint;
+      uniform sampler2D map; uniform float gain, scale, gk; uniform vec3 tint, gold;
       varying vec3 vDir;
       void main() {
         vec3 d = normalize(vDir);
         vec2 uv = vec2(atan(d.x, d.z) / 6.2831853 + 0.5, 0.5 + asin(clamp(d.y, -1.0, 1.0)) / 3.1415927);
         vec3 c = texture2D(map, uv).rgb * scale;
-        gl_FragColor = vec4(c * tint * gain, 1.0);
+        // re-hued toward gold by intensity (a blue nebula times a gold tint would only go dark and muddy)
+        c = mix(c * tint, gold * max(c.r, max(c.g, c.b)), gk);
+        gl_FragColor = vec4(c * gain, 1.0);
       }`,
   });
   const m = new THREE.Mesh(new THREE.SphereGeometry(radius, 48, 24), mat);
