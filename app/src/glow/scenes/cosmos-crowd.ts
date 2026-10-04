@@ -1,19 +1,18 @@
-// The people of the galaxy (lib/galaxy.ts) as the drops draw them: every person moves with their own clip
-// and offset (cosmos-motion.ts); along the middle of each arm they hold hands in a chain whose raised hands
-// can run along it in waves; the nearest people are drawn in full detail, people off screen not at all.
+// The people of the galaxy (lib/galaxy.ts) as the drops draw them: every dancer moves with their own captured
+// clip, time offset and mirror (cosmos-motion.ts); along the middle of each arm people hold hands in a chain
+// whose raised hands run along it in waves; the nearest people are drawn in full detail, people off screen
+// not at all.
 import * as THREE from 'three';
 import { hash, smoothstep } from '../../engine/util';
 import type { Galaxy, GalaxyPerson } from '../lib/galaxy';
 import type { Stardust } from '../lib/stardust';
 import { frame, place, type Pose } from './cosmos-gfx';
-import { CLIP, Motion, blendPose, clipBeats, type Mover } from './cosmos-motion';
+import type { Moves, Mover } from './cosmos-motion';
 
 export interface CrowdLook { chain: THREE.Color; a: THREE.Color; b: THREE.Color; deep: THREE.Color }
 
 export interface CrowdDraw {
-  /** Beat clock for the motion (continuous). */
-  beat: number;
-  /** Song time (the chain's slow sway). */
+  /** Clock for the motion (song seconds; pass a slowed clock to slow everyone down). */
   t: number;
   /** Overall brightness. */
   k?: number;
@@ -28,30 +27,30 @@ export interface CrowdDraw {
   hide?: (i: number) => boolean;
   /** Move person i (world position `p`, in place). */
   shift?: (i: number, P: GalaxyPerson, p: THREE.Vector3) => void;
-  /** Collapse toward the centre: positions and sizes × scale, turned by `twist` (rad) more the closer in. */
+  /** 0..1: the people assemble from stars flying in (lib/stardust `draw`). */
+  draw?: number;
+  /** Collapse toward the centre: positions and sizes × scale, turned by `twist` (rad). */
   scale?: number;
   twist?: number;
-  /** How hard the dancers dance (0 = standing still in their clip's first pose... kept for slow-downs). */
-  energy?: number;
 }
 
-const _p = new THREE.Vector3(), _up = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Sphere();
+const _p = new THREE.Vector3(), _up = new THREE.Vector3(), _q = new THREE.Quaternion(), _qy = new THREE.Quaternion(), _s = new THREE.Sphere();
 const FRONT = new THREE.Vector3(0, 1, 0);
 
 export class Crowd {
   movers: Mover[] = [];
-  hands: Mover[] = [];
   arm: Int16Array;
   lk: Float32Array;
   cols: number[];
   seeds: Float32Array;
+  /** Each dancer turned a little about their own up axis (not everyone faces the same way). */
+  yaw: Float32Array;
   /** Per arm: chain people's indices in link order. */
   chains: number[][] = [];
   /** Link coordinate per unit radius (dancers) — r0 and dr per arm. */
   private r0: number[] = [];
   private dr: number[] = [];
   private pa: Pose = new Float32Array(39);
-  private pb: Pose = new Float32Array(39);
   private pc: Pose = new Float32Array(39);
   private js: THREE.Vector3[] = [];
   private frustum = new THREE.Frustum();
@@ -61,14 +60,15 @@ export class Crowd {
   private wpos: Float32Array;
   look: CrowdLook;
 
-  /** `clips`: the dancers' clips with weights; `bouncy` clips keep their offsets near whole beats. */
-  constructor(public gal: Galaxy, public motion: Motion, seed: number, clips: [string, number][], look: CrowdLook) {
+  /** `clips`: the dancers' clips (names in `moves`) with weights. */
+  constructor(public gal: Galaxy, public moves: Moves, seed: number, clips: [string, number][], look: CrowdLook) {
     this.look = look;
     const N = gal.people.length;
     this.arm = new Int16Array(N);
     this.lk = new Float32Array(N);
     this.cols = new Array(N).fill(0);
     this.seeds = new Float32Array(N);
+    this.yaw = new Float32Array(N);
     this.dist = new Float32Array(N);
     this.wpos = new Float32Array(N * 3);
     let arm = -1;
@@ -91,8 +91,7 @@ export class Crowd {
       const h = (k: number) => hash(i, seed, k);
       this.seeds[i] = h(9) * 10;
       if (P.chain) {
-        this.movers.push({ clip: CLIP.sway!, body: P.body, off: h(1) * 8, mirror: h(2) < 0.5 });
-        this.hands.push({ clip: CLIP.handsup!, body: P.body, off: h(3) * 4, mirror: false });
+        this.movers.push({ clip: 0, body: P.body, off: 0, rate: 1, mirror: false });
         this.cols[i] = 0;
         return;
       }
@@ -101,12 +100,10 @@ export class Crowd {
       this.lk[i] = (Math.hypot(P.p.x, P.p.z) - this.r0[a]!) / this.dr[a]!;
       let x = h(4) * total, clip = clips[0]![0];
       for (const [c, w] of clips) { if (x < w) { clip = c; break; } x -= w; }
-      const id = CLIP[clip]!, nb = clipBeats(id);
-      // the bouncy clips stay near the grid (a whole number of beats plus a little); slow ones anywhere
-      const off = nb <= 4 ? Math.floor(h(5) * nb) + (h(6) - 0.5) * 0.24 : h(5) * nb;
-      this.movers.push({ clip: id, body: P.body, off, mirror: h(7) < 0.5 });
-      this.hands.push({ clip: CLIP.handsup!, body: P.body, off: Math.floor(h(8) * 4) + (h(6) - 0.5) * 0.3, mirror: false });
+      // their own clip, a random moment of it, a slightly different tempo, mirrored or not
+      this.movers.push({ clip: Math.max(0, moves.index(clip)), body: P.body, off: h(5) * 30, rate: 0.9 + 0.2 * h(6), mirror: h(7) < 0.5 });
       this.cols[i] = h(10) < 0.55 ? 1 : 2;
+      this.yaw[i] = (h(11) - 0.5) * 1.5;
     });
   }
 
@@ -118,10 +115,9 @@ export class Crowd {
     return out;
   }
 
+  /** Scale about the centre and turn by `twist` (the same as the galaxy group's rotation.y = −twist). */
   private collapse(p: THREE.Vector3, scale: number, twist: number) {
-    const r = Math.hypot(p.x, p.z);
-    const a = twist * (1 - smoothstep(0, this.gal.R, r) * 0.6);
-    const c = Math.cos(a), s = Math.sin(a);
+    const c = Math.cos(twist), s = Math.sin(twist);
     const x = p.x * c - p.z * s, z = p.x * s + p.z * c;
     p.set(x * scale, p.y * scale, z * scale);
   }
@@ -130,10 +126,10 @@ export class Crowd {
   lkAt(a: number, r: number) { return (r - this.r0[a]!) / this.dr[a]!; }
 
   /**
-   * The joints of person i (figure frame) at beat `beat` with raised hands `w`: the ONE place a galaxy person's
-   * pose comes from.
+   * The joints of person i (figure frame) at time `t`, raised hands `w` (the chain): the ONE place a galaxy
+   * person's pose comes from.
    */
-  poseOf(i: number, beat: number, w: number): Pose {
+  poseOf(i: number, t: number, w: number): Pose {
     const P = this.gal.people[i]!;
     if (P.chain) {
       // the chain pose between its cached steps (so a slow wave rises smoothly)
@@ -143,10 +139,7 @@ export class Crowd {
       const b = this.gal.chainPose(P.body, Math.min(16, i0 + 1) / 16);
       return blendPose(a, b, f, this.pc);
     }
-    const a = this.motion.pose(this.movers[i]!, beat, this.pa);
-    if (w <= 0.002) return a;
-    const b = this.motion.pose(this.hands[i]!, beat, this.pb);
-    return blendPose(a, b, 0.9 * w, this.pc);
+    return this.moves.pose(this.movers[i]!, t, this.pa);
   }
 
   colorOf(i: number) { const c = this.cols[i]!; return c === 0 ? this.look.chain : c === 1 ? this.look.a : this.look.b; }
@@ -155,6 +148,7 @@ export class Crowd {
   draw(D: Stardust, cam: THREE.PerspectiveCamera, o: CrowdDraw) {
     const g = this.gal, ppl = g.people, N = ppl.length;
     const k0 = o.k ?? 1, sc = o.scale ?? 1, tw = o.twist ?? 0;
+    if (sc < 0.02 || k0 <= 0.002) return;
     cam.updateMatrixWorld();
     this.frustum.setFromProjectionMatrix(this.m4.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
     const cp = cam.position, order = this.order;
@@ -180,7 +174,7 @@ export class Crowd {
       const near = smoothstep(1.0 * sc, 3.2 * sc, d); // (a body at the lens would fill the frame)
       if (near <= 0.003) continue;
       const w = o.wave ? o.wave(a, lk) : 0;
-      const pose = this.poseOf(i, o.beat, w);
+      const pose = this.poseOf(i, o.t, w);
       // the chain sways a little, a slow swell running along it (neighbours stay hand in hand)
       _up.copy(P.up);
       if (P.chain) {
@@ -188,25 +182,36 @@ export class Crowd {
         _up.applyAxisAngle(FRONT, sw);
         p.addScaledVector(P.up, 0.06 * Math.sin(o.t * 1.1 - lk * 0.21 + a));
       }
-      if (tw) _up.applyAxisAngle(FRONT, tw * (1 - smoothstep(0, g.R, Math.hypot(P.p.x, P.p.z)) * 0.6));
+      if (tw) _up.applyAxisAngle(FRONT, -tw);
       frame(_up, FRONT, _q);
+      if (this.yaw[i]) _q.multiply(_qy.setFromAxisAngle(FRONT, this.yaw[i]!));
       const j = place(pose, p, _q, P.s * sc, this.movers[i]!.mirror && !P.chain, this.js);
       const lit = o.light ? o.light(a, lk, p) : 1;
-      const k = k0 * near * lit * (P.chain ? 1.0 + 0.55 * w : 0.78 + 0.3 * w);
-      D.figure(j, P.body, this.colorOf(i), k, { color2: L.deep, seed: this.seeds[i]! });
+      const k = k0 * near * lit * (P.chain ? 1.0 + 0.55 * w : 0.78 + 0.35 * w);
+      D.figure(j, P.body, this.colorOf(i), k, { color2: L.deep, seed: this.seeds[i]!, draw: o.draw ?? 1 });
     }
   }
 
-  /** The galaxy's own light (disk glow, core, nebula knots) for this camera; `core` scales the core's glow. */
+  /**
+   * The galaxy's own light (disk glow, core, nebula knots) for this camera; `core` scales the core's glow. Inside
+   * the disk its smooth glow would only fog the view, and near the core its glow would wash out the people.
+   */
   sky(cam: THREE.Camera, core = 1, disk = 1) {
     const g = this.gal;
     const h = Math.abs(cam.position.y) + Math.max(0, cam.position.length() - g.R * 1.1);
     const v = THREE.MathUtils.smoothstep(h, 4, 45);
-    (g.disk.material as THREE.ShaderMaterial).uniforms.gain!.value = (0.08 + 0.92 * v) * disk;
+    const far = THREE.MathUtils.smoothstep(cam.position.length(), 20, 230);
+    (g.disk.material as THREE.ShaderMaterial).uniforms.gain!.value = (0.08 + 0.92 * v) * (0.45 + 0.55 * far) * disk;
     for (const s of g.knots) s.material.opacity = 0.25 + 0.75 * v;
     g.cores.forEach((s, i) => {
-      s.material.opacity = Math.min(1, (0.35 + 0.65 * v) * core);
+      s.material.opacity = Math.min(1, (0.35 + 0.65 * v) * (0.3 + 0.7 * far) * core);
       s.scale.setScalar(g.R * [0.55, 0.22, 0.07][i]! * (0.85 + 0.15 * core));
     });
   }
+}
+
+/** a + (b − a)·w, joint by joint. */
+export function blendPose(a: Pose, b: Pose, w: number, out: Pose) {
+  for (let k = 0; k < a.length; k++) out[k] = a[k]! + (b[k]! - a[k]!) * w;
+  return out;
 }
