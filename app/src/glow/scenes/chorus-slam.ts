@@ -15,18 +15,42 @@ export class SlamLine extends THREE.Group {
    * `rows` = word indices of `line` per row (top to bottom). Rows are centred, `size` world units per em,
    * `leading` between baselines. Text is upper-cased.
    */
-  constructor(public line: Line, rows: number[][], o: { size: number; leading?: number; depth?: number; face: THREE.Color; side: THREE.Color; maxWidth?: number }) {
+  /**
+   * `pieces`: words sung in pieces (a stutter like glo-glo-glo-glowing) -> the pieces with their own times;
+   * each piece slams on its own.
+   */
+  constructor(public line: Line, rows: number[][], o: { size: number; leading?: number; depth?: number; face: THREE.Color; side: THREE.Color; maxWidth?: number;
+    pieces?: Map<number, { text: string; start: number; end: number }[]> }) {
     super();
     const lead = o.leading ?? o.size * 0.92;
+    // the units that slam: words, or the pieces of a split word
+    const unitsOf = (wi: number): Word[] => {
+      const ps = o.pieces?.get(wi);
+      const w = line.words[wi]!;
+      return ps ? ps.map((p) => ({ ...w, w: p.text, start: p.start, end: p.end })) : [w];
+    };
     rows.forEach((ids, r) => {
-      const text = ids.map((i) => line.words[i]!.w.toUpperCase()).join(' ');
+      const units = ids.flatMap(unitsOf);
+      const text = units.map((u) => u.w.toUpperCase()).join(' ');
       const bt = new BlockText(text, { size: o.size, depth: o.depth ?? o.size * 0.32, bevel: o.size * 0.025, align: 'center', face: o.face.clone(), side: o.side.clone() });
       bt.position.y = (rows.length - 1 - r) * lead;
       this.add(bt);
       this.rows.push(bt);
-      ids.forEach((wi, k) => {
+      // a vertical gradient baked into the letters (bright top, darker foot) so faces don't read flat
+      for (const bw of bt.words) {
+        const g = bw.mesh.geometry, pos = g.getAttribute('position');
+        const cols = new Float32Array(pos.count * 3);
+        for (let v = 0; v < pos.count; v++) {
+          const y = pos.getY(v) / (o.size * 0.72);
+          const k = 0.55 + 0.45 * Math.min(1, Math.max(0, y)) + 0.1 * Math.max(0, y - 1);
+          cols[v * 3] = cols[v * 3 + 1] = cols[v * 3 + 2] = k;
+        }
+        g.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+        bw.face.vertexColors = bw.side.vertexColors = true;
+      }
+      units.forEach((u, k) => {
         const m = bt.words[k]!.mesh;
-        this.words.push({ row: r, bt, idx: k, word: line.words[wi]!, home: m.position.clone() });
+        this.words.push({ row: r, bt, idx: k, word: u, home: m.position.clone() });
       });
     });
     const widest = Math.max(...this.rows.map((r) => r.width));

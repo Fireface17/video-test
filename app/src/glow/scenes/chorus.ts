@@ -16,6 +16,8 @@ import { SlamLine } from './chorus-slam';
 import { Shatter } from './chorus-shatter';
 import { Town } from './chorus-town';
 import { Finale } from './chorus-finale';
+import { GlowPoints } from '../lib/points';
+import { hash } from '../../engine/util';
 
 type Part = 'A' | 'B' | 'C' | 'D' | 'E';
 interface Seg { part: Part; start: number; end: number; lines: Line[] }
@@ -34,6 +36,7 @@ export default class Chorus extends Scene {
   floor!: DanceFloor;
   slams = new Map<Line, SlamLine>();
   rings!: THREE.Group;
+  dust!: GlowPoints;
   ringA!: THREE.Mesh;
   ringB!: THREE.Mesh;
   shatter?: Shatter;
@@ -66,9 +69,20 @@ export default class Chorus extends Scene {
     for (const seg of this.segs.filter((s) => s.part === 'A' || s.part === 'D')) {
       seg.lines.forEach((l, k) => {
         const rows = rowsFor(l);
-        const sl = new SlamLine(l, rows, { size: rows.length > 2 ? 0.95 : 1.15, leading: 1.08, face: k ? face2 : face, side: k ? side2 : side, maxWidth: 8.6 });
+        // a stuttered word (glo-glo-glo-glowing) slams piece by piece on the vocal onsets
+        const pieces = new Map<number, { text: string; start: number; end: number }[]>();
+        l.words.forEach((w, wi) => {
+          const parts = w.w.split('-').filter(Boolean);
+          if (parts.length < 3) return;
+          const on = audio.events('vocal', w.start - 0.05, w.start + 2.2).map(([t]) => t).slice(0, parts.length);
+          while (on.length < parts.length) on.push(audio.timeOfBeat(audio.beatAt(on[on.length - 1] ?? w.start) + 1));
+          pieces.set(wi, parts.map((p, i) => ({ text: i < parts.length - 1 ? `${p}-` : p, start: on[i]!, end: i + 1 < parts.length ? on[i + 1]! : w.end })));
+        });
+        const sl = new SlamLine(l, rows, { size: rows.length > 2 ? 0.95 : 1.15, leading: 1.08, face: k ? face2 : face, side: k ? side2 : side, maxWidth: pieces.size ? 9.6 : 8.6, pieces });
         sl.position.z = k * 1.6;
         S.add(sl);
+        sl.updateMatrixWorld(true);
+        sl.userData.centre = new THREE.Box3().setFromObject(sl).getCenter(new THREE.Vector3());
         this.slams.set(l, sl);
       });
     }
@@ -79,6 +93,9 @@ export default class Chorus extends Scene {
     this.ringB = new THREE.Mesh(torus, new THREE.MeshBasicMaterial({ color: col('cyan', 2.2), fog: true }));
     this.rings.add(this.ringA, this.ringB);
     S.add(this.rings);
+    // dust in the air above the floor, catching the light
+    this.dust = new GlowPoints(160, 0.035);
+    S.add(this.dust);
 
     const B = this.segs.find((s) => s.part === 'B');
     if (B) this.shatter = new Shatter(this.ctx, B.lines, this.n);
@@ -139,6 +156,13 @@ export default class Chorus extends Scene {
     const glowW = glowLine?.words.find((w) => /glo/i.test(w.w));
     const flood = glowW ? smoothstep(glowW.start - 0.1, glowW.start + 1.6, t) : 0;
     this.floor.light(t, beat, sc.floor.map((k) => col(k, 1.0)), energy, flood, col('phosphor', 1.2), ripples);
+    for (let i = 0; i < this.dust.n; i++) {
+      const x = (hash(i, 1) - 0.5) * 26, z = (hash(i, 2) - 0.5) * 22 - 2;
+      const y = ((hash(i, 3) * 9 + t * (0.15 + 0.25 * hash(i, 4))) % 9) + 0.3;
+      const c = col(sc.floor[i % sc.floor.length]!, 1);
+      this.dust.set(i, x + Math.sin(t * 0.5 + i) * 0.3, y, z, c, 0.5 + 0.8 * audio.hit('kick', t, 0.15), 0.6 + hash(i, 5));
+    }
+    this.dust.commit();
 
     // bracelets: fly in from both sides and link on "hand" (A's second line)
     const hand = !isD && l1 ? l1.words.find((w) => /hand/i.test(w.w)) : undefined;
@@ -158,7 +182,11 @@ export default class Chorus extends Scene {
       (this.ringB.material as THREE.MeshBasicMaterial).color.copy(col('cyan', 2.2 + 3 * hit));
     }
 
-    // camera
+    // camera: aimed at the line being sung
+    const c0 = this.slams.get(l0!)!.userData.centre as THREE.Vector3;
+    const c1 = l1 ? (this.slams.get(l1)!.userData.centre as THREE.Vector3) : c0;
+    const sw = l1 ? ease.inOutCubic(prog(t, l1.words[0]!.start - 0.4, l1.words[0]!.start + 0.3)) : 0;
+    const centre = c0.clone().lerp(c1, sw);
     const p = prog(t, seg.start, seg.end, ease.linear);
     const db = audio.downbeats.filter((d) => d <= t).pop() ?? seg.start;
     const punch = pulse(t, db, 0.12);
@@ -166,12 +194,12 @@ export default class Chorus extends Scene {
     let pos: THREE.Vector3, tgt: THREE.Vector3;
     if (!isD) {
       pos = new THREE.Vector3(side * lerp(-2.5, 2.2, ease.inOutQuad(p)), lerp(1.1, 1.6, p), lerp(12.5, 9.2, ease.outCubic(p)));
-      tgt = new THREE.Vector3(0, 2.2, 0.8);
+      tgt = new THREE.Vector3(centre.x, centre.y + 0.15, centre.z);
     } else {
       const a = lerp(-0.5, 0.4, ease.inOutQuad(p)) * side;
-      const r = lerp(10.5, 8.2, p);
-      pos = new THREE.Vector3(Math.sin(a) * r, lerp(4.6, 2.6, ease.inOutQuad(p)), Math.cos(a) * r);
-      tgt = new THREE.Vector3(0, 1.9, 0.8);
+      const r = lerp(11, 9.4, p);
+      pos = new THREE.Vector3(Math.sin(a) * r, lerp(4.6, 2.6, ease.inOutQuad(p)), Math.cos(a) * r + centre.z);
+      tgt = new THREE.Vector3(centre.x, centre.y + 0.1, centre.z);
     }
     pos.add(new THREE.Vector3(noise1(t * 0.7, 3) * 0.15, noise1(t * 0.7, 5) * 0.1, 0));
     pos.x += noise1(t * 40, 11) * 0.06 * shake;
