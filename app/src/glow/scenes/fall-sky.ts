@@ -64,7 +64,9 @@ export function nebulaSphere(map: THREE.Texture, scale = 4, radius = 480) {
       varying vec3 vDir;
       void main() {
         vec3 d = normalize(vDir);
-        vec2 uv = vec2(atan(d.x, d.z) / 6.2831853 + 0.5, 0.5 + asin(clamp(d.y, -1.0, 1.0)) / 3.1415927);
+        // (atan(0, 0) is undefined: a view straight up or down would put a NaN at the pole)
+        float lon = abs(d.x) + abs(d.z) < 1e-6 ? 0.0 : atan(d.x, d.z);
+        vec2 uv = vec2(lon / 6.2831853 + 0.5, 0.5 + asin(clamp(d.y, -1.0, 1.0)) / 3.1415927);
         vec3 c = texture2D(map, uv).rgb * scale;
         // re-hued toward gold by intensity (a blue nebula times a gold tint would only go dark and muddy)
         c = mix(c * tint, gold * max(c.r, max(c.g, c.b)), gk);

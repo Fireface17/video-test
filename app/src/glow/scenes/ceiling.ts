@@ -1,313 +1,459 @@
-// Intro / outro: lying on the bed, looking up at a bedroom ceiling of glow-in-the-dark stickers.
-// Intro: the lamp clicks off on the first downbeat, a sticker ignites on every airy "oh", the ceiling
-// dissolves into the night sky and the stars spell out the title. Outro: back down to the ceiling, the
-// phosphor decays star by star, two stars meet on "take my hand", and the lamp clicks back on at the
-// very end, so the last frame is the first one and the video loops.
+// Intro / outro: lying in bed in the dark, looking up at a ceiling of glow-in-the-dark stickers.
+// Intro: a sticker lights on every beat. Hidden among them are two figures; when the last star is lit, a
+// point of light draws them as a constellation — two people, one raising a hand — and on the next downbeat
+// it joins their hands. The ceiling dissolves into the night sky, we fly up into space, the same light
+// writes the title, the artist's name switches on in neon, and the camera turns and dives at the night
+// Earth (into the highway). Outro: the same ceiling, every sticker lit; they go out on the beat, the light
+// joins the two hands again on "take my hand", the two last stars drift together, merge, and go out on the
+// final downbeat — black, which is where the video begins.
 import * as THREE from 'three';
 import { Scene, type Frame } from '../../engine/scene';
 import { clamp, ease, lerp, mulberry32, noise1, prog, pulse, smoothstep } from '../../engine/util';
-import { Stage, aim, faceCamera, skyDome } from '../lib/stage';
+import { Stage, aim } from '../lib/stage';
 import { col } from '../lib/palette';
 import { starGeometry } from '../lib/shapes';
-import { NeonSign, flickerOn } from '../lib/neon';
 import { GlowPoints } from '../lib/points';
+import { LightTrail } from '../lib/lightpaint';
+import { displayTextGeometry, loadDisplayFont } from '../lib/fonts';
+import { flickerOn } from '../lib/neon';
+import { Earth } from '../lib/earth';
+import { StarStreaks } from './fall-stars';
+import { nebulaMap, nebulaSphere } from './fall-sky';
 
-const CEIL = 2.6; // ceiling height (m)
-const N_STARS = 46;
+const CEIL = 2.6;
+const EYE = new THREE.Vector3(0, 0.55, -0.1);
 
-interface Sticker { mesh: THREE.Mesh; mat: THREE.MeshStandardMaterial; x: number; z: number; r: number; rot: number; t0: number; tOut: number; seed: number }
+/** The two figures, in ceiling coordinates (u right, v up the frame; metres). B's outer hand is raised. */
+const J: Record<string, [number, number]> = {
+  aHead: [-0.52, 0.74], aNeck: [-0.52, 0.52], aShL: [-0.72, 0.46], aShR: [-0.32, 0.46], aElL: [-0.86, 0.2], aHaL: [-0.92, -0.06],
+  aElR: [-0.27, 0.22], aHaR: [-0.15, 0.06], aHip: [-0.52, -0.08], aKnL: [-0.66, -0.46], aFtL: [-0.72, -0.84], aKnR: [-0.4, -0.47], aFtR: [-0.36, -0.85],
+  bHead: [0.52, 0.76], bNeck: [0.52, 0.54], bShL: [0.32, 0.48], bShR: [0.72, 0.48], bElL: [0.27, 0.24], bHaL: [0.15, 0.06],
+  bElR: [0.86, 0.72], bHaR: [0.94, 0.98], bHip: [0.52, -0.06], bKnL: [0.4, -0.45], bFtL: [0.35, -0.83], bKnR: [0.65, -0.44], bFtR: [0.72, -0.82],
+};
+/** The pen's path through them (polylines; the pen jumps between them). */
+const PATH = [
+  ['aFtL', 'aKnL', 'aHip', 'aKnR', 'aFtR'], ['aHip', 'aNeck', 'aHead'], ['aHaL', 'aElL', 'aShL', 'aNeck', 'aShR', 'aElR', 'aHaR'],
+  ['bHaL', 'bElL', 'bShL', 'bNeck', 'bShR', 'bElR', 'bHaR'], ['bHead', 'bNeck', 'bHip'], ['bFtL', 'bKnL', 'bHip', 'bKnR', 'bFtR'],
+];
+/** Outro: the order the figures' stars go out (feet first, hands last). */
+const FIG_OUT = ['aFtL', 'bFtR', 'aFtR', 'bFtL', 'aKnL', 'bKnR', 'aKnR', 'bKnL', 'aHip', 'bHip', 'aHaL', 'bHaR', 'aElL', 'bElR', 'aHead', 'bHead', 'aShL', 'bShR', 'aNeck', 'bNeck', 'aShR', 'bShL', 'aElR', 'bElL'];
 
-/** A soft plaster texture for the ceiling (deterministic noise). */
+interface Sticker { key: string; u: number; v: number; r: number; mesh: THREE.Mesh; mat: THREE.MeshStandardMaterial; halo: THREE.Mesh; hmat: THREE.ShaderMaterial; tOn: number; tOff: number; seed: number }
+
 function plaster(): THREE.Texture {
-  const n = 256, cv = document.createElement('canvas');
+  const n = 1024, cv = document.createElement('canvas');
   cv.width = cv.height = n;
   const c = cv.getContext('2d')!, img = c.createImageData(n, n), rnd = mulberry32(7);
-  for (let i = 0; i < n * n; i++) {
-    const v = 200 + Math.floor((rnd() + rnd() + rnd()) * 18);
-    img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v;
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const i = y * n + x;
+    // fine grain + soft blotches (sprayed plaster)
+    const b = noise1(x * 0.02 + noise1(y * 0.02, 3) * 2, 5) * 10 + noise1(y * 0.013, 9) * 6;
+    const v = 196 + b + (rnd() + rnd() + rnd() - 1.5) * 16;
+    img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = clamp(v, 0, 255);
     img.data[i * 4 + 3] = 255;
   }
   c.putImageData(img, 0, 0);
   const tex = new THREE.CanvasTexture(cv);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(6, 6);
+  tex.repeat.set(3, 3);
+  tex.anisotropy = 8;
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
 export default class Ceiling extends Scene {
-  st = new Stage(64, 0.05, 600);
+  st = new Stage(60, 0.02, 3000);
   outro = false;
-  stickers: Sticker[] = [];
-  ceilMat!: THREE.MeshStandardMaterial;
+  B: number[] = [];
+  beats: number[] = [];
+  room = new THREE.Group();
+  ceilMat!: THREE.ShaderMaterial;
   wallMat!: THREE.MeshStandardMaterial;
-  lampMat!: THREE.MeshBasicMaterial;
-  lampDisc!: THREE.Mesh;
-  haloMat: THREE.ShaderMaterial[] = [];
-  lamp!: THREE.PointLight;
-  hemi!: THREE.HemisphereLight;
-  moon!: THREE.Mesh;
-  sky!: THREE.Mesh;
-  field!: GlowPoints;
-  title!: NeonSign;
-  artist!: NeonSign;
-  hand?: NeonSign;
-  meteors!: GlowPoints;
-  bars: number[] = [];
+  moonLight!: THREE.SpotLight;
+  stickers: Sticker[] = [];
+  byKey = new Map<string, Sticker>();
+  /** The constellation (stickers' sky stars + trails) lives in this group so it can recede into the sky. */
+  con = new THREE.Group();
+  body!: LightTrail;
+  join!: LightTrail;
+  conStars = new GlowPoints(64, 0.05);
+  pen = new GlowPoints(40, 0.06);
+  sky = new THREE.Group();
+  field = new GlowPoints(5000, 0.9);
+  neb!: THREE.Mesh;
+  streaks = new StarStreaks(1600, 0.035);
+  title!: LightTrail;
+  titleGrp = new THREE.Group();
+  titlePen = new GlowPoints(16, 0.06);
+  name = new THREE.Group();
+  nameMat!: THREE.MeshBasicMaterial;
+  nameGlow!: THREE.MeshBasicMaterial;
+  earth = new Earth();
+  earthDir = new THREE.Vector3();
+  dis = -1;
 
   override async init() {
-    const { audio, params, start, end, lyrics } = this.ctx;
+    const { audio, params, start, end } = this.ctx;
     this.outro = params.mode === 'outro';
-    const S = this.st.scene;
-    this.st.bg.copy(col('night'));
-    // bars of this entry (downbeat times)
-    this.bars = audio.downbeats.filter((d) => d >= start - 0.01 && d <= end + 2);
+    const S = this.st;
+    S.bg.copy(col('night', 0.25));
+    this.B = audio.downbeats.filter((d) => d >= start - 2 && d <= end + 2);
+    this.beats = audio.beats.filter((b) => b >= start - 0.05 && b <= end + 1);
 
-    // room: ceiling, two walls, a lamp
-    this.ceilMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#9aa3c4'), map: plaster(), roughness: 0.95, transparent: true });
-    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(9, 8), this.ceilMat);
-    ceil.rotation.x = Math.PI / 2; // facing down
+    // ---- the room: a plaster ceiling (dissolves from the middle out), walls, moonlight from a window ----
+    const map = plaster();
+    this.ceilMat = new THREE.ShaderMaterial({
+      transparent: true,
+      uniforms: { map: { value: map }, light: { value: col('blue', 0.03) }, dis: { value: -1 }, glow: { value: new THREE.Color(0, 0, 0) }, moonK: { value: 1 } },
+      vertexShader: /* glsl */ `varying vec2 vUv; varying vec3 vP; void main(){ vUv = uv; vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: /* glsl */ `
+        uniform sampler2D map; uniform vec3 light, glow; uniform float dis, moonK;
+        varying vec2 vUv; varying vec3 vP;
+        float h(vec2 p){ return fract(sin(dot(p, vec2(41.3, 289.1))) * 15731.743); }
+        void main() {
+          vec3 a = texture2D(map, vUv * 3.0).rgb; a = pow(a, vec3(2.2));
+          // moonlight through a window on the left: a soft barred patch near the wall
+          vec2 m = (vP.xy - vec2(-1.55, 0.35)) / vec2(0.75, 0.55);
+          float mpatch = (1.0 - smoothstep(0.55, 1.0, length(m))) * smoothstep(0.03, 0.08, abs(fract(m.x * 1.0 + 0.5) - 0.5)) * smoothstep(0.03, 0.08, abs(m.y));
+          vec3 c = a * (light + col_moon() * mpatch * moonK + glow);
+          // dissolve: burns away from the centre with a glowing edge
+          vec2 q = vP.xy * 9.0; vec2 fi = floor(q), fr = fract(q); fr = fr * fr * (3.0 - 2.0 * fr);
+          float vn = mix(mix(h(fi), h(fi + vec2(1.0, 0.0)), fr.x), mix(h(fi + vec2(0.0, 1.0)), h(fi + vec2(1.0, 1.0)), fr.x), fr.y);
+          float r = length(vP.xy) + (vn - 0.5) * 0.16;
+          if (r < dis) discard;
+          float edge = exp(-pow((r - dis) / 0.05, 2.0)) * step(0.0, dis);
+          c += vec3(0.7, 1.0, 0.4) * edge * 1.5;
+          gl_FragColor = vec4(c, 1.0);
+        }`.replace('col_moon()', 'vec3(0.05, 0.075, 0.16)'),
+    });
+    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(9, 7), this.ceilMat);
+    ceil.rotation.x = Math.PI / 2; // facing down; local (x, y) = world (x, z), the shader's ceiling coordinates
     ceil.position.y = CEIL;
-    this.wallMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#6d7598'), roughness: 0.9, transparent: true });
+    this.wallMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#6a7290'), roughness: 0.95, transparent: true });
     const wallN = new THREE.Mesh(new THREE.PlaneGeometry(9, 3), this.wallMat);
-    wallN.position.set(0, CEIL - 1.5, -2.3);
-    const wallE = new THREE.Mesh(new THREE.PlaneGeometry(8, 3), this.wallMat);
-    wallE.rotation.y = -Math.PI / 2;
-    wallE.position.set(3.1, CEIL - 1.5, 0);
-    this.lampMat = new THREE.MeshBasicMaterial({ color: col('#ffd9a0', 1.2), transparent: true });
-    this.lampDisc = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.05, 40), this.lampMat);
-    this.lampDisc.position.set(1.05, CEIL - 0.03, -1.05);
-    this.lamp = new THREE.PointLight(new THREE.Color('#ffcf94'), 4, 0, 1.6);
-    this.lamp.position.set(1.05, CEIL - 0.3, -1.05);
-    this.hemi = new THREE.HemisphereLight(new THREE.Color('#2a3a80'), new THREE.Color('#05060f'), 0.05);
-    this.hemi.position.set(0, -1, 0); // the "sky" colour lights the downward-facing ceiling
-    // moonlight from the window: a soft cool patch on the ceiling near the north wall
-    this.moon = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.1), new THREE.ShaderMaterial({
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-      uniforms: { k: { value: 0 }, c: { value: col('blue', 0.22) } },
-      vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-      fragmentShader: `uniform float k; uniform vec3 c; varying vec2 vUv;
-        void main(){ vec2 p = abs(vUv - 0.5) * 2.0; float a = (1.0 - smoothstep(0.55, 1.0, p.x)) * (1.0 - smoothstep(0.35, 1.0, p.y));
-          float bars = smoothstep(0.02, 0.06, abs(fract(vUv.x * 2.0) - 0.5)) * smoothstep(0.02, 0.06, abs(vUv.y - 0.5));
-          gl_FragColor = vec4(c * a * bars * k, 1.0); }`,
-    }));
-    this.moon.rotation.x = Math.PI / 2;
-    this.moon.position.set(-0.9, CEIL - 0.005, -1.35);
-    S.add(ceil, wallN, wallE, this.lampDisc, this.lamp, this.hemi, this.moon);
+    wallN.position.set(0, CEIL - 1.5, 1.9);
+    wallN.rotation.y = Math.PI;
+    const wallW = new THREE.Mesh(new THREE.PlaneGeometry(7, 3), this.wallMat);
+    wallW.rotation.y = Math.PI / 2;
+    wallW.position.set(-2.4, CEIL - 1.5, 0);
+    this.moonLight = new THREE.SpotLight(new THREE.Color('#5a74c8'), 0.6, 12, 0.6, 0.8, 1);
+    this.moonLight.position.set(-3, 0.8, 0.4);
+    this.moonLight.target.position.set(-1.2, CEIL, 0.3);
+    this.room.add(ceil, wallN, wallW, this.moonLight, this.moonLight.target);
+    S.add(this.room);
 
-    // stickers: scattered over the ceiling, not too close to each other
-    const rnd = mulberry32(this.outro ? 11 : 5);
-    const geo = starGeometry(0.1, 0.04);
-    const pts: { x: number; z: number; r: number }[] = [];
-    for (let tries = 0; pts.length < N_STARS && tries < 4000; tries++) {
-      const r = 0.06 + Math.pow(rnd(), 2.2) * 0.13;
-      const x = (rnd() * 2 - 1) * 2.4, z = (rnd() * 2 - 1) * 1.7 - 0.2;
-      if (pts.every((p) => Math.hypot(p.x - x, p.z - z) > (p.r + r) * 1.9)) pts.push({ x, z, r });
+    // ---- stickers: the two figures, and scattered stars around them ----
+    const rnd = mulberry32(5);
+    const pts: { key: string; u: number; v: number; r: number }[] = Object.entries(J).map(([key, [u, v]]) => ({ key, u, v, r: 0.075 + rnd() * 0.03 }));
+    for (let tries = 0; pts.length < 50 && tries < 6000; tries++) {
+      const r = 0.05 + Math.pow(rnd(), 2) * 0.09;
+      const u = (rnd() * 2 - 1) * 2.1, v = (rnd() * 2 - 1) * 1.15;
+      if (pts.every((p) => Math.hypot(p.u - u, p.v - v) > (p.r + r) * 1.6 + 0.08)) pts.push({ key: `s${pts.length}`, u, v, r });
     }
-    // ignition times: the airy vocal notes of the intro (after the lamp goes off), then the plucks
-    const off = this.bars[1] ?? start + 1.6;
-    const vo = audio.events('vocal', off + 0.2, (this.bars[8] ?? start + 12.8) - 0.1).map(([t]) => t);
-    const order = pts.map((_, i) => i).sort((a, b) => Math.abs(pts[a]!.x) + Math.abs(pts[a]!.z + 0.2) * 1.3 - (Math.abs(pts[b]!.x) + Math.abs(pts[b]!.z + 0.2) * 1.3));
-    const outT0 = this.bars[2] ?? start + 3.2, outT1 = (this.bars[10] ?? end - 2) - 0.4;
-    pts.forEach((p, i) => {
-      const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#d6efb8'), roughness: 0.55, emissive: col('phosphor'), emissiveIntensity: 0 });
+    // ignition: one sticker per beat to begin with, faster as the bars go by; the figures' stars come last
+    const scattered = pts.filter((p) => p.key.startsWith('s')).sort((a, b) => Math.hypot(a.u * 0.7, a.v) - Math.hypot(b.u * 0.7, b.v));
+    const figure = Object.keys(J).map((k) => pts.find((p) => p.key === k)!).sort((a, b) => b.v - a.v);
+    const order = [...scattered, ...figure];
+    const counts: number[] = [];
+    for (let b = 0; b < 32; b++) counts.push(b < 10 ? 1 : b < 22 ? (b % 2 ? 2 : 1) : 2);
+    let left = order.length - counts.reduce((a, b) => a + b, 0);
+    for (let b = 31; left > 0; b = b === 22 ? 31 : b - 1) { counts[b]!++; left--; }
+    const onTimes: number[] = [];
+    counts.forEach((c, b) => { for (let k = 0; k < c; k++) onTimes.push(this.beatT(b) + k * 0.06); });
+    // outro: scattered stars out over 2 bars from bar 1, the figures over 2 bars after "take my hand"
+    const outB = (k: number) => this.beatT(4 + k);
+    const geo = starGeometry(0.1, 0.04);
+    order.forEach((p, i) => {
+      const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#cfe8b0'), roughness: 0.5, emissive: col('phosphor'), emissiveIntensity: 0, transparent: true });
       const mesh = new THREE.Mesh(geo, mat);
-      mesh.rotation.x = Math.PI / 2;
-      const rot = rnd() * Math.PI * 2;
-      mesh.rotation.z = rot;
+      mesh.rotation.set(Math.PI / 2, 0, rnd() * Math.PI * 2);
       mesh.scale.setScalar(p.r);
-      mesh.position.set(p.x, CEIL - 0.012, p.z);
-      S.add(mesh);
-      const k = order.indexOf(i);
-      const t0 = k < vo.length ? vo[k]! : off + 1.5 + (k - vo.length) * 0.2 + rnd() * 0.1;
-      // outro: decay order random, the last star dies just before the lamp comes back on
-      const tOut = lerp(outT0, outT1, Math.pow(rnd(), 0.8));
-      this.stickers.push({ mesh, mat, x: p.x, z: p.z, r: p.r, rot, t0, tOut, seed: i });
-      const hm = new THREE.ShaderMaterial({
+      mesh.position.set(p.u, CEIL - 0.012, p.v);
+      const hmat = new THREE.ShaderMaterial({
         transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-        uniforms: { k: { value: 0 }, c: { value: col('phosphor', 0.16) } },
+        uniforms: { k: { value: 0 }, c: { value: col('phosphor', 0.2) } },
         vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
         fragmentShader: `uniform float k; uniform vec3 c; varying vec2 vUv;
-          void main(){ float r = length(vUv - 0.5) * 2.0; gl_FragColor = vec4(c * k * exp(-r * r * 5.0) * (1.0 - smoothstep(0.8, 1.0, r)), 1.0); }`,
+          void main(){ float r = length(vUv - 0.5) * 2.0; gl_FragColor = vec4(c * k * (exp(-r * r * 6.0) + 0.25 * exp(-r * r * 40.0)) * (1.0 - smoothstep(0.85, 1.0, r)), 1.0); }`,
       });
-      const halo = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), hm);
+      const halo = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), hmat);
       halo.rotation.x = Math.PI / 2;
-      halo.scale.setScalar(p.r * 7);
-      halo.position.set(p.x, CEIL - 0.004, p.z);
-      (mesh as any).halo = halo;
-      S.add(halo);
-      this.haloMat.push(hm);
+      halo.scale.setScalar(p.r * 9);
+      halo.position.set(p.u, CEIL - 0.006, p.v);
+      let tOff = Infinity;
+      if (this.outro) {
+        const si = scattered.indexOf(p), fi = FIG_OUT.indexOf(p.key);
+        if (si >= 0) tOff = outB(Math.floor((si * 8) / scattered.length)) + (si % 3) * 0.05;
+        else if (fi >= 0) tOff = outB(12 + Math.floor((fi * 8) / FIG_OUT.length)) + (fi % 3) * 0.05;
+      }
+      const s: Sticker = { key: p.key, u: p.u, v: p.v, r: p.r, mesh, mat, halo, hmat, tOn: this.outro ? -Infinity : onTimes[i]!, tOff, seed: i };
+      this.stickers.push(s);
+      this.byKey.set(p.key, s);
+      this.room.add(mesh, halo);
     });
-    if (this.outro) {
-      // the two stars that meet on "take my hand": the closest pair near the centre; they die last
-      const a = this.stickers.reduce((b, s) => (Math.hypot(s.x, s.z + 0.2) < Math.hypot(b.x, b.z + 0.2) ? s : b));
-      const b = this.stickers.filter((s) => s !== a).reduce((m, s) => (Math.hypot(s.x - a.x, s.z - a.z) < Math.hypot(m.x - a.x, m.z - a.z) ? s : m));
-      a.tOut = b.tOut = outT1 + 0.2;
-      (a as any).pair = 1; (b as any).pair = -1;
-    }
 
-    // the sky beyond the ceiling
-    this.sky = skyDome(col('night'), col('dusk', 0.9), col('night'), 400);
-    S.add(this.sky);
-    this.field = new GlowPoints(1400, 0.9);
-    const fr = mulberry32(3);
+    // ---- the constellation: the pen's trails on the ceiling plane (u, v) ----
+    const P = (k: string) => ({ x: J[k]![0], y: J[k]![1] });
+    this.body = new LightTrail(PATH.map((pl) => pl.map(P)), { width: 0.011, color: col('phosphor', 1.1).lerp(col('white', 1), 0.25), tipLen: 0.3, seed: 2 });
+    this.join = new LightTrail([[P('aHaR'), P('bHaL')]], { width: 0.013, color: col('gold', 1.4), tipLen: 0.2, seed: 5 });
+    this.con.add(this.body, this.join, this.conStars, this.pen);
+    // trails are built in XY; lay them on the ceiling (local y -> world z), facing down
+    this.con.rotation.x = Math.PI / 2;
+    this.con.position.y = CEIL - 0.02;
+    S.add(this.con);
+
+    // ---- sky: stars at infinity, a faint nebula, streaking dust for the flight ----
+    const sr = mulberry32(17);
     for (let i = 0; i < this.field.n; i++) {
-      // upper hemisphere, denser near the zenith
-      const u = fr(), v = fr();
-      const th = u * Math.PI * 2, ph = Math.acos(1 - v * 0.95);
-      const R = 120 + fr() * 120;
-      const c = fr() < 0.12 ? col('cyan') : fr() < 0.2 ? col('pink') : col('#e8ecff');
-      this.field.set(i, Math.sin(ph) * Math.cos(th) * R, CEIL + Math.cos(ph) * R, Math.sin(ph) * Math.sin(th) * R, c, 0.5 + fr() * 1.2, 0.7 + Math.pow(fr(), 3) * 2.5);
+      const u = sr() * 2 - 1, a = sr() * Math.PI * 2, R = 1200;
+      const band = Math.exp(-Math.pow((u - 0.25 * Math.sin(a * 2)) / 0.18, 2)); // a milky band
+      const c = col('white', 0.35 + sr() * 1.3 + band * sr() * 1.5).lerp(col(sr() < 0.5 ? 'blue' : 'gold', 1), sr() * 0.2);
+      this.field.set(i, Math.sqrt(1 - u * u) * Math.cos(a) * R, u * R, Math.sqrt(1 - u * u) * Math.sin(a) * R, c, 1, 0.35 + sr() * sr() * 2.2);
     }
     this.field.commit();
-    S.add(this.field);
+    this.neb = nebulaSphere(nebulaMap(512, 256, 4), 4, 1500);
+    (this.neb.material as THREE.ShaderMaterial).uniforms.gain!.value = 0.5;
+    this.sky.add(this.field, this.neb);
+    S.add(this.sky, this.streaks);
 
-    // shooting stars across the sky while the title comes on (trails of points)
-    this.meteors = new GlowPoints(2 * 60, 0.06);
-    S.add(this.meteors);
-    // title: the song in neon script, the artist in a thin sans tube
-    this.title = new NeonSign('Glowing in the Dark', { font: 'script', size: 0.74, align: 'center', color: col('phosphor', 2.2) });
-    this.artist = new NeonSign('FIREFACE17', { font: 'readable', size: 0.24, align: 'center', color: col('cyan', 2.4), tracking: 10 });
-    S.add(this.title, this.artist);
-    if (this.outro) {
-      const l = lyrics.find('Take my hand').filter((x) => x.start >= start - 0.5)[0];
-      if (l) {
-        this.hand = new NeonSign(l.text, { font: 'script', size: 0.32, align: 'center', color: col('pink', 2.4) });
-        (this.hand as any).line = l;
-        S.add(this.hand);
-      }
-    }
-  }
-
-  /** Camera path: lying on the bed, the frame's top toward the north wall. */
-  private camera(t: number) {
-    const b = this.bars, B = (k: number) => b[Math.min(k, b.length - 1)] ?? this.ctx.end;
-    let rise: number, tilt: number;
     if (!this.outro) {
-      // slow drift up toward the ceiling, then up through it into the sky from bar 8
-      rise = lerp(0.72, 1.45, prog(t, this.ctx.start, B(8), ease.inOutQuad)) + prog(t, B(8) - 0.4, B(11), ease.inOutCubic) * 3.2;
-      tilt = lerp(0.45, 0.2, prog(t, this.ctx.start, B(8), ease.inOutQuad)) - prog(t, B(8), B(11), ease.inOutCubic) * 0.15;
-    } else {
-      rise = lerp(4.6, 0.75, prog(t, this.ctx.start, B(2), ease.outCubic));
-      tilt = lerp(0.05, 0.42, prog(t, this.ctx.start, B(2), ease.inOutCubic));
+      // title, written by the light; the artist's name in neon below it
+      this.title = LightTrail.text('Glowing in the Dark', 'script', 1.1, { width: 0.018, color: col('phosphor', 1.2).lerp(col('cyan', 1.2), 0.25), tipLen: 0.5, seed: 9 });
+      const font = await loadDisplayFont('tiltneon');
+      const g = displayTextGeometry(font, 'FIREFACE17', 0.5, { tracking: 0.08 });
+      this.nameMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0, 0, 0) });
+      this.nameGlow = new THREE.MeshBasicMaterial({ color: new THREE.Color(0, 0, 0), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+      const n1 = new THREE.Mesh(g, this.nameMat), n2 = new THREE.Mesh(g, this.nameGlow);
+      n2.scale.setScalar(1.02);
+      n2.position.z = -0.01;
+      this.name.add(n2, n1);
+      this.name.position.y = -1.0;
+      this.titleGrp.add(this.title, this.name, this.titlePen);
+      S.add(this.titleGrp);
+      await this.earth.init();
+      S.add(this.earth);
+      // dive at the lights of western Europe: that point of the globe faces the camera from below
+      const lat = 49 * Math.PI / 180, lon = 6 * Math.PI / 180;
+      const th = Math.PI / 2 - lat, ph = lon + Math.PI;
+      this.earthDir.set(-Math.cos(ph) * Math.sin(th), Math.cos(th), Math.sin(ph) * Math.sin(th));
+      this.earth.quaternion.setFromUnitVectors(this.earthDir, new THREE.Vector3(0, 1, 0));
     }
-    const sway = noise1(t * 0.18, 4) * 0.08;
-    const pos = new THREE.Vector3(sway * 2, rise, 0.55 + noise1(t * 0.15, 9) * 0.1);
-    const target = new THREE.Vector3(sway, CEIL + 2, pos.z - tilt * 2.4);
-    aim(this.st.cam, pos, target, noise1(t * 0.11, 2) * 0.05 + (this.outro ? 0 : t * 0.006), { x: 0, y: 0, z: -1 });
   }
 
-  render(f: Frame, out: THREE.WebGLRenderTarget) {
-    const t = f.t, { audio } = this.ctx;
-    const b = this.bars, B = (k: number) => b[Math.min(k, b.length - 1)] ?? this.ctx.end;
-    const lastBar = audio.downbeats.filter((d) => d <= audio.duration - 0.6).pop() ?? audio.duration;
-    // lamp: on until the first downbeat of the intro; back on at the last downbeat of the outro
-    const lampOn = this.outro ? (t >= lastBar ? 1 : 0) : (t < B(1) ? 1 : 0);
-    this.lamp.intensity = 4 * lampOn;
-    if (lampOn) this.lampMat.color.copy(col('#ffd9a0', 1.2));
-    else this.lampMat.color.copy(col('ink', 0.18));
-    this.hemi.intensity = lampOn ? 0.35 : 0.5;
-    (this.moon.material as THREE.ShaderMaterial).uniforms.k!.value = 1 - lampOn;
+  /** Time of beat k of this entry (k = 0 is the entry's first beat). */
+  beatT(k: number) {
+    const a = this.ctx.audio, b0 = Math.ceil(a.beatAt(this.ctx.start) - 0.05);
+    return a.timeOfBeat(b0 + k);
+  }
 
-    // the ceiling dissolves into the sky (intro, from bar 8) / re-forms (outro, first two bars)
-    const open = this.outro ? 1 - prog(t, B(0) + 0.6, B(2), ease.inOutCubic) : prog(t, B(8) - 0.5, B(9), ease.inOutCubic);
-    this.ceilMat.opacity = 1 - open;
-    this.wallMat.opacity = 1 - open;
-    this.ceilMat.visible = this.wallMat.visible = open < 0.999;
-    this.lampMat.opacity = 1 - open;
-    this.lampDisc.visible = open < 0.999;
-    this.field.visible = open > 0.001;
-    (this.field.material as THREE.ShaderMaterial).uniforms.size!.value = 0.9 * open;
-    this.sky.visible = open > 0.001;
+  override render(f: Frame, out: THREE.WebGLRenderTarget) {
+    return this.outro ? this.renderOutro(f, out) : this.renderIntro(f, out);
+  }
 
-    // stickers
-    const oth = audio.env('other', t);
+  /** Stickers: lit from tOn (flash, then the steady phosphor), out at tOff (a quick fade on the beat). */
+  private poseStickers(t: number, gain: number, room: number) {
     for (const s of this.stickers) {
-      let g: number;
-      if (!this.outro) {
-        g = t < s.t0 ? (lampOn ? 0 : 0.02) : 0.75 + 0.25 * smoothstep(s.t0, s.t0 + 2, t) + 2.2 * pulse(t, s.t0, 0.12);
-        g *= 0.9 + 0.25 * oth * (0.5 + 0.5 * noise1(t * 3 + s.seed, s.seed));
-      } else {
-        // phosphorescence: ~1/(1 + t/tau) decay, each star dimming out from its own moment
-        const age = Math.max(0, t - this.ctx.start);
-        g = 1.05 / (1 + age / 6) * (1 - smoothstep(s.tOut - 1.2, s.tOut, t));
-        g += 0.6 * audio.hit('chop', t, 0.12) * (noise1(s.seed * 3.1, 1) > 0.2 ? 1 : 0) * (t < s.tOut ? 1 : 0);
-      }
-      s.mat.emissiveIntensity = g * 1.7;
-      const halo = (s.mesh as any).halo as THREE.Mesh;
-      (halo.material as THREE.ShaderMaterial).uniforms.k!.value = g * (1 - open);
-      // flying off into the sky (intro) / settling back (outro)
-      const fly = open;
-      const h = fly * (6 + (s.seed % 7) * 2.2);
-      let x = s.x * (1 + fly * 1.8), z = s.z * (1 + fly * 1.8);
-      const pair = (s as any).pair as number | undefined;
-      if (pair && this.hand) {
-        const l = (this.hand as any).line;
-        const k = prog(t, l.words[0].start, l.words[l.words.length - 1].end + 0.3, ease.inOutCubic);
-        const other = this.stickers.find((o) => (o as any).pair === -pair)!;
-        const mx = (s.x + other.x) / 2, mz = (s.z + other.z) / 2;
-        const d = Math.hypot(s.x - other.x, s.z - other.z) || 1;
-        x = lerp(s.x, mx + ((s.x - other.x) / d) * s.r * 0.9, k);
-        z = lerp(s.z, mz + ((s.z - other.z) / d) * s.r * 0.9, k);
-      }
-      s.mesh.position.set(x, CEIL - 0.012 + h, z);
-      halo.position.set(x, CEIL - 0.004, z);
-      s.mesh.rotation.z = s.rot + fly * (s.seed % 2 ? 1 : -1) * 1.5;
-      s.mesh.scale.setScalar(s.r * (1 + fly * 2.2));
+      const on = t >= s.tOn ? 1 : 0;
+      const flash = pulse(t, s.tOn, 0.09) * 2.6 + pulse(t, s.tOn, 0.5) * 0.8;
+      const off = t < s.tOff ? 1 : Math.max(0, 1 - (t - s.tOff) / 0.18) * 0.6 * Math.pow(0.5, (t - s.tOff) / 0.25);
+      const breathe = 1 + 0.06 * noise1(t * 0.7, s.seed);
+      const k = on * (1.1 * breathe + flash) * off * gain;
+      const burnt = room * (Math.hypot(s.u, s.v) > this.dis ? 1 : 0);
+      s.mat.emissiveIntensity = k * 0.9;
+      s.mat.opacity = burnt;
+      s.mesh.visible = s.halo.visible = burnt > 0;
+      s.hmat.uniforms.k!.value = k * burnt;
     }
+  }
 
-    this.camera(t);
-    // two shooting stars in the sky part (intro), each a bright head with a fading tail
-    {
-      const cam = this.st.cam;
-      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
-      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.quaternion);
-      const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
-      const shots = this.outro ? [] : [{ t0: B(9) + 0.3, y: 3.4, dir: 1 }, { t0: B(10) + 0.9, y: 2.8, dir: -1 }];
-      for (let m = 0; m < 2; m++) {
-        const sh = shots[m];
-        for (let j = 0; j < 60; j++) {
-          const i = m * 60 + j;
-          const dt = sh ? t - sh.t0 - j * 0.0035 : -1;
-          if (!sh || dt < 0 || dt > 0.9) { this.meteors.hide(i); continue; }
-          const u = dt / 0.9;
-          const p = cam.position.clone().addScaledVector(fwd, 14).addScaledVector(right, sh.dir * (-7 + u * 14)).addScaledVector(camUp, sh.y - u * 2.2);
-          this.meteors.set(i, p.x, p.y, p.z, col(j < 3 ? 'white' : 'cyan'), (1 - j / 60) * 2.6 * Math.sin(Math.PI * u), j < 3 ? 2.8 : 2.0 - (1.4 * j) / 60);
-        }
+  private setConStars(t: number, gain: number) {
+    let i = 0;
+    for (const s of this.stickers) {
+      if (!s.key.startsWith('a') && !s.key.startsWith('b')) continue;
+      this.conStars.set(i++, s.u, s.v, 0, col('phosphor', 1).lerp(col('white', 1), 0.5), (t >= s.tOn ? 1 : 0) * gain, 1.4);
+    }
+    this.conStars.commit(i);
+  }
+
+  private renderIntro(f: Frame, out: THREE.WebGLRenderTarget) {
+    const t = f.t, S = this.st, cam = S.cam;
+    const B = (n: number) => this.B[n] ?? this.ctx.start + n * 1.6;
+    const T8 = B(8), T9 = B(9), T10 = B(10), T11 = B(11);
+    const E = this.ctx.end; // the cut into the highway (the beat before "We were", ≈ T11 + 2 beats)
+    // ---- the room ----
+    const dis = t < T9 ? -1 : ease.inCubic(prog(t, T9, T9 + 0.9)) * 6;
+    const room = 1 - prog(t, T9 + 0.4, T9 + 1.0);
+    this.room.visible = room > 0.001;
+    this.ceilMat.uniforms.dis!.value = dis;
+    this.dis = dis;
+    this.ceilMat.uniforms.moonK!.value = smoothstep(0, 1.2, t);
+    this.wallMat.opacity = room;
+    // the stickers' own light on the plaster
+    const lit = this.stickers.reduce((a, s) => a + (t >= s.tOn ? 1 : 0), 0);
+    (this.ceilMat.uniforms.glow!.value as THREE.Color).copy(col('phosphor', 0.0025 * lit));
+    this.poseStickers(t, 1, room);
+
+    // ---- the constellation: drawn after the last sticker, hands joined on the downbeat ----
+    const draw = ease.inOutQuad(prog(t, T8 + 0.05, T9 - 0.2));
+    this.body.reveal = draw * this.body.total;
+    this.join.reveal = prog(t, T9 - 0.12, T9) * this.join.total;
+    const joinFlash = pulse(t, T9, 0.3);
+    this.join.gain = 1 + joinFlash * 2;
+    this.body.gain = 1 + 0.5 * pulse(t, T9, 0.4);
+    let pi = 0;
+    if (draw > 0 && draw < 1) {
+      const p = this.body.pointAt(this.body.reveal);
+      this.pen.set(pi++, p.x, p.y, 0.002, col('white', 2.5), 1, 2.2);
+      for (let k = 1; k < 10; k++) { // a short comet tail of sparks
+        const q = this.body.pointAt(this.body.reveal - k * 0.035);
+        this.pen.set(pi++, q.x + noise1(t * 9 + k, 3) * 0.01, q.y + noise1(t * 9 + k, 4) * 0.01, 0.002, col('phosphor', 1.6), (1 - k / 10) * 0.8, 0.8);
       }
-      this.meteors.commit();
     }
+    if (joinFlash > 0.01) { const m = this.join.pointAt(this.join.total / 2); this.pen.set(pi++, m.x, m.y, 0.002, col('gold', 3), joinFlash, 6); }
+    this.pen.commit(pi);
+    // after the dissolve the stickers live on as stars of the constellation, which recedes into the sky
+    this.setConStars(t, prog(t, T9 + 0.2, T9 + 0.9));
 
-    // title in the sky (intro): words switch on across bars 9-10, the artist after them
-    this.title.visible = this.artist.visible = !this.outro && t > B(9) - 0.3;
-    if (this.title.visible) {
-      const cam = this.st.cam;
-      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
-      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
-      const base = cam.position.clone().addScaledVector(fwd, 5.2);
-      this.title.position.copy(base).addScaledVector(up, 0.25);
-      faceCamera(this.title, cam);
-      this.artist.position.copy(base).addScaledVector(up, -0.45);
-      faceCamera(this.artist, cam);
-      const beats = [0, 1, 2, 4].map((k) => audio.timeOfBeat(audio.beatAt(B(9)) + k));
-      this.title.words.forEach((_, i) => this.title.setLevel(i, flickerOn(t, beats[i]!, i + 3)));
-      this.artist.setAll(flickerOn(t, audio.timeOfBeat(audio.beatAt(B(10)) + 2), 9) * 0.9);
-      // (stays lit to the cut: the whip into the highway carries it away)
-      const fade = 1;
-      this.title.words.forEach((w, i) => this.title.setLevel(i, (w.mat.uniforms.on!.value as number) * fade));
-    }
-    if (this.hand) {
-      const l = (this.hand as any).line;
-      const a = this.stickers.find((s) => (s as any).pair === 1)!;
-      this.hand.position.set(a.x, CEIL - 0.02, a.z + 0.38);
-      // facing down at a camera that looks up with -z at the top of the frame: text runs along -x, up is -z
-      this.hand.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, 0, -1), new THREE.Vector3(0, -1, 0)));
-      this.hand.visible = t > l.start - 0.5 && t < a.tOut;
-      this.hand.sing(l, t, 1 - smoothstep(a.tOut - 1.5, a.tOut, t));
-    }
+    // ---- camera: in bed, looking up; lift-off at T9, the title, then turn and dive at the Earth ----
+    const vUp = (x: number) => (x < T9 ? 0 : 55 * ease.inCubic(prog(x, T9, T9 + 1.6)) * (1 - prog(x, E - 1.15, E - 0.6)));
+    // integrate the climb (a cheap closed form: the speed ramps, then fades)
+    let climb = 0;
+    for (let x = T9; x < Math.min(t, E - 0.55); x += 1 / 120) climb += vUp(x) / 120;
+    const pos = EYE.clone().add(new THREE.Vector3(0, 0.25 * ease.inOutQuad(prog(t, 0, T8)) + 0.15 * ease.inOutCubic(prog(t, T8, T9)), 0));
+    pos.y += climb;
+    pos.x += noise1(t * 0.3, 1) * 0.03;
+    pos.z += noise1(t * 0.27, 2) * 0.03;
+    // look up (screen up = +z); at T11 the view swings over (through +z) to look straight down
+    const turn = ease.inOutCubic(prog(t, E - 1.0, E - 0.42)) * Math.PI;
+    const dir = new THREE.Vector3(0, Math.cos(turn), Math.sin(turn));
+    const upv = new THREE.Vector3(0, -Math.sin(turn), Math.cos(turn));
+    const roll = 0.06 * Math.sin(t * 0.25) * (1 - prog(t, T9, T10)) + 0.08 * ease.inOutCubic(prog(t, T9 + 0.3, T10 + 0.5)) * (1 - prog(t, E - 1.2, E - 0.5));
+    // the dive: from T11 + 0.85 the camera falls at the Earth, faster and faster
+    const R = this.earth.radius, A0 = 3.2;
+    const dive = prog(t, E - 0.62, E + 0.26);
+    const alt = A0 * Math.exp(-3.0 * ease.inQuad(dive));
+    const posPitch = EYE.clone().setY(EYE.y + climb);
+    this.earth.position.copy(posPitch).add(new THREE.Vector3(0, -R - A0, 0));
+    if (turn > 0) pos.y = posPitch.y - (A0 - alt);
+    aim(cam, pos, pos.clone().add(dir), roll, upv);
+    cam.fov = 60 + 18 * ease.inCubic(prog(t, T9, T9 + 1.2)) * (1 - prog(t, T10, T11)) + 12 * dive;
+    cam.updateProjectionMatrix();
 
-    this.st.render(this.ctx.renderer, out);
-    const fadeIn = this.outro ? 0 : 1 - smoothstep(0, 0.35, t);
-    return { bloom: 0.95, bloomThreshold: 0.8, bloomRadius: 0.85, halation: 0.12, vignette: 0.5, grain: 0.05, ca: 0.8, fade: fadeIn * 0 };
+    // ---- sky ----
+    const space = prog(t, T9 - 0.1, T9 + 0.8);
+    this.sky.visible = space > 0;
+    this.sky.position.copy(cam.position);
+    this.field.material.uniforms.size!.value = 0.9;
+    (this.neb.material as THREE.ShaderMaterial).uniforms.gain!.value = 0.45 * space;
+    // the constellation recedes: its distance grows while its angular size shrinks slowly
+    if (t > T9) {
+      const k = prog(t, T9, T11);
+      const D0 = CEIL - 0.02 - EYE.y - 0.4, D = D0 * Math.exp(4.5 * ease.inQuad(k));
+      this.con.position.set(0, cam.position.y + D, D * Math.tan(0.2 * ease.inOutCubic(prog(t, T9 + 0.2, T10))));
+      this.con.scale.setScalar((D / D0) * (1 - 0.5 * k));
+    } else {
+      this.con.position.set(0, CEIL - 0.02, 0);
+      this.con.scale.setScalar(1);
+    }
+    // flight streaks: dust in a column around the climb, wrapped around the camera
+    const v = vUp(t), sr = mulberry32(99);
+    const showStreaks = t > T9 && t < E - 0.55;
+    for (let i = 0; i < this.streaks.n; i++) {
+      const x = (sr() - 0.5) * 60, z = (sr() - 0.5) * 60, y0 = sr() * 240, c = sr();
+      if (!showStreaks || Math.hypot(x, z) < 1.2) { this.streaks.hide(i); sr(); continue; }
+      const y = cam.position.y - 60 + ((((y0 - climb) % 240) + 240) % 240);
+      this.streaks.set(i, x, y, z, col(c < 0.15 ? 'gold' : c < 0.3 ? 'cyan' : 'white', 0.6 + sr() * 1.2), 1, 1);
+    }
+    // (no motion means no streak direction: hide them rather than feed the shader a zero vector)
+    this.streaks.visible = showStreaks && v > 0.5;
+    this.streaks.setMotion(new THREE.Vector3(0, -Math.max(v, 0.5), 0), 1 / 30);
+    this.streaks.commit();
+
+    // ---- title: written by the light above us while we climb; the name switches on below ----
+    const tw0 = T9 + 0.55, tw1 = T10 + 0.45;
+    const tk = prog(t, tw0, tw1);
+    this.titleGrp.visible = t > tw0 - 0.1 && turn < Math.PI * 0.75;
+    const ahead = 7.5 - 1.5 * ease.outCubic(prog(t, tw0, E - 0.8));
+    this.titleGrp.position.copy(cam.position).add(new THREE.Vector3(0, ahead, -ahead * 0.1));
+    this.titleGrp.rotation.set(Math.PI / 2, 0, 0);
+    this.titleGrp.scale.setScalar(1 + 0.08 * prog(t, tw0, E - 0.6));
+    this.title.reveal = ease.inOutQuad(tk) * this.title.total;
+    this.title.gain = 1 + 0.6 * pulse(t, tw1, 0.4);
+    const nameOn = flickerOn(t, this.beatT(41), 4);
+    this.nameMat.color.copy(col('white', 2.4).lerp(col('pink', 2.4), 0.3)).multiplyScalar(nameOn);
+    this.nameGlow.color.copy(col('pink', 0.7)).multiplyScalar(nameOn);
+    // the title's pen
+    let tp = 0;
+    if (tk > 0 && tk < 1) {
+      const p = this.title.pointAt(this.title.reveal);
+      this.titlePen.set(tp++, p.x, p.y, 0.01, col('white', 2.5), 1, 2.6);
+      for (let k = 1; k < 12; k++) {
+        const q = this.title.pointAt(this.title.reveal - k * 0.06);
+        this.titlePen.set(tp++, q.x + noise1(t * 7 + k, 5) * 0.02, q.y + noise1(t * 7 + k, 6) * 0.02, 0.01, col('cyan', 1.5), (1 - k / 12) * 0.7, 1);
+      }
+    }
+    this.titlePen.commit(tp);
+
+    // ---- the Earth below ----
+    this.earth.visible = turn > 0.3;
+    this.earth.time = t;
+    this.earth.wake(new THREE.Vector3(0, 1, 0).applyQuaternion(this.earth.quaternion.clone().invert()), 4);
+
+    S.render(this.ctx.renderer, out);
+    const hit = pulse(t, T9, 0.25);
+    return {
+      bloom: 0.95 + 0.4 * hit, bloomThreshold: 0.75, bloomRadius: 0.85, halation: 0.14, vignette: 0.5, grain: 0.05, ca: 0.6 + 2 * dive,
+      exposure: smoothstep(0, 0.5, t) * 1,
+    };
+  }
+
+  private renderOutro(f: Frame, out: THREE.WebGLRenderTarget) {
+    const t = f.t, S = this.st, cam = S.cam;
+    const lines = this.ctx.lyrics.linesIn(this.ctx.start - 1, this.ctx.end);
+    const hand = lines.find((l) => /take my hand/i.test(l.text));
+    const tHand = hand ? hand.words[0]!.start : this.beatT(14);
+    const tEnd = this.B.filter((d) => d <= this.ctx.end - 0.3).pop() ?? this.ctx.end - 1.5; // the last downbeat
+    // the stickers go out on the beat; the two hands stay
+    this.poseStickers(t, 1, 1);
+    const ha = this.byKey.get('aHaR')!, hb = this.byKey.get('bHaL')!;
+    // the hands: they drift together after the figures are gone, merge, and go out on the last downbeat
+    const meet = ease.inOutCubic(prog(t, this.beatT(22), tEnd - 0.8));
+    const mid = new THREE.Vector2((J.aHaR![0] + J.bHaL![0]) / 2, (J.aHaR![1] + J.bHaL![1]) / 2);
+    for (const [s, k] of [[ha, J.aHaR!], [hb, J.bHaL!]] as const) {
+      s.u = lerp(k[0], mid.x, meet);
+      s.v = lerp(k[1], mid.y, meet);
+      s.mesh.position.set(s.u, CEIL - 0.012, s.v);
+      s.halo.position.set(s.u, CEIL - 0.006, s.v);
+      const flare = 1 + 1.2 * pulse(t, tHand, 0.6) + 0.5 * smoothstep(tHand, tHand + 0.4, t) * (1 - meet);
+      const last = t < tEnd ? 1 : Math.pow(0.5, (t - tEnd) / 0.12);
+      const chop = this.ctx.audio.hit('vocal', t, 0.2) * smoothstep(this.beatT(22), this.beatT(26), t);
+      s.mat.emissiveIntensity = (1.0 + 0.4 * chop) * flare * last * (1 + 0.6 * meet);
+      s.hmat.uniforms.k!.value = (1.0 + 0.6 * chop) * flare * last * (1 + 0.8 * meet);
+      s.mesh.scale.setScalar(s.r * (1 - 0.35 * meet));
+    }
+    // the figures' lines fade with their stars; the hands' line draws on "take my hand" and fades as they meet
+    const figGone = prog(t, this.beatT(12), this.beatT(20));
+    this.body.reveal = this.body.total;
+    this.body.gain = 0.55 * (1 - figGone);
+    this.join.reveal = prog(t, tHand, tHand + 0.7) * this.join.total;
+    this.join.gain = (1.2 + 1.5 * pulse(t, tHand + 0.7, 0.4)) * (1 - prog(t, this.beatT(22), this.beatT(26)));
+    this.pen.commit(0);
+    this.setConStars(t, 0);
+    this.sky.visible = false;
+    this.streaks.visible = false;
+    this.ceilMat.uniforms.dis!.value = -1;
+    this.ceilMat.uniforms.moonK!.value = 1 - prog(t, tEnd - 1, tEnd + 0.5);
+    const lit = this.stickers.reduce((a, s) => a + (t < s.tOff ? 1 : 0), 0);
+    (this.ceilMat.uniforms.glow!.value as THREE.Color).copy(col('phosphor', 0.0025 * lit));
+    // camera: in bed, looking up, drifting slowly in toward the hands
+    const k = ease.inOutQuad(prog(t, this.ctx.start, tEnd));
+    const pos = EYE.clone().add(new THREE.Vector3(mid.x * 0.6 * k, 0.15 + 0.85 * k, mid.y * 0.6 * k));
+    pos.x += noise1(t * 0.3, 1) * 0.03;
+    pos.z += noise1(t * 0.27, 2) * 0.03;
+    aim(cam, pos, pos.clone().add(new THREE.Vector3(0, 1, 0)), 0.05 * Math.sin(t * 0.2), new THREE.Vector3(0, 0, 1));
+    cam.fov = 60 - 8 * k;
+    cam.updateProjectionMatrix();
+    S.render(this.ctx.renderer, out);
+    return { bloom: 0.95, bloomThreshold: 0.75, bloomRadius: 0.85, halation: 0.14, vignette: 0.5, grain: 0.05, ca: 0.5 };
   }
 }

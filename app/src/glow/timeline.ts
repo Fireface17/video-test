@@ -37,7 +37,8 @@ export function makeTimeline(ly: Lyrics, au: AudioData): TimelineEntry[] {
     bridge: cut('And if you fall'),
     chorus3: cut('We don’t gotta be okay', 4),
     drop3: sec('drop3'),
-    outro: sec('outro'),
+    // the outro proper starts where the drop's tail dies away, two bars into the outro section
+    outro: au.downbeats.find((d) => d > sec('outro') + 2.5) ?? sec('outro'),
     end: au.duration,
   };
 
