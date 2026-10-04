@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import type { Line } from '../../engine/lyrics';
 import { LightTrail, lineText, sampleStrokeText } from '../lib/lightpaint';
-import type { StrokeFontName } from '../../engine/stroke';
+import { strokeText, type StrokeFontName } from '../../engine/stroke';
 import { GLSL_EAT } from './ghosts-gfx';
 
 /** A sub-line (some of a line's words) usable with LightTrail.writtenAt. */
@@ -95,18 +95,22 @@ export function frostText(text: string, font: StrokeFontName, size: number, colo
  * L20: lettering in the moon's plane (moon at the local origin), bent onto an arc around it; written by a
  * silver pen, swallowed by the same night that eats the moon (moon-plane mask). `R` = moon radius.
  */
-export function arcText(text: string, font: StrokeFontName, size: number, opts: { cy: number; radius: number; below: boolean; color: THREE.Color; width: number; R: number; seed?: number }) {
-  const tr = LightTrail.text(text, font, size, { width: opts.width, color: opts.color, tipLen: size * 0.6, seed: opts.seed ?? 0 });
+export function arcText(text: string, font: StrokeFontName, size: number, opts: { apex: number; radius: number; below: boolean; color: THREE.Color; width: number; R: number; fit?: number; seed?: number }) {
+  if (opts.fit) size = Math.min(size, opts.fit / (strokeText(text, font, 100).width / 100));
+  const cap = strokeText(text, font, 100).capHeight / 100 * size;
+  // above: the baseline's apex at `apex` (text above it); below: the text's top at -apex (baseline lower)
+  const cy = opts.below ? -opts.apex - cap + opts.radius : opts.apex - opts.radius;
+  const tr = LightTrail.text(text, font, size, { width: opts.width * size, color: opts.color, tipLen: size * 0.6, seed: opts.seed ?? 0 });
   // bend: x along the arc, y radial. Above: the baseline is a circle of `radius` around (0, cy), text outward.
   // Below: the baseline is a circle around (0, cy) too, the text upright, its top toward the centre.
   const pos = tr.geometry.getAttribute('position') as THREE.BufferAttribute, tan = tr.geometry.getAttribute('aTan') as THREE.BufferAttribute;
   const map = (x: number, y: number): [number, number] => {
     if (!opts.below) {
       const a = x / opts.radius, r = opts.radius + y;
-      return [Math.sin(a) * r, opts.cy + Math.cos(a) * r];
+      return [Math.sin(a) * r, cy + Math.cos(a) * r];
     }
     const a = x / opts.radius, r = opts.radius - y;
-    return [Math.sin(a) * r, opts.cy - Math.cos(a) * r];
+    return [Math.sin(a) * r, cy - Math.cos(a) * r];
   };
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), y = pos.getY(i);
@@ -125,7 +129,7 @@ export function arcText(text: string, font: StrokeFontName, size: number, opts: 
     blending: THREE.AdditiveBlending,
     side: THREE.DoubleSide,
     uniforms: {
-      color: { value: opts.color.clone() }, width: { value: opts.width }, reveal: { value: 0 }, gain: { value: 1 }, tipLen: { value: size * 0.5 },
+      color: { value: opts.color.clone() }, width: { value: opts.width * size }, reveal: { value: 0 }, gain: { value: 1 }, tipLen: { value: size * 0.5 },
       seed: { value: opts.seed ?? 0 }, uTime: { value: 0 }, uEat: { value: 0 }, uEatDir: { value: new THREE.Vector2(-0.8, 0.6).normalize() }, uR: { value: opts.R },
     },
     vertexShader: RIBBON_VERT,

@@ -73,8 +73,9 @@ float hwSpec(vec3 N, vec3 L, vec3 V, float rough) {
 void hwLamps(vec3 P, vec3 N, vec3 V, float rough, float specK, inout vec3 diff, inout vec3 spec) {
   float u = -P.z;
   float k0 = floor(u / LAMP_P);
-  for (int j = -1; j <= 2; j++) {
-    float lu = (k0 + float(j)) * LAMP_P;
+  float kc = floor(u / LAMP_P + 0.5);
+  for (int j = -1; j <= 1; j++) {
+    float lu = (kc + float(j)) * LAMP_P;
     float on = step(uLampOffU, lu);
     if (on < 0.5) continue;
     float flick = 0.92 + 0.08 * hwH12(vec2(lu, 3.0));
@@ -84,7 +85,7 @@ void hwLamps(vec3 P, vec3 N, vec3 V, float rough, float specK, inout vec3 diff, 
       float ndl = max(dot(N, L), 0.0);
       float I = hwLampDist(-L) * flick / (d2 + 1.0);
       diff += uLampCol * (I * ndl);
-      if (specK > 0.0) spec += uLampCol * (I * ndl * hwSpec(N, L, V, rough) * specK);
+      if (specK > 0.0 && j == 0) spec += uLampCol * (I * ndl * hwSpec(N, L, V, rough) * specK);
     }
   }
 }

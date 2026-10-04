@@ -124,7 +124,7 @@ export class Sky extends THREE.Group {
     });
     cm.blending = THREE.CustomBlending;
     cm.blendSrc = THREE.OneFactor; cm.blendDst = THREE.OneMinusSrcAlphaFactor;
-    this.cloudMesh = new THREE.Mesh(new THREE.SphereGeometry(4450, 48, 24), cm);
+    this.cloudMesh = new THREE.Mesh(new THREE.SphereGeometry(4450, 48, 12, 0, Math.PI * 2, 0, Math.PI / 2), cm);
     this.cloudMesh.renderOrder = -8;
     this.cloudMesh.frustumCulled = false;
     this.plane = new GlowPoints(4, 1);
@@ -481,9 +481,9 @@ export class Landscape extends THREE.Group {
         void main() {
           float a = texture2D(atlas, vUv).a;
           if (a < 0.45) discard;
-          vec3 spec;
-          vec3 V = normalize(cameraPosition - vW);
-          vec3 d = hwLight(vW, normalize(V + vec3(0.0, 0.6, 0.0)), V, 0.9, 0.0, spec);
+          // cheap: sky ambient, the sodium glow of the road nearby, the dawn sun on the crown
+          float near = exp(-abs(abs(vW.x) - 8.0) / 25.0);
+          vec3 d = uAmbHi * 1.4 + uLampCol * 0.0016 * near + uSunCol * 0.35 * vH;
           vec3 c = vec3(0.016, 0.022, 0.016) * d * (0.55 + 0.45 * vH);
           gl_FragColor = vec4(hwFog(c, vW, cameraPosition), 1.0);
         }`,

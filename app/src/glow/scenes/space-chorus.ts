@@ -57,7 +57,7 @@ const LOOKS: Record<number, () => Look> = {
   }),
   3: () => ({
     crowd: { star: col('gold', 2.0).lerp(col('white', 2.0), 0.45), line: col('gold', 0.5).lerp(col('ember', 0.5), 0.35), accent: col('gold', 2.0), hero: [col('gold', 2.4), col('ember', 2.2)] },
-    space: { neb: new THREE.Color(1.4, 0.75, 0.3), nebGain: 0.3, aurora: [col('gold', 1), col('ember', 0.6)], shell: new THREE.Color(1.0, 0.7, 0.3), air: new THREE.Color(0.25, 0.35, 1.0) },
+    space: { neb: new THREE.Color(1.4, 0.75, 0.3), nebGain: 0.16, aurora: [col('gold', 1), col('ember', 0.6)], shell: new THREE.Color(1.0, 0.7, 0.3), air: new THREE.Color(0.25, 0.35, 1.0) },
     heart: [col('gold', 1.4), col('white', 1.0).lerp(col('gold', 1), 0.4), col('white', 2.6).lerp(col('gold', 2.6), 0.4)],
     city: col('gold', 1.0),
   }),
@@ -89,7 +89,7 @@ export default class SpaceChorus extends Scene {
   rtA = makeRT();
   rtB = makeRT();
   heartPos = new THREE.Vector3(0, R + 9.6, 8);
-  spot: Spot = { x: 60, z: -470, h: 66, face: 0 };
+  spot: Spot = { x: -130, z: 430, h: 74, face: 0 };
 
   override async init() {
     const { params } = this.ctx;
@@ -109,7 +109,7 @@ export default class SpaceChorus extends Scene {
     const bodies = await Promise.all([loadBody('rpm'), loadBody('michelle')]);
     await this.space.init(ca, cc, cw.normalize());
     if (n !== 3) {
-      if (n === 2) this.spot = { x: 380, z: -720, h: 72, face: 0 };
+      if (n === 2) this.spot = { x: 720, z: 360, h: 80, face: 0 };
       this.city = new CityWorld(n, this.spot, this.look.city);
       await this.city.init();
     }
@@ -124,11 +124,19 @@ export default class SpaceChorus extends Scene {
     this.heart = new GlassHeart(7 + n, hi, hr, hc, 62);
     this.heart.T = { crack0: K.every, crack1: K.shatter, shatter: K.shatter, ign0: K.becomes, ign1: K.star };
     this.heart.scale.setScalar(1.7);
-    this.shards = new GlowPoints(this.heart.pieces.length + 32, 0.3);
+    this.shards = new GlowPoints(this.heart.pieces.length + 32, 0.14);
     this.assignBirths();
     const S = this.space.st;
     S.add(this.crowd.sf, this.crowd.links, this.crowd.lights, this.streams, this.heart, this.shards);
     this.shots = n === 3 ? this.shots3() : this.shots12();
+    // the lights stream past the camera while it rises with them (A) and when every window lets go (D)
+    if (this.city) {
+      const shot = (name: string) => this.shots.find((x) => x.name === name)!;
+      const rise = shot('rise'), lights = shot('lights');
+      const next = (sh: Shot) => this.shots[this.shots.indexOf(sh) + 1]!.t0;
+      this.city.escorts.push({ a: rise.t0 - (n === 1 ? 0.4 : 0.6), b: next(rise), path: (t) => rise.cam(t).p, c: new THREE.Color(1.0, 0.8, 0.5) });
+      this.city.escorts.push({ a: lights.t0 + 0.3, b: next(lights), path: (t) => lights.cam(t).p, c: new THREE.Color(1.0, 0.85, 0.6).lerp(this.look.city, 0.35) });
+    }
   }
 
   private keys(): Keys {
@@ -165,8 +173,6 @@ export default class SpaceChorus extends Scene {
     const dance2 = three ? e : L(6).start;
     const spaceD = three ? e : audio.downbeats.filter((d) => d > D + 0.3)[1] ?? D + 2.4;
     const gw = last.words.find((x) => /glo/i.test(x.w));
-    const glowing = gw?.start ?? last.start + 0.4;
-    const pullD = dbAfter(glowing);
     const inn = w(last, /^in$/i, e - 0.7), the = w(last, /^the$/i, inn + 0.2), dark = w(last, /dark/i, the + 0.15);
     // "glo-glo-glo-glowing": the three stutters on the vocal onsets (the beats if the onsets are missing)
     let glos: number[] = [];
@@ -174,6 +180,8 @@ export default class SpaceChorus extends Scene {
       glos = audio.events('vocal', gw.start - 0.06, gw.end).map(([x]) => x).slice(0, 4);
       while (glos.length < 4) glos.push(audio.timeOfBeat(audio.beatAt(glos[glos.length - 1] ?? gw.start) + 1));
     }
+    const glowing = glos.length ? glos[3]! : gw?.start ?? last.start + 0.4;
+    const pullD = dbAfter(glowing);
     const glowA = w(L(1), /glo/i, L(1).start + 0.6);
     return { s, e, lines, A, B, C, D, F, spaceA, glowA, take, my, hand, every, broken, shatter, becomes, star, fly0, look, beautiful, pull, we, are, so, dive1, down, land, loud, raise, wake, town, dance2, spaceD, last: last.start, glowing, pullD, inn, the, dark, glos };
   }
@@ -294,12 +302,12 @@ export default class SpaceChorus extends Scene {
     if (n === 1) {
       S('burst', K.s - 0.5, 'city', (t) => {
         const k = prog(t, K.s - 0.4, firstDb);
-        return cam(V(12 - 4 * k, 50 + 9 * ease.inQuad(k), 4 - 2 * k), V(0, 57 + 22 * ease.inQuad(k), -14), 56 + 4 * k, -0.05);
+        return cam(V(4.5 - 2 * k, 49.6 + 6 * ease.inQuad(k), 5 + 2 * k), V(-0.5, 54.5 + 28 * ease.inQuad(k), -16), 58 + 4 * k, -0.04);
       });
       S('rise', firstDb, 'city', (t) => {
         const k = prog(t, firstDb, K.spaceA);
-        const y = 70 + 1050 * ease.inCubic(k);
-        const pitch = lerp(-0.95, 1.0, ease.inOutCubic(prog(t, firstDb + 0.4, K.spaceA - 0.1)));
+        const y = 70 + 520 * ease.inCubic(k);
+        const pitch = lerp(-0.95, 1.05, ease.inOutCubic(prog(t, firstDb + 0.3, K.spaceA - 0.15)));
         const p = V(-40 + 30 * k, y, 90 - 50 * k);
         return cam(p, p.clone().add(V(0.15, Math.sin(pitch), -Math.cos(pitch))), 62, 0.12 * Math.sin(k * 3));
       });
@@ -311,7 +319,7 @@ export default class SpaceChorus extends Scene {
       });
       S('rise', firstDb, 'city', (t) => {
         const k = prog(t, firstDb, K.spaceA);
-        const p = V(sp.x + 300 - 60 * k, 260 + 1500 * ease.inCubic(k), sp.z + 150);
+        const p = V(sp.x + 300 - 60 * k, 200 + 450 * ease.inCubic(k), sp.z + 150);
         const pitch = lerp(0.15, 1.3, ease.inOutCubic(k));
         return cam(p, p.clone().add(V(-0.3, Math.sin(pitch), -Math.cos(pitch))), 62, -0.1);
       });
@@ -365,11 +373,10 @@ export default class SpaceChorus extends Scene {
       return cam(p, dC.clone().multiplyScalar(R * lerp(0, 0.98, ease.inQuad(k))), 42 + 26 * ease.inCubic(k), m * 0.2 * ease.inQuad(k));
     });
     S('descend', K.dive1, 'city', (t) => {
-      const k = ease.outExpo(prog(t, K.dive1 - 0.25, K.land + 0.1));
-      const top0 = V(sp.x + 420, 2200, sp.z + 700), end0 = V(sp.x + 16, sp.h + 16, sp.z - 16);
-      const p = top0.clone().lerp(end0, k);
-      const tg = this.city!.fallPos(t).lerp(this.city!.sitPos, 0.3 * k);
-      return cam(p, tg, 58 - 10 * k, 0.25 * (1 - k));
+      const k = ease.outCubic(prog(t, K.dive1 - 0.25, K.land));
+      const star = this.city!.fallPos(t);
+      const p = star.clone().add(V(lerp(140, m * 5, k), lerp(320, 9, k), lerp(330, 9, k)));
+      return cam(p, star.clone().lerp(this.city!.sitPos, 0.2 + 0.3 * k), 60 - 12 * k, 0.2 * (1 - k));
     }, { kind: 'zoom', dur: 0.5, centre: [0.5, 0.5], color: lin('white', 1.0) });
     S('alone', K.land, 'city', (t) => {
       const k = prog(t, K.land, K.raise, ease.inOutQuad);
@@ -379,12 +386,12 @@ export default class SpaceChorus extends Scene {
     S('lift', K.raise, 'city', (t) => {
       const k = prog(t, K.raise, K.wake);
       const c = her();
-      return cam(c.clone().add(V(m * (1.9 - 0.4 * k), 0.45, 2.8 - 0.6 * k)), c.clone().add(V(-m * 0.3, 4.2 + 1.5 * k, -16)), 54, -m * 0.04);
+      return cam(c.clone().add(V(m * (1.5 - 0.3 * k), 0.65, 3.7 - 0.5 * k)), c.clone().add(V(-m * 0.6, 5.5 + 1.5 * k, -16)), 56, -m * 0.04);
     });
     S('wave', K.wake, 'city', (t) => {
       const k = ease.outExpo(prog(t, K.wake, K.town + 0.4));
       const c = her();
-      const p = c.clone().add(V(m * (1.5 + 30 * k), 0.45 + 170 * k, 2.6 + 230 * k));
+      const p = c.clone().add(V(m * (1.4 + 30 * k), 0.65 + 170 * k, 3.4 + 230 * k));
       return cam(p, c.clone().add(V(0, 3, -12)).lerp(V(c.x - m * 60, 30, c.z - 900), Math.min(1, k * 1.2)), 54 + 6 * k, -m * 0.05 * (1 - k));
     });
     S('town', beat(K.town, 0), 'city', (t) => {
@@ -394,7 +401,7 @@ export default class SpaceChorus extends Scene {
     // D — lights from every window, back up to space; the planet glows; pull away; collapse
     S('lights', K.D, 'city', (t) => {
       const k = prog(t, K.D, K.spaceD);
-      const y = 180 + 1300 * ease.inCubic(k);
+      const y = 160 + 480 * ease.inCubic(k);
       const pitch = lerp(-0.7, 1.15, ease.inOutCubic(prog(t, K.D + 0.6, K.spaceD - 0.1)));
       const p = V(sp.x + m * 200, y, sp.z + 380 - 300 * k);
       return cam(p, p.clone().add(V(-m * 0.25, Math.sin(pitch), -Math.cos(pitch))), 60 + 6 * k, m * 0.1 * Math.sin(k * 3));
@@ -406,6 +413,17 @@ export default class SpaceChorus extends Scene {
       const p = up.clone().multiplyScalar(R + 2.5 + 5 * k).addScaledVector(side, m * (4 - 3 * k));
       return cam(p, V(0, R + 4, 0), 62 - 6 * k, m * 0.1);
     }, { kind: 'light', dur: 0.4, color: lin('white', 1.4) });
+    // "glo-glo-glo": three jump cuts in on the rings, one per stutter
+    K.glos.slice(0, 3).forEach((g, k) => {
+      const ang = [0.35, -0.5, 0.1][k]!, r0 = [16, 12, 9][k]!;
+      S(`glo${k + 1}`, g, 'space', (t) => {
+        const u = prog(t, g, g + 0.5, ease.outCubic);
+        const up = dC.clone(), side = new THREE.Vector3().crossVectors(up, V(0, 0, 1)).normalize(), fw = new THREE.Vector3().crossVectors(side, up);
+        const c = up.clone().multiplyScalar(RINGS[0]!.r + 1.5);
+        const p = c.clone().addScaledVector(side, Math.sin(ang) * (r0 - 2 * u)).addScaledVector(fw, Math.cos(ang) * (r0 - 2 * u)).addScaledVector(up, 1.5 + k);
+        return cam(p, c, 50 - 4 * k, (k - 1) * 0.12);
+      });
+    });
     S('away', K.pullD, 'space', (t) => {
       const k = prog(t, K.pullD, K.e + 0.5, ease.inOutCubic);
       const dir = this.space.dirC.clone().add(V(0, 1, 0)).normalize();
@@ -494,12 +512,12 @@ export default class SpaceChorus extends Scene {
     }
     // the sun (chorus 3): behind the limb as seen from the camera, rising until it breaks out on "glowing"
     if (three) {
-      const camN = st.cam.position.clone().normalize();
-      const toE = camN.clone().negate();
+      const toE = st.cam.position.clone().normalize().negate();
+      const camUp = V(0, 1, 0).applyQuaternion(st.cam.quaternion);
       const dist = st.cam.position.length(), limb = Math.asin(Math.min(0.999, R / dist));
-      const rise = smoothstep(K.s, K.glowing + 0.4, t);
-      const ang = limb * lerp(0.86, 1.08, rise);
-      const axis = new THREE.Vector3().crossVectors(toE, V(-0.55, 1, 0.2)).normalize();
+      const rise = smoothstep(K.s, K.glowing + 0.3, t);
+      const ang = limb * lerp(0.93, 1.05, rise) + 0.012 * pulse(t, K.glowing, 0.6);
+      const axis = new THREE.Vector3().crossVectors(toE, camUp).normalize();
       const dir = toE.clone().applyAxisAngle(axis, ang);
       sw.setSun(dir, 0.8 + 0.8 * rise + 0.8 * pulse(t, K.glowing, 0.5), 0.5 + 0.5 * rise, 1400);
     } else sw.setSun(V(0, 0, -1), 0, 0);
@@ -541,13 +559,13 @@ export default class SpaceChorus extends Scene {
       const k = ease.inCubic(prog(t, K.C + 0.2, K.dive1 + 0.4));
       const from = dC.clone().multiplyScalar(RINGS[0]!.r + 1), to = dC.clone().multiplyScalar(R + 0.2);
       const p = from.lerp(to, k);
-      this.shards.set(ns++, p.x, p.y, p.z, col('white', 3), 1.5, 1.6);
-      this.shards.set(ns++, p.x, p.y, p.z, this.look.crowd.accent, 0.6, 5);
+      this.shards.set(ns++, p.x, p.y, p.z, col('white', 3), 1.5, 3.4);
+      this.shards.set(ns++, p.x, p.y, p.z, this.look.crowd.accent, 0.6, 11);
     }
     // the implosion's point
     if (imp > 0) {
-      this.shards.set(ns++, ip.x, ip.y, ip.z, col('white', 3), imp * 3, 2 + 20 * imp);
-      this.shards.set(ns++, ip.x, ip.y, ip.z, this.look.crowd.accent, imp * 2, 30 * imp);
+      this.shards.set(ns++, ip.x, ip.y, ip.z, col('white', 3), imp * 3, 4 + 40 * imp);
+      this.shards.set(ns++, ip.x, ip.y, ip.z, this.look.crowd.accent, imp * 2, 60 * imp);
     }
     this.shards.commit(ns);
     this.poseStreams(t);
@@ -588,7 +606,9 @@ export default class SpaceChorus extends Scene {
   private renderShot(f: Frame, shot: Shot, out: THREE.WebGLRenderTarget) {
     const t = f.t, c = shot.cam(t);
     // a little life in every shot
-    c.p.add(V(noise1(t * 0.6, 3), noise1(t * 0.55, 5), noise1(t * 0.5, 7)).multiplyScalar(shot.w === 'city' ? (c.p.y > 200 ? 4 : 0.06) : 0.12));
+    const dn = V(noise1(t * 0.6, 3), noise1(t * 0.55, 5), noise1(t * 0.5, 7)).multiplyScalar(shot.w === 'city' ? (c.p.y > 200 ? 3 : 0.05) : 0.1);
+    c.p.add(dn);
+    c.tg.add(dn);
     if (shot.w === 'space') {
       this.poseSpace(t, c);
       this.space.st.render(this.ctx.renderer, out);
@@ -625,14 +645,14 @@ export default class SpaceChorus extends Scene {
     const stut = K.glos.slice(0, 3).reduce((s, g) => s + pulse(t, g, 0.09), 0);
     const fin = this.crowd.T.flash(t) - K.glos.slice(0, 3).reduce((s, g) => s + 1.6 * pulse(t, g, 0.1), 0);
     const inFlash = t < K.s + 0.5 ? (n === 3 ? 0 : Math.pow(0.5, Math.max(0, t - K.s) / 0.1) * 0.7 * smoothstep(f.win[0], K.s, t)) : 0;
-    const endFlash = smoothstep(K.dark + 0.1, K.e, t);
+    const endFlash = smoothstep(K.e - 0.3, K.e, t);
     const sh = 7 * shatter + 9 * wake + 6 * stut + 4 * bp * (t > K.D ? 1 : 0.3) + 3 * fin;
     const z = 1 + 0.018 * bp + 0.05 * stut + K.glos.slice(0, 3).reduce((s, g, k) => s + (t > g ? 0.035 * (k + 1) * (1 - smoothstep(K.glos[3]!, K.glos[3]! + 0.4, t)) : 0), 0);
     const city = cur.w === 'city';
     return {
       bloom: 0.95 + 0.25 * shatter + 0.3 * endFlash, bloomThreshold: city ? 0.8 : 0.72, bloomRadius: 0.85, halation: 0.12, vignette: 0.45, grain: 0.05,
       ca: 0.7 + 2.5 * shatter + 2 * stut + 1.5 * endFlash,
-      flash: Math.max(inFlash, 0.35 * shatter, 0.4 * wake, 0.25 * stut, 0.12 * fin, endFlash * endFlash * 0.9),
+      flash: Math.max(inFlash, 0.12 * shatter, 0.3 * wake, 0.06 * stut, 0.05 * fin, endFlash * endFlash * 1.1),
       shake: [noise1(t * 47, 1) * sh, noise1(t * 47, 2) * sh] as [number, number],
       zoom: z,
     };

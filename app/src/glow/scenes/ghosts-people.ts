@@ -51,27 +51,31 @@ function hang(f: RealFigure, i: number, raise: number, fwd: number, elbow: numbe
  * A lonely pose (no one around them): `v` 0..1 varies it. The figure's transform must already be set.
  * Returns the phone (floor coordinates of the figure, screen centre and normal) for the phone pose.
  */
-export function poseLonely(f: RealFigure, kind: Lonely, v = 0.5): { p: THREE.Vector3; n: THREE.Vector3 } | null {
+export interface LonelyPose { phone: { p: THREE.Vector3; n: THREE.Vector3 } | null; spine: [number, number, number, number]; stand: number; relax: number }
+
+export function poseLonely(f: RealFigure, kind: Lonely, v = 0.5, legs = true): LonelyPose {
   const hip = f.hipHeight, a = v - 0.5;
-  const stand = v > 0.5 ? 1 : 0;
+  const stand = v > 0.5 ? 1 : 0, relax = kind === 'crossed' || kind === 'down' ? 0.4 : 1;
   const reach = (i: number, x: number, y: number, z: number, pole: THREE.Vector3) => f.reach(i, floorPt(f, x, y, z), pole);
-  restLegs(f, stand, kind === 'crossed' || kind === 'down' ? 0.4 : 1);
+  if (legs) restLegs(f, stand, relax);
   let phone: { p: THREE.Vector3; n: THREE.Vector3 } | null = null;
+  let spine: [number, number, number, number] = [0, 0, 0, 0];
+  const setSpine = (...s: [number, number, number, number]) => { spine = s; f.setSpine(...s); };
   switch (kind) {
     case 'stand':
-      f.setSpine(0.05, 0.04 * Math.sign(a), 0.22 + 0.2 * Math.abs(a), 0.12 * a);
+      setSpine(0.05, 0.04 * Math.sign(a), 0.22 + 0.2 * Math.abs(a), 0.12 * a);
       hang(f, 0, 0.1 + 0.06 * a, 0.04, 0.3);
       hang(f, 1, 0.12 - 0.05 * a, 0.08, 0.4);
       f.setHand(0, 0.35); f.setHand(1, 0.45);
       break;
     case 'crossed':
-      f.setSpine(0.0, 0.03 * a, 0.12 + 0.15 * v, 0.1 * a);
+      setSpine(0.0, 0.03 * a, 0.12 + 0.15 * v, 0.1 * a);
       reach(0, 0.15, hip + 0.29, 0.15, V(-0.6, -1, -0.25));
       reach(1, -0.14, hip + 0.33, 0.13, V(0.6, -1, -0.25));
       f.setHand(0, 0.45); f.setHand(1, 0.55);
       break;
     case 'phone': {
-      f.setSpine(0.08, 0.02 * a, 0.62, 0.06);
+      setSpine(0.08, 0.02 * a, 0.62, 0.06);
       const p = V(-0.02 + 0.03 * a, hip + 0.37, 0.3);
       reach(0, p.x - 0.055, p.y - 0.03, p.z - 0.01, V(-0.5, -1, -0.4));
       if (v > 0.35) reach(1, p.x + 0.055, p.y - 0.035, p.z - 0.015, V(0.5, -1, -0.4));
@@ -84,25 +88,25 @@ export function poseLonely(f: RealFigure, kind: Lonely, v = 0.5): { p: THREE.Vec
       break;
     }
     case 'pockets':
-      f.setSpine(-0.02, -0.05 * Math.sign(a), 0.14 + 0.1 * v, -0.12 * a);
+      setSpine(-0.02, -0.05 * Math.sign(a), 0.14 + 0.1 * v, -0.12 * a);
       reach(0, -0.17, hip - 0.05, 0.08, V(-1, -0.2, -0.8));
       reach(1, 0.17, hip - 0.05, 0.08, V(1, -0.2, -0.8));
       f.setHand(0, 0.75); f.setHand(1, 0.75);
       break;
     case 'hug':
-      f.setSpine(0.14, 0.02, 0.48, 0.12 * a);
+      setSpine(0.14, 0.02, 0.48, 0.12 * a);
       reach(0, 0.12, hip + 0.27, 0.14, V(-0.5, -1, 0));
       reach(1, -0.12, hip + 0.31, 0.15, V(0.5, -1, 0));
       f.setHand(0, 0.45); f.setHand(1, 0.45);
       break;
     case 'down':
-      f.setSpine(0.1, 0.0, 0.66, 0.08 * a);
+      setSpine(0.1, 0.0, 0.66, 0.08 * a);
       reach(0, -0.03, hip - 0.13, 0.2, V(-0.3, -1, 0));
       reach(1, 0.03, hip - 0.13, 0.21, V(0.3, -1, 0));
       f.setHand(0, 0.55); f.setHand(1, 0.55);
       break;
   }
-  return phone;
+  return { phone, spine, stand, relax };
 }
 
 /** Linked with the neighbours on both sides (hands at ±LINK), `raise` 0..1 lifts the joined hands to RAISE. */
@@ -218,7 +222,7 @@ export function bakeBody(fig: RealFigure, hat: boolean, variant = 0.5): BodyBake
   const A = new Map<Lonely, { pos: THREE.BufferAttribute; nor: THREE.BufferAttribute; phone: { p: THREE.Vector3; n: THREE.Vector3 } | null }>();
   for (const k of LONELY) {
     reset();
-    const phone = poseLonely(fig, k, variant);
+    const { phone } = poseLonely(fig, k, variant);
     A.set(k, { ...at(bakeWorld(fig)), phone });
   }
   return { kind: fig.kind, hat, index: mergedIndex(fig), arm: new THREE.BufferAttribute(armWeights(fig), 2), B, C, A };
@@ -257,7 +261,7 @@ vec3 personShade(vec3 N, vec3 V, vec3 wp, float tint, float lightK, float band, 
   float lum = max(warmC.r, max(warmC.g, warmC.b));
   float flow = vn3(vec3(wp.x * 3.0, wp.y * 2.2 - uTime * 1.1, wp.z * 3.0 + seed));
   float bands = smoothstep(0.55, 0.9, flow);
-  float glint = step(0.986, h13(floor(wp * 90.0) + floor(uTime * 8.0))) * f;
+  float glint = step(0.991, h13(floor(wp * 210.0) + floor(uTime * 8.0))) * f;
   vec3 lightC = warmC * (0.07 + 0.35 * bands + 0.9 * r2 + 2.2 * r4 * r2) + mix(warmC, vec3(lum), 0.6) * 1.6 * r4 * r4
     + vec3(lum) * (0.12 * f * f * f * f * f * f * f * f + 1.5 * glint);
   vec3 c = mix(ghost, lightC, lightK);
@@ -356,10 +360,8 @@ export function heroMaterial(U: WorldU, cold: THREE.Color, warm: THREE.Color, se
         #include <skinnormal_vertex>
         #include <begin_vertex>
         #include <skinning_vertex>
+        // (no wavering here: the depth prepass draws the body unmoved)
         vec4 w = modelMatrix * vec4(transformed, 1.0);
-        float g = 1.0 - uLight, ph = uSeed * 37.0;
-        w.x += g * 0.009 * sin(w.y * 6.5 - uTime * 2.6 + ph);
-        w.z += g * 0.009 * sin(w.y * 5.3 - uTime * 2.1 + ph * 1.7);
         vWP = w.xyz;
         vN = normalize(mat3(modelMatrix) * objectNormal);
         gl_Position = projectionMatrix * viewMatrix * w;

@@ -468,7 +468,7 @@ export default class Highway extends Scene {
     renderer.clear(true, true, true);
     { const D = DBG(); if (D.noland) this.land.visible = false; if (D.nocity) this.city.visible = false; if (D.notraffic) this.traffic.visible = false;
       if (D.noroad) this.road.visible = false; if (D.nolamps) this.lamps.visible = false; if (D.nofurn) this.furn.visible = false; if (D.nosky) this.sky.visible = false;
-      if (D.notrees) this.land.trees.visible = false; if (D.nocones) this.lamps.cones.visible = false; }
+      if (D.notrees) this.land.trees.visible = false; if (D.nocones) this.lamps.cones.visible = false; this.road.u.dbg!.value = (D as any).rdbg ?? 0; }
     renderer.render(this.scene, this.cam);
     this.land.visible = this.city.visible = this.traffic.visible = this.road.visible = this.lamps.visible = this.furn.visible = this.sky.visible = this.land.trees.visible = this.lamps.cones.visible = true;
 

@@ -66,7 +66,7 @@ export interface HwTextures {
 }
 
 export function bakeTextures(renderer: THREE.WebGLRenderer): HwTextures {
-  const aniso = Math.min(16, renderer.capabilities.getMaxAnisotropy());
+  const aniso = Math.min(4, renderer.capabilities.getMaxAnisotropy());
   // ---- asphalt aggregate (tile 1.6 m)
   const A = rt(2048, 2048, THREE.RepeatWrapping, true, aniso);
   bake(renderer, A, /* glsl */ `

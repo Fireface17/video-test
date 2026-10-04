@@ -75,7 +75,7 @@ export class GlassHeart extends THREE.Group {
   private crackSegs: { a: THREE.Vector3; b: THREE.Vector3; d: number }[] = [];
   private shared: Record<string, THREE.IUniform>;
   impact = v2(-0.42, 0.42);
-  H = 0.36;
+  H = 0.26;
   private outline = heartOutline();
   private dmax = 1;
   T: HeartTimes = { crack0: 0, crack1: 0, shatter: 0, ign0: 0, ign1: 0 };
@@ -219,8 +219,10 @@ export class GlassHeart extends THREE.Group {
           float k1 = max(dot(r, keyDir), 0.0), k2 = max(dot(r, normalize(vec3(0.7, -0.2, 0.6))), 0.0);
           vec3 env = vec3(1.0, 0.97, 0.92) * (pow(k1, 40.0) * 4.0 + pow(k1, 6.0) * 0.25) + rimC * pow(k2, 12.0) * 1.2;
           vec3 glass = inner * (0.012 + 0.07 * nv * nv) + rimC * f * f * f * 0.45 + env * (0.18 + 0.5 * f);
-          float cr = smoothstep(crackR, crackR - 0.3, distance(vOrig, impact)) * step(0.0, crackR);
-          vec3 c = mix(glass, glass * apart + crackC * cr * (1.0 - apart * 0.7), vWall);
+          float dd = distance(vOrig, impact);
+          float cq = (dd - crackR + 0.08) / 0.1;
+          float cr = (smoothstep(crackR, crackR - 0.3, dd) * 0.07 + exp(-cq * cq) * 0.5) * step(0.0, crackR) * (1.0 - apart);
+          vec3 c = mix(glass, glass * apart + crackC * cr, vWall);
           c = mix(c, hot * (0.25 + 0.6 * nv), heat);
           gl_FragColor = vec4(c * level, 1.0);
         }`,
@@ -297,8 +299,8 @@ export class GlassHeart extends THREE.Group {
     const swell = smoothstep(T.crack0, T.shatter, t);
     const gone = t < T.shatter ? 1 : Math.pow(0.5, (t - T.shatter) / 0.07);
     const inner = S.inner!.value as THREE.Color;
-    this.core.set(0, 0, -0.05, 0, inner, (0.35 + 0.3 * lub + 1.6 * swell) * gone * level, 0.45 + 0.35 * swell);
-    this.core.set(1, 0, -0.05, 0, inner, (0.07 + 0.05 * lub + 0.25 * swell) * gone * level, 2.2 + 1.2 * swell);
+    this.core.set(0, 0, -0.05, 0, inner, (0.3 + 0.25 * lub + 0.7 * swell) * gone * level, 0.4 + 0.25 * swell);
+    this.core.set(1, 0, -0.05, 0, inner, (0.05 + 0.04 * lub + 0.12 * swell) * gone * level, 2.0 + 1.0 * swell);
     const burst = t >= T.shatter ? Math.pow(0.5, (t - T.shatter) / 0.12) : 0;
     this.core.set(2, 0, -0.05, 0, new THREE.Color(1, 0.97, 0.92), burst * 2.2 * level, 1.5 + 8 * (1 - burst));
     this.core.commit(3);

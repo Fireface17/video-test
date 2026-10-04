@@ -20,7 +20,7 @@ export const NWORDS = 8;
 export class Reflection {
   cam = new THREE.PerspectiveCamera();
   rt = makeRT(640, 360);
-  blur = makeRT(640, 360, { depthBuffer: false });
+  blur = makeRT(320, 180, { depthBuffer: false });
   texMat = new THREE.Matrix4();
   private pass: FSPass;
 
@@ -30,8 +30,8 @@ export class Reflection {
       void main() {
         // long vertical streak with a bright core: the wet road smears every light toward the viewer
         vec3 acc = vec3(0.0); float wsum = 0.0;
-        for (int i = -22; i <= 22; i++) {
-          float fi = float(i);
+        for (int i = -11; i <= 11; i++) {
+          float fi = float(i) * 2.0;
           float w = exp(-abs(fi) / 7.0) + 2.5 * exp(-fi * fi / 3.0);
           vec2 o = vec2(0.0, fi * 1.6) * px;
           acc += texture(src, vUv + o).rgb * w; wsum += w;
@@ -78,7 +78,7 @@ export class RoadSurface extends THREE.Mesh {
       wRect: { value: Array.from({ length: NWORDS }, () => new THREE.Vector4(0, -1e4, 0, -1e4)) },
       wAtlas: { value: Array.from({ length: NWORDS }, () => new THREE.Vector4()) },
       wState: { value: Array.from({ length: NWORDS }, () => new THREE.Vector4()) },
-      wet: { value: 1 }, reflK: { value: 1 }, studK: { value: 1 },
+      wet: { value: 1 }, reflK: { value: 1 }, studK: { value: 1 }, dbg: { value: 0 },
     };
     const mat = new THREE.ShaderMaterial({
       uniforms: u,
@@ -90,7 +90,7 @@ export class RoadSurface extends THREE.Mesh {
         uniform sampler2D tA, tN, tM, tR, tRB, tW;
         uniform mat4 texMat;
         uniform vec4 wRect[NW]; uniform vec4 wAtlas[NW]; uniform vec4 wState[NW];
-        uniform float wet, reflK;
+        uniform float wet, reflK, dbg;
         varying vec3 vW;
         // box-filtered coverage of the stripe [c - hw, c + hw] over a pixel footprint fw
         float cov(float x, float fw, float c, float hw) { return clamp((min(x + 0.5 * fw, c + hw) - max(x - 0.5 * fw, c - hw)) / fw, 0.0, 1.0); }
@@ -109,8 +109,10 @@ export class RoadSurface extends THREE.Mesh {
           vec4 mac2 = texture2D(tM, vec2((x + 16.0) / 32.0 + 0.5, u / 311.0 + 0.37));
           vec2 d1 = xu / 1.6;
           vec2 d2 = mat2(0.8, -0.6, 0.6, 0.8) * xu / 0.71 + 0.31;
-          vec4 a1 = texture2D(tA, d1), a2 = texture2D(tA, d2);
-          vec4 n1 = texture2D(tN, d1), n2 = texture2D(tN, d2);
+          // detail fades out with distance (and is skipped where it cannot be seen)
+          vec4 a1 = vec4(0.32, 0.4, 0.6, 0.3), a2 = a1, n1 = vec4(0.5, 0.5, 1.0, 0.5), n2 = n1;
+          if (dist < 140.0) { a1 = texture2D(tA, d1); n1 = texture2D(tN, d1); }
+          if (dist < 22.0) { a2 = texture2D(tA, d2); n2 = texture2D(tN, d2); }
           float tone = mac.r * 0.75 + mac2.r * 0.5 - 0.1;
           float alb = mix(a1.r, a2.r, 0.4) * (0.55 + 0.6 * tone) * 0.2;
           float cavity = mix(n1.a, n2.a, 0.4);
@@ -131,6 +133,7 @@ export class RoadSurface extends THREE.Mesh {
           // ---- the lyric lettering (fresh thermoplastic, painted when the word is sung)
           float word = 0.0, wglow = 0.0;
           for (int i = 0; i < NW; i++) {
+            if (dbg == 3.0) break;
             vec4 r = wRect[i];
             vec2 q = vec2((x - r.x) / (r.z - r.x), (u - r.y) / (r.w - r.y));
             if (q.x < 0.0 || q.x > 1.0 || q.y < 0.0 || q.y > 1.0) continue;
@@ -160,26 +163,28 @@ export class RoadSurface extends THREE.Mesh {
           // normal: bumpy aggregate, smoothed by the water film and flat in the puddles
           vec3 nb = normalize(mix(tn, vec3(0.0, 0.0, 1.0), clamp(puddle * 0.92 + damp * 0.35, 0.0, 1.0)));
           vec3 N = normalize(vec3(nb.x, nb.z, -nb.y));
-          vec3 spec;
-          vec3 diff = hwLight(P, N, V, rough * (1.0 - 0.6 * damp), 0.35 + 0.65 * (1.0 - paint), spec);
+          vec3 spec = vec3(0.0);
+          vec3 diff = vec3(0.1);
+          if (dbg != 1.0) diff = hwLight(P, N, V, rough * (1.0 - 0.6 * damp), 0.35 + 0.65 * (1.0 - paint), spec);
           vec3 c = albedo * diff + spec * (1.0 - puddle) * 0.9;
           // retroreflective paint in our headlights
-          c += paint * hwHead(P, vec3(0.0, 1.0, 0.0)) * 2.5;
+          c += paint * uHeadOn * hwHead(P, vec3(0.0, 1.0, 0.0)) * 2.5;
           c += vec3(1.0, 0.98, 0.94) * wglow;
           // ---- reflections
           vec4 rp = texMat * vec4(P, 1.0);
           vec2 ruv = rp.xy / rp.w;
           float dk = clamp(6.0 / dist, 0.15, 1.0);
           vec2 dist1 = nb.xy * vec2(0.012, 0.02) * dk;
-          vec3 rSharp = texture2D(tR, ruv + dist1 * 0.35 + vec2(0.0, sin(u * 2.3 + x * 0.7) * 0.0015 * dk)).rgb;
-          vec3 rBlur = texture2D(tRB, ruv + dist1).rgb;
+          vec3 rSharp = vec3(0.0), rBlur = vec3(0.0);
+          if (dbg != 2.0) { rSharp = texture2D(tR, ruv + dist1 * 0.35 + vec2(0.0, sin(u * 2.3 + x * 0.7) * 0.0015 * dk)).rgb;
+          rBlur = texture2D(tRB, ruv + dist1).rgb; }
           float cosV = clamp(dot(vec3(0.0, 1.0, 0.0), V), 0.0, 1.0);
           float fres = 0.02 + 0.98 * pow(1.0 - cosV, 5.0);
           float fresR = 0.03 + 0.97 * pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 5.0);
           vec3 refl = mix(rBlur * (0.7 + 0.3 * damp), mix(rBlur, rSharp, 0.6), puddle) * mix(fresR, fres, puddle * 0.7);
           refl *= (1.0 - paint * 0.7) * mix(0.35, 1.0, max(damp, puddle)) * reflK * mix(0.04, 1.0, asph);
           c += refl;
-          c = hwFog(c, P, cameraPosition);
+          if (dbg != 4.0) c = hwFog(c, P, cameraPosition);
           gl_FragColor = vec4(c, 1.0);
         }`,
     });

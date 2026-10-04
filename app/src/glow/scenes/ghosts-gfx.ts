@@ -7,15 +7,15 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { GLSL_GLOW_PALETTE } from '../lib/palette';
 
 /** The arched window in the back wall (z = WIN.z), in metres. */
-export const WIN = { x: 0, hw: 2.3, y0: 1.0, ys: 6.0, z: -12, depth: 0.7, mull: 0.042, cols: [-0.767, 0.767], rows: [2.55, 4.3, 6.0] };
+export const WIN = { x: 0, hw: 2.4, y0: 1.0, ys: 6.0, z: -12, depth: 0.7, mull: 0.042, cols: [-0.92, 0.92], rows: [2.3, 6.0] };
 /** z of the glass inside the reveal. */
 export const GLASS_Z = WIN.z - WIN.depth * 0.45 + 0.07;
 /** Hall extents: side walls at x0/x1, front wall at z1, ceiling height h. */
 export const HALL = { x0: -12, x1: 12, z1: 12, h: 9.5 };
 /** The moon, seen through the window (high in the middle panes from inside the hall). */
-export const MOON = { pos: new THREE.Vector3(-1.4, 17.2, -44), r: 3.55 };
+export const MOON = { pos: new THREE.Vector3(-0.5, 23.0, -41.5), r: 3.45 };
 /** Direction toward the moon for the light falling through the window. */
-export const MOON_L = new THREE.Vector3(-0.03, 0.4, -0.92).normalize();
+export const MOON_L = new THREE.Vector3(-0.015, 0.545, -0.84).normalize();
 /** The light map covers the hall floor: x, z in [-MAP_S/2, MAP_S/2]. */
 export const MAP_S = 24;
 /** Ceiling coffers: CEIL_N x CEIL_N panels. */
@@ -77,7 +77,7 @@ float winMask(vec2 q, float soft) {
   float da = q.y > WYS ? WHW - length(q - vec2(WX, WYS)) : 1e3;
   float m = smoothstep(-soft, soft, min(min(dx, dy), da));
   float mv = min(abs(q.x - (WX + ${f(WIN.cols[0]!)})), abs(q.x - (WX + ${f(WIN.cols[1]!)}))) - MULL;
-  float mh = min(min(abs(q.y - ${f(WIN.rows[0]!)}), abs(q.y - ${f(WIN.rows[1]!)})), abs(q.y - ${f(WIN.rows[2]!)})) - MULL;
+  float mh = min(abs(q.y - ${f(WIN.rows[0]!)}), abs(q.y - ${f(WIN.rows[1]!)})) - MULL;
   return m * smoothstep(-soft, soft, mv) * smoothstep(-soft, soft, mh);
 }
 /** Moonlight reaching p through the window (soft-edged window-shaped patch / shaft). */
@@ -171,8 +171,8 @@ export function roomMaterial(U: WorldU, kind: 0 | 1 | 2 | 3, base: THREE.Color) 
         base *= panel * (1.0 + 0.35 * pil + 0.5 * dado + 0.35 * corn);
       #elif KIND == 2
         // coffered panel: a sunken square with a moulded rim (object coordinates, panel 4 x 4 m)
-        vec2 c = abs(vOP.xz) / 2.0;
-        float e = max(c.x, c.y);
+        vec2 cq = abs(vOP.xz) / 2.0;
+        float e = max(cq.x, cq.y);
         base *= mix(0.75, 1.0, smoothstep(0.78, 0.8, e)) * (1.0 + 0.4 * (1.0 - smoothstep(0.0, 0.02, abs(e - 0.79))));
       #endif
         vec3 c = base * uAmb;
@@ -185,10 +185,10 @@ export function roomMaterial(U: WorldU, kind: 0 | 1 | 2 | 3, base: THREE.Color) 
       #if KIND == 0
         c += base * wm * 1.4;
       #elif KIND == 2
-        c += base * (uFill * 0.9 + wm * 0.25) * max(-N.y, 0.25);
+        c += base * (uFill * 0.3 + wm * 0.2) * max(-N.y, 0.25);
       #else
         c += base * wm * exp(-max(p.y - 1.2, 0.0) / 3.5) * (0.4 + 0.6 * max(dot(N, normalize(vec3(-p.x, 1.0, -p.z) + 1e-4)), 0.0));
-        c += base * uFill * (0.55 + 0.45 * exp(-max(p.y - 2.0, 0.0) / 6.0));
+        c += base * uFill * (0.15 + 0.85 * exp(-max(p.y - 0.8, 0.0) / 3.2));
       #endif
       #if KIND == 0
         c += base * uFill * 0.6;
@@ -275,23 +275,26 @@ export function skyMaterial(U: WorldU) {
       varying vec3 vD;
       float pow2s(float x) { return x * x; }
       vec3 stars(vec3 d, float scale, float thr) {
-        // cells on the sphere: (azimuth, sin elevation)
-        float az = atan(d.x, d.z + 1e-6);
-        vec2 g = vec2(az * scale / PI, d.y * scale);
-        vec2 id = floor(g), fp = fract(g) - 0.5;
-        float hs = h12(id + 17.0 * scale);
-        vec2 off = vec2(h12(id + 3.7), h12(id + 9.1)) - 0.5;
-        vec2 q = (fp - off * 0.6) * vec2(max(sqrt(max(1.0 - d.y * d.y, 0.0)), 0.05), 1.0);
-        float st = step(thr, hs) * exp(-dot(q, q) * 520.0) * (0.35 + 0.65 * h12(id + 1.3));
+        // a jittered star per 3D cell around the unit sphere (round everywhere)
+        vec3 p = d * scale;
+        vec3 id = floor(p);
+        float hs = h13(id + 17.0);
+        vec3 sp = id + 0.2 + 0.6 * vec3(h13(id + 3.7), h13(id + 9.1), h13(id + 5.3));
+        vec3 q = p - sp; q -= d * dot(q, d);
+        float st = step(thr, hs) * exp(-dot(q, q) * 90.0) * (0.35 + 0.65 * h13(id + 1.3));
         st *= 0.65 + 0.35 * sin(uTime * (1.5 + 3.0 * hs) + hs * 40.0);
-        float warm = h12(id + 5.5);
+        float warm = h13(id + 5.5);
         return mix(vec3(0.75, 0.82, 1.0), vec3(1.0, 0.85, 0.7), step(0.8, warm)) * st;
       }
       void main() {
         vec3 dir = normalize(vD);
         float el = dir.y;
         vec3 c = mix(G_DUSK * 0.9, G_NIGHT * 0.7, smoothstep(-0.05, 0.6, el));
-        c += stars(dir, 60.0, 0.82) * 1.6 + stars(dir, 140.0, 0.9) * 0.9;
+        // a faint band of the galaxy across the sky, denser stars in it
+        vec3 gn = normalize(vec3(0.35, 0.5, 0.79));
+        float band = exp(-dot(dir, gn) * dot(dir, gn) * 14.0);
+        c += vec3(0.07, 0.065, 0.1) * band * (0.6 + 0.4 * vn3(dir * 9.0)) * smoothstep(-0.1, 0.2, el);
+        c += stars(dir, 70.0, 0.8 - 0.12 * band) * 1.5 + stars(dir, 150.0, 0.86 - 0.1 * band) * 0.8;
         // the moon's glow, swallowed with the moon
         vec3 md = normalize(uMoonPos - cameraPosition);
         float a = acos(clamp(dot(dir, md), -1.0, 1.0));
@@ -309,7 +312,7 @@ export const GLSL_EAT = /* glsl */ `
 uniform float uEat; uniform vec2 uEatDir;
 float eatMask(vec2 p, float t) {
   // a dark mass with a billowing edge sliding in from uEatDir, then closing over everything
-  vec2 c = uEatDir * mix(4.6, -0.6, uEat);
+  vec2 c = uEatDir * mix(8.2, -0.8, uEat);
   vec2 d = p - c;
   float r = length(d);
   float ang = atan(d.y, d.x + 1e-6);
@@ -456,7 +459,7 @@ export function glassMaterial(U: WorldU) {
         if (m <= 0.0) discard;
         // pane-local height: condensation thickest at the bottom of each pane
         float y = vWP.y;
-        float pb = y < ${f(WIN.rows[0]!)} ? ${f(WIN.y0)} : y < ${f(WIN.rows[1]!)} ? ${f(WIN.rows[0]!)} : y < ${f(WIN.rows[2]!)} ? ${f(WIN.rows[1]!)} : ${f(WIN.rows[2]!)};
+        float pb = y < ${f(WIN.rows[0]!)} ? ${f(WIN.y0)} : y < ${f(WIN.rows[1]!)} ? ${f(WIN.rows[0]!)} : ${f(WIN.rows[1]!)};
         float low = exp(-(y - pb) * 2.2);
         float n = vn3(vec3(vWP.xy * vec2(7.0, 9.0), 1.0)) * 0.6 + vn3(vec3(vWP.xy * 23.0, 2.0)) * 0.4;
         float fog = (0.25 + 0.75 * low) * (0.55 + 0.45 * n);

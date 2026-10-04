@@ -32,6 +32,11 @@ export interface CityTimes {
   beatAt: (t: number) => number;
 }
 
+/** A flat raw colour (MeshBasicMaterial's output is colour-managed; this one is not). */
+function flat(c: THREE.Color) {
+  return new THREE.ShaderMaterial({ uniforms: { c: { value: c } }, vertexShader: 'void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }', fragmentShader: 'uniform vec3 c; void main(){ gl_FragColor = vec4(c, 1.0); }' });
+}
+
 interface Riser { o: THREE.Vector3; t0: number; v: number; a: number; seed: number; ep: number }
 
 export class CityWorld {
@@ -46,7 +51,10 @@ export class CityWorld {
   overlay!: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
   risers: Riser[] = [];
   lights!: GlowPoints;
-  sparks = new GlowPoints(700, 1);
+  sparks = new GlowPoints(700, 0.45);
+  /** Lights streaming up past the camera while it rises with them: windows [t0, t1], the path they follow, colour. */
+  escort = new GlowPoints(900, 1.3, { fogDensity: 0.0005 });
+  escorts: { a: number; b: number; path: (t: number) => THREE.Vector3; c: THREE.Color }[] = [];
   roofMat!: THREE.ShaderMaterial;
   lampBase!: Float32Array;
   lmWake: THREE.IUniform<number>[] = [];
@@ -89,9 +97,9 @@ export class CityWorld {
       uniforms: { p: { value: new THREE.Vector3() }, c: { value: new THREE.Color() } },
       vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
       fragmentShader: /* glsl */ `uniform vec3 p, c; varying vec3 vW;
-        float h(vec2 q){ return fract(sin(dot(q, vec2(12.9898, 78.233))) * 43758.5453); }
-        void main(){ float g = 0.7 + 0.5 * h(floor(vW.xz * 6.0)); float d = length(vW.xz - p.xz);
-          vec3 col = vec3(0.02, 0.022, 0.03) * g + c * g * (0.6 * exp(-d * d / 5.0) + 0.15 * exp(-d / 6.0));
+        float h(vec2 q){ q = mod(q, 97.0); return fract(sin(dot(q, vec2(12.9898, 78.233))) * 43758.5453); }
+        void main(){ float g = 0.6 + 0.6 * h(floor(vW.xz * 7.0)); float d = length(vW.xz - p.xz);
+          vec3 col = vec3(0.008, 0.009, 0.013) * g + c * g * (0.5 * exp(-d * d / 4.0) + 0.1 * exp(-d / 5.0));
           gl_FragColor = vec4(col, 1.0); }`,
     });
     const slab = (x: number, z: number, w: number, d: number, h: number, seed: number) => {
@@ -104,7 +112,7 @@ export class CityWorld {
       m.frustumCulled = false;
       const top = new THREE.Mesh(new THREE.BoxGeometry(w + 0.2, 0.3, d + 0.2), this.roofMat);
       top.position.set(x, h + 0.15, z);
-      const rim = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.03, 0.033, 0.05) });
+      const rim = flat(new THREE.Color(0.012, 0.013, 0.02));
       const g = new THREE.Group();
       g.add(m, top);
       for (const [pw, pd, px, pz] of [[w, 0.4, 0, -d / 2], [w, 0.4, 0, d / 2], [0.4, d, -w / 2, 0], [0.4, d, w / 2, 0]] as const) {
@@ -123,7 +131,7 @@ export class CityWorld {
       S.add(this.hero);
     }
     slab(sp.x, sp.z, 26, 24, sp.h, 57);
-    this.sitPos.set(sp.x, sp.h, sp.z).addScaledVector(this.fwd(), 11.6);
+    this.sitPos.set(sp.x, sp.h, sp.z).addScaledVector(this.fwd(), 11.95);
     this.sitter = this.n === 2 ? new RealFigure(rpm, 'rpm', col('blue', 0.9).lerp(col('violet', 0.9), 0.3)) : new RealFigure(mi, 'michelle', col('blue', 0.9).lerp(col('cyan', 0.7), 0.3));
     S.add(this.sitter, this.motes);
 
@@ -149,8 +157,8 @@ export class CityWorld {
             float age = t - rings[i];
             if (age < 0.0 || age > 2.5) continue;
             float rr = 30.0 + age * 900.0 - 160.0 * age * age;
-            float q = (d - rr) / (10.0 + age * 25.0);
-            col += c * exp(-q * q) * (0.35 + 1.3 * st) * exp(-age * 1.6) * 1.2;
+            float q = (d - rr) / (14.0 + age * 30.0);
+            col += c * exp(-q * q) * (0.6 + 1.6 * st) * exp(-age * 1.3) * 1.6;
           }
           float dist = length(vW - cameraPosition);
           gl_FragColor = vec4(col * k * exp(-dist * 0.00035), 1.0);
@@ -171,13 +179,13 @@ export class CityWorld {
         const side = rr();
         const ox = side < 0.5 ? x + (rr() - 0.5) * w : x + (side < 0.75 ? -w / 2 - 0.5 : w / 2 + 0.5);
         const oz = side < 0.5 ? z + (rr() < 0.5 ? -d / 2 - 0.5 : d / 2 + 0.5) : z + (rr() - 0.5) * d;
-        this.risers.push({ o: new THREE.Vector3(ox, 6 + rr() * Math.max(4, h - 8), oz), t0: rr(), v: 15 + rr() * 30, a: ep ? 120 + rr() * 520 : 40 + rr() * 260, seed: rr() * 100, ep });
+        this.risers.push({ o: new THREE.Vector3(ox, 6 + rr() * Math.max(4, h - 8), oz), t0: rr(), v: 20 + rr() * 40, a: 110 + rr() * 480, seed: rr() * 100, ep });
       }
     };
     addRisers(0, this.n === 1 ? near(0, -500, 1300) : near(sp.x, sp.z - 500, 1300), 1800);
     addRisers(1, near(sp.x, sp.z - 400, 1700), 2600);
-    this.lights = new GlowPoints(this.risers.length, 2.2, { fogDensity: 0.00045 });
-    S.add(this.lights, this.sparks);
+    this.lights = new GlowPoints(this.risers.length, 1.5, { fogDensity: 0.00045 });
+    S.add(this.lights, this.sparks, this.escort);
   }
 
   /** Per frame: everything but the camera. */
@@ -204,6 +212,7 @@ export class CityWorld {
     const ou = this.overlay.material.uniforms;
     (ou.from!.value as THREE.Vector3).set(sp.x, 0, sp.z);
     ou.R!.value = inC ? R : -1;
+    this.overlay.visible = inC && t > T.wake - 0.1;
     ou.t!.value = t;
     const rings = ou.rings!.value as number[];
     const rb = T.ringBeats.filter((b) => b <= t + 0.01).slice(-8);
@@ -250,9 +259,27 @@ export class CityWorld {
       const wx = noise1(r.seed + age * 0.6, 3) * 8 * age, wz = noise1(r.seed + age * 0.5, 7) * 8 * age;
       const c = r.ep === 0 ? lantern.clone().lerp(col('gold', 1.4), goldK * 0.6) : lantern.clone().lerp(tint, 0.35);
       const flick = 0.8 + 0.2 * noise1(t * 3 + r.seed, 11);
-      lp.set(i, r.o.x + wx, y, r.o.z + wz, c, smoothstep(0, 0.25, age) * flick * 2.2, 1 + (r.seed % 1) * 1.4);
+      lp.set(i, r.o.x + wx, y, r.o.z + wz, c, smoothstep(0, 0.25, age) * flick * 3.2, 1.2 + (r.seed % 1) * 1.6);
     });
     lp.commit();
+
+    // ---- escorts: a column of lights rising faster than the camera, round its path ----
+    let ne = 0;
+    const es = this.escorts.find((e) => t > e.a - 0.05 && t < e.b + 0.4);
+    if (es) {
+      const ctr = es.path(Math.min(t, es.b)), H = 900;
+      const fade = smoothstep(es.a - 0.05, es.a + 0.35, t) * (1 - smoothstep(es.b, es.b + 0.4, t));
+      for (let i = 0; i < this.escort.n; i++) {
+        const a = hash(i, 1) * Math.PI * 2, rad = 6 + Math.pow(hash(i, 2), 0.8) * 260;
+        const v = 140 + hash(i, 3) * 260;
+        const y = ((hash(i, 4) * H + v * (t - es.a)) % H) - H * 0.4;
+        const edge = smoothstep(-H * 0.4, -H * 0.3, y) * (1 - smoothstep(H * 0.45, H * 0.6, y));
+        const x = ctr.x + Math.cos(a) * rad + noise1(t * 0.7 + i, 5) * 4, z = ctr.z + Math.sin(a) * rad + noise1(t * 0.6 + i, 9) * 4;
+        const flick = 0.8 + 0.2 * noise1(t * 3 + i, 11);
+        this.escort.set(ne++, x, ctr.y + y, z, es.c, fade * edge * flick * 2.6, 0.8 + hash(i, 6) * 1.4);
+      }
+    }
+    this.escort.commit(ne);
 
     // ---- sparks: chorus 1's burst; her star falling; its burst on "wake" ----
     const spk = this.sparks;
@@ -262,7 +289,7 @@ export class CityWorld {
       const bt = t - T.burst;
       if (bt > -0.4) {
         const pre = clamp(1 + bt / 0.4);
-        spk.set(ns++, c0.x, c0.y, c0.z, col('white', 3).lerp(col('gold', 3), 0.4), (bt < 0 ? pre * 3 : 4 * Math.pow(0.5, bt / 0.15)), 14 + 30 * clamp(bt * 4));
+        spk.set(ns++, c0.x, c0.y, c0.z, col('white', 3).lerp(col('gold', 3), 0.4), (bt < 0 ? pre * 3 : 4 * Math.pow(0.5, bt / 0.15)), 20 + 50 * clamp(bt * 4));
         if (bt > 0) for (let i = 0; i < 420; i++) {
           const a = hash(i, 1) * Math.PI * 2, z = hash(i, 2) * 2 - 1, sp2 = 30 + hash(i, 3) * 90;
           const dir = new THREE.Vector3(Math.sqrt(1 - z * z) * Math.cos(a), z * 0.6 + 0.5, Math.sqrt(1 - z * z) * Math.sin(a));
@@ -310,7 +337,7 @@ export class CityWorld {
   /** Where the falling star is (before it lands; after, roughly her hands) — a pure function of t, for the camera. */
   fallPos(t: number, out = new THREE.Vector3()) {
     const T = this.T, sp = this.spot;
-    const top = new THREE.Vector3(sp.x + 260, 1900, sp.z + 520), hands = this.sitPos.clone().add(new THREE.Vector3(0, 0.75, 0)).addScaledVector(this.fwd(), 0.05);
+    const top = new THREE.Vector3(sp.x + 260, 1900, sp.z + 520), hands = this.sitPos.clone().add(new THREE.Vector3(0, 1.6, 0)).addScaledVector(this.fwd(), 0.25);
     const k = ease.outCubic(prog(t, T.fall0, T.land));
     out.copy(top).lerp(hands, k);
     if (t < T.land) out.x += Math.sin(k * Math.PI) * 60;
@@ -333,8 +360,8 @@ export class CityWorld {
     // facing the skyline (-z rotated by face); she sits at the roof edge
     h.rotation.y = Math.PI + sp.face;
     const fwd = this.fwd(), edge = this.sitPos;
-    const sitP = edge.clone().addScaledVector(fwd, -0.2).setY(sp.h + 0.42);
-    const standP = edge.clone().addScaledVector(fwd, -1.0).setY(sp.h + 0.3 + h.hipHeight);
+    const sitP = edge.clone().addScaledVector(fwd, -0.05).setY(sp.h + 0.3 + 0.9 + 0.1);
+    const standP = edge.clone().addScaledVector(fwd, -1.1).setY(sp.h + 0.3 + h.hipHeight);
     h.position.copy(sitP).lerp(standP, stand);
     h.position.y += Math.sin(Math.PI * stand) * 0.06;
     // legs: over the edge (thighs forward, shins hanging) → standing
@@ -370,6 +397,6 @@ export class CityWorld {
     gu.level!.value = (t < T.land ? 0.35 : 0.35 + 0.65 * smoothstep(T.land, T.land + 0.8, t)) * (1 + 1.2 * pulse(t, T.wake, 0.25));
     h.time = t;
     this.motes.update(h, t, this.tint, t < T.land ? 0 : 1.2);
-    (this.roofMat.uniforms.c!.value as THREE.Color).copy(this.tint).multiplyScalar(t < T.land ? 0.05 : 0.4 * (1 + 2 * pulse(t, T.wake, 0.3)));
+    (this.roofMat.uniforms.c!.value as THREE.Color).copy(this.tint).multiplyScalar(t < T.land ? 0.02 : 0.12 * (1 + 3 * pulse(t, T.wake, 0.3)));
   }
 }
