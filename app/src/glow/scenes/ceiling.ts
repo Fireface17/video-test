@@ -292,8 +292,8 @@ export default class Ceiling extends Scene {
       const beats = [0, 1, 2, 4].map((k) => audio.timeOfBeat(audio.beatAt(B(9)) + k));
       this.title.words.forEach((_, i) => this.title.setLevel(i, flickerOn(t, beats[i]!, i + 3)));
       this.artist.setAll(flickerOn(t, audio.timeOfBeat(audio.beatAt(B(10)) + 2), 9) * 0.9);
-      // everything fades out in the last beat before the cut
-      const fade = 1 - smoothstep(this.ctx.end - 0.25, this.ctx.end, t);
+      // (stays lit to the cut: the whip into the highway carries it away)
+      const fade = 1;
       this.title.words.forEach((w, i) => this.title.setLevel(i, (w.mat.uniforms.on!.value as number) * fade));
     }
     if (this.hand) {
