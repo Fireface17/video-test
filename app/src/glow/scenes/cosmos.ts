@@ -764,12 +764,12 @@ export default class Cosmos extends Scene {
     const prev = st.extra;
     st.extra = () => {
       prev?.();
-      this.ring(S, tm, t, GS * 9, col('#fff6dc', 2.4), 2.2, 220, 1.5);
-      this.ring(S, tm + 0.05, t, GS * 6, L.accent, 1.4, 180, 1.3);
-      this.ring(S, tm + 0.12, t, GS * 3.5, L.accent, 1.0, 140, 1.1);
-      this.star(S, 1 + 3 * fl, GS * 0.05, 1.5 + 3 * fl);
+      this.ring(S, tm, t, GS * 4.5, col('#fff6dc', 2.4), 2.0, 240, 1.4);
+      this.ring(S, tm + 0.06, t, GS * 3, L.accent, 1.3, 180, 1.2);
+      this.ring(S, tm + 0.14, t, GS * 1.8, L.accent, 1.0, 140, 1.0);
+      this.star(S, 1 + 2.5 * fl, GS * 0.05, 1.5 + 3 * fl);
     };
-    this.flash = Math.max(this.flash, 0.12 * fl);
+    this.flash = Math.max(this.flash, 0.06 * fl);
     st.zoom = (st.zoom ?? 0) + 0.05 * pulse(t, tm, 0.12);
     if (t >= tm && t - tm < 0.18) this.shake = Math.max(this.shake, 1 - (t - tm) / 0.18);
   }
@@ -856,8 +856,10 @@ export default class Cosmos extends Scene {
     aim(cam, pos, S.clone().lerp(V(0, 0, 0), 0.25), 0.04 * Math.sin(t * 0.7) - 0.05 * u, Y);
     cam.fov = 58;
     this.sun(S, grow, t);
-    st.core = 0.9 + 0.3 * this.kick;
-    st.disk = 0.8;
+    st.core = 0.45 + 0.2 * this.kick;
+    st.coreK = 0.4;
+    st.disk = 0.3;
+    st.neb = 0.6;
     st.near = pos;
     st.range = 120;
     for (const b of this.beats) if (b >= sh.t0 - 1.5 && b <= t) this.waves.push({ t0: b, arm: -1, L0: 0, dir: 1, v: 45, amp: 1, glow: 0.2 });
