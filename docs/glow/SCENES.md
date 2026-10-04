@@ -29,7 +29,9 @@ bun scripts/render.ts stills --t 21.3 --only highway --out ../out/wip/highway
 - `shapes.ts` — `starGeometry()` (sticker star), `glowStickGeometry(length, radius)` (groups: 0 = light-filled tube, 1 = plastic caps), `figureGeometry(armsUp)` (a simple standing figure, 1.75 tall, feet at y = 0).
 - `points.ts` — `GlowPoints(n, size)`: additive soft points (sparks, dust, star fields); `set(i, x, y, z, color, k, size)` each frame, then `commit()`.
 - `people.ts` — realistic people (`loadBody('rpm'|'michelle'|'xbot')`, `RealFigure` posed by limb directions / IK, `dance()`, `bakePose()` for instanced crowds, `glowBodyMaterial` (people of light), `ghostBodyMaterial`, `LightMotes`).
-- `stars.ts` — `StarFigures` (people drawn as constellations), `GlowLines`.
+- `stardust.ts` — people of stardust: `StardustBody` (a body kind's stars, sampled once over its skin), `Stardust` (`begin(camera)`, `figure(joints, body, color, k, { color2, draw, shatter, size, joints, seed })`, `star()`, `end()`): a person as ~22k tiny stars driven by the 13 star joints, with a glowing outline, shimmer, levels of detail by size on screen, assembling (`draw`) and breaking into stars (`shatter`).
+- `galaxy.ts` — `Galaxy`: a spiral galaxy whose bright stars are people of stardust (chains holding hands along the arms, a `wave` of raised hands; dancers around), with its stars, disk glow, core and nebula knots.
+- `stars.ts` — `starJoints` (the 13 joints every figure pipeline uses), `GlowLines`, `StarFigures` (the old constellation figures; lab only).
 - `lightpaint.ts` — `LightTrail` (text written by a point of light, word-synced with `writtenAt`), `sampleStrokeText` (points along text for particles).
 - `city.ts` — `City`: a night city with interior-mapped windows, lit streets, traffic, haze, clouds, a waking wave and a gold wave; `landmarks.ts` — the Empire State, Chrysler and One WTC.
 - `earth.ts` — `Earth`: the night Earth with city lights that wake in a wave, clouds, atmosphere, dawn.
