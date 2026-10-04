@@ -197,7 +197,7 @@ export class Rig {
   constructor(m: Motion, fig: RealFigure) {
     const B = fig.boneMap;
     // rest pose, figure at the origin
-    const save = { p: fig.position.clone(), q: fig.quaternion.clone(), s: fig.scale.clone() };
+    const save = { p: fig.position.clone(), r: fig.rotation.clone(), s: fig.scale.clone() }; // (Euler, not quaternion: restoring a quaternion rewrites the angles, e.g. yaw π → (π, 0, π))
     fig.position.set(0, 0, 0); fig.quaternion.identity(); fig.scale.setScalar(1);
     fig.setMocap({ q: new Map(), hips: null });
     fig.updateMatrixWorld(true);
@@ -236,7 +236,7 @@ export class Rig {
       this.bones.push({ name: bb, src, srcM, aligned: b.getWorldQuaternion(new THREE.Quaternion()), up, chain });
     }
     // back to the figure's own pose
-    fig.position.copy(save.p); fig.quaternion.copy(save.q); fig.scale.copy(save.s);
+    fig.position.copy(save.p); fig.rotation.copy(save.r); fig.scale.copy(save.s);
     fig.setMocap(null);
   }
 }
@@ -295,7 +295,7 @@ export class JointTable {
     this.period = m.duration - XFADE;
     this.n = Math.max(2, Math.round(this.period * hz));
     this.data = new Float32Array(this.n * 39);
-    const save = { p: fig.position.clone(), q: fig.quaternion.clone(), s: fig.scale.clone() };
+    const save = { p: fig.position.clone(), r: fig.rotation.clone(), s: fig.scale.clone() }; // (Euler, not quaternion: restoring a quaternion rewrites the angles, e.g. yaw π → (π, 0, π))
     fig.position.set(0, 0, 0); fig.quaternion.identity(); fig.scale.setScalar(1);
     const js: THREE.Vector3[] = [];
     for (let i = 0; i < this.n; i++) {
@@ -303,7 +303,7 @@ export class JointTable {
       starJoints(fig, js);
       js.forEach((v, j) => this.data.set([v.x, v.y, v.z], i * 39 + j * 3));
     }
-    fig.position.copy(save.p); fig.quaternion.copy(save.q); fig.scale.copy(save.s);
+    fig.position.copy(save.p); fig.rotation.copy(save.r); fig.scale.copy(save.s);
     fig.setMocap(null);
   }
 
