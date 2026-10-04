@@ -1,6 +1,6 @@
 // The sky of the drops (`cosmos`): a nebula painted once as density (two channels: broad gas and bright
-// filaments) and coloured per frame from two palette colours, so each drop keeps one dominant hue; a field of
-// stars at infinity with a milky band; and a spiral galaxy of soft points (the arms of the galaxy of people).
+// filaments) and coloured per frame from two palette colours, so each drop keeps one dominant hue; and a
+// field of stars at infinity with a milky band.
 import * as THREE from 'three';
 import { clamp, mulberry32, noise3, smoothstep } from '../../engine/util';
 import { GlowPoints } from '../lib/points';
@@ -85,39 +85,4 @@ export function starField(n: number, R: number, seed: number, tint: THREE.Color,
   }
   p.commit();
   return p;
-}
-
-/**
- * A spiral galaxy of soft points in its XZ plane (radius 1, centred), arms trailing; the bright bulge in the
- * middle. Scale and orient the returned object; `arm(u, k)` gives the arm centreline used for the figures.
- */
-export function galaxy(n: number, seed: number, arms = 2) {
-  const p = new GlowPoints(n, 1);
-  const r = mulberry32(seed), c = new THREE.Color();
-  for (let i = 0; i < n; i++) {
-    const bulge = r() < 0.18;
-    let x: number, y: number, z: number, k: number;
-    if (bulge) {
-      const rr = Math.pow(r(), 2.2) * 0.22, a = r() * Math.PI * 2;
-      x = Math.cos(a) * rr; z = Math.sin(a) * rr; y = (r() - 0.5) * 0.08 * (1 - rr / 0.22);
-      k = 0.5 + r() * 0.9;
-      c.setRGB(1, 0.95, 0.85);
-    } else {
-      const a = Math.floor(r() * arms), u = 0.08 + Math.pow(r(), 0.8) * 0.95;
-      const [ax, az] = armAt(u, a, arms);
-      const sp = 0.03 + 0.09 * u;
-      x = ax + (r() + r() - 1) * sp; z = az + (r() + r() - 1) * sp; y = (r() - 0.5) * 0.03;
-      k = (0.25 + Math.pow(r(), 3) * 1.2) * (1.1 - 0.5 * u);
-      c.setRGB(1, 1, 1);
-    }
-    p.set(i, x, y, z, c, k * 0.8, 0.0018 + Math.pow(r(), 6) * 0.006);
-  }
-  p.commit();
-  return p;
-}
-
-/** Point on arm `a` of a log spiral at radius fraction u (galaxy plane XZ). */
-export function armAt(u: number, a: number, arms = 2): [number, number] {
-  const th = a * ((Math.PI * 2) / arms) + Math.log(0.05 + u) * 2.2;
-  return [Math.cos(th) * u, Math.sin(th) * u];
 }

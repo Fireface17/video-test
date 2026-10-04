@@ -1,92 +1,15 @@
-// Graphics for the drops (`cosmos`): star-figures drawn in one batch at any scale (a star on each joint,
-// glowing lines with a pixel floor so tiny far figures stay smooth and giants stay crisp), soft flares
-// (flashes, suns, lens streaks), and a bank of dance poses: a few invisible realistic bodies are posed once
-// per frame per distinct step and their joints reused (mirrored, scaled, turned) for hundreds of figures.
+// Graphics for the drops (`cosmos`): soft flares (flashes, suns, lens streaks); a bank of procedural dance
+// poses (still used by lib/galaxy.ts for its own dancers: a few invisible bodies posed once per frame per
+// distinct step, joints reused for many figures); placing 13-joint poses in the world.
 import * as THREE from 'three';
-import { SCALE } from '../../engine/gl';
 import { clamp } from '../../engine/util';
 import { RealFigure, bend, dance, limbDir } from '../lib/people';
-import { starJoints, STAR_EDGES } from '../lib/stars';
-import { GlowPoints } from '../lib/points';
+import { starJoints } from '../lib/stars';
 
 export const NJ = 13; // joints per figure (lib/stars STAR_JOINTS order)
 /** Joint indices (lib/stars STAR_JOINTS): body-left = +x in the figure frame. */
 export const J = { head: 0, neck: 1, shL: 2, shR: 3, elL: 4, elR: 5, haL: 6, haR: 7, hip: 8, knL: 9, knR: 10, ftL: 11, ftR: 12 } as const;
 const MIRROR = [0, 1, 3, 2, 5, 4, 7, 6, 8, 10, 9, 12, 11];
-
-/**
- * Instanced glowing segments with a per-segment world half-width and a floor in pixels (a line thinner than
- * the floor is drawn at the floor and dimmed instead, so far figures don't shimmer). Segments crossing the
- * near plane are clipped. Additive.
- */
-export class StarLines extends THREE.Mesh {
-  declare geometry: THREE.InstancedBufferGeometry;
-  declare material: THREE.ShaderMaterial;
-  private A: Float32Array; private B: Float32Array; private C: Float32Array; private Wd: Float32Array;
-  private attrs: THREE.InstancedBufferAttribute[];
-  n = 0;
-
-  constructor(public cap: number, minPx = 0.6) {
-    const g = new THREE.InstancedBufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute([0, -1, 0, 1, -1, 0, 0, 1, 0, 1, 1, 0], 3));
-    g.setIndex([0, 1, 2, 2, 1, 3]);
-    const A = new Float32Array(cap * 3), B = new Float32Array(cap * 3), C = new Float32Array(cap * 3), Wd = new Float32Array(cap);
-    const mk = (a: Float32Array, k: number) => new THREE.InstancedBufferAttribute(a, k).setUsage(THREE.DynamicDrawUsage);
-    const attrs = [mk(A, 3), mk(B, 3), mk(C, 3), mk(Wd, 1)];
-    g.setAttribute('aA', attrs[0]!); g.setAttribute('aB', attrs[1]!); g.setAttribute('aC', attrs[2]!); g.setAttribute('aW', attrs[3]!);
-    g.instanceCount = 0;
-    const mat = new THREE.ShaderMaterial({
-      transparent: true, depthWrite: false, depthTest: true, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-      uniforms: { pxScale: { value: (1080 * SCALE) / 2 }, minPx: { value: minPx * SCALE }, fogDensity: { value: 0 } },
-      vertexShader: /* glsl */ `
-        attribute vec3 aA, aB, aC; attribute float aW;
-        uniform float pxScale, minPx, fogDensity;
-        varying vec3 vC; varying float vS;
-        void main() {
-          vec4 a = modelViewMatrix * vec4(aA, 1.0), b = modelViewMatrix * vec4(aB, 1.0);
-          const float NZ = 0.06;
-          if ((a.z > -NZ && b.z > -NZ) || aW <= 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vC = vec3(0.0); vS = 0.0; return; }
-          if (a.z > -NZ) a = mix(a, b, (a.z + NZ) / (a.z - b.z));
-          if (b.z > -NZ) b = mix(b, a, (b.z + NZ) / (b.z - a.z));
-          vec4 p = mix(a, b, position.x);
-          vec3 d = b.xyz - a.xyz; float dl = length(d);
-          vec3 dir = dl > 1e-6 ? d / dl : vec3(1.0, 0.0, 0.0);
-          vec3 sd = cross(dir, normalize(-p.xyz)); float sl = length(sd);
-          sd = sl > 1e-6 ? sd / sl : vec3(0.0, 1.0, 0.0);
-          float depth = max(-p.z, NZ);
-          float px = aW * projectionMatrix[1][1] * pxScale / depth;
-          float w = aW, dim = 1.0;
-          if (px < minPx) { w = aW * minPx / max(px, 1e-4); dim = px / minPx; }
-          p.xyz += sd * position.y * w;
-          vC = aC * dim * exp(-fogDensity * fogDensity * depth * depth);
-          vS = position.y;
-          gl_Position = projectionMatrix * p;
-        }`,
-      fragmentShader: /* glsl */ `
-        varying vec3 vC; varying float vS;
-        void main() { float k = exp(-vS * vS * 6.0) + 0.35 * exp(-vS * vS * 1.2); gl_FragColor = vec4(vC * k, 1.0); }`,
-    });
-    super(g, mat);
-    this.A = A; this.B = B; this.C = C; this.Wd = Wd; this.attrs = attrs;
-    this.frustumCulled = false;
-  }
-
-  begin() { this.n = 0; }
-
-  seg(a: THREE.Vector3Like, b: THREE.Vector3Like, c: THREE.Color, k: number, w: number) {
-    if (this.n >= this.cap || k <= 0) return;
-    const i = this.n++;
-    this.A[i * 3] = a.x; this.A[i * 3 + 1] = a.y; this.A[i * 3 + 2] = a.z;
-    this.B[i * 3] = b.x; this.B[i * 3 + 1] = b.y; this.B[i * 3 + 2] = b.z;
-    this.C[i * 3] = c.r * k; this.C[i * 3 + 1] = c.g * k; this.C[i * 3 + 2] = c.b * k;
-    this.Wd[i] = w;
-  }
-
-  end() {
-    this.geometry.instanceCount = this.n;
-    for (const a of this.attrs) { a.needsUpdate = true; a.clearUpdateRanges(); a.addUpdateRange(0, this.n * a.itemSize); }
-  }
-}
 
 /**
  * Soft camera-facing glows (flashes, suns, lens streaks): per instance a world position, colour, world size
@@ -150,60 +73,6 @@ export class Flares extends THREE.Mesh {
   end() {
     this.geometry.instanceCount = this.n;
     for (const a of this.attrs) a.needsUpdate = true;
-  }
-}
-
-/** Per-figure look for FigureBatch.figure. */
-export interface FigLook { star: THREE.Color; line: THREE.Color; k: number; lineK?: number; draw?: number }
-
-/** Every star-figure of a frame: stars on the joints (GlowPoints) and the limbs (StarLines), one draw each. */
-export class FigureBatch extends THREE.Group {
-  points: GlowPoints;
-  lines: StarLines;
-  np = 0;
-  private tmp = new THREE.Vector3();
-
-  constructor(maxPoints: number, maxLines: number) {
-    super();
-    this.points = new GlowPoints(maxPoints, 1);
-    this.lines = new StarLines(maxLines, 0.55);
-    this.points.renderOrder = 4;
-    this.lines.renderOrder = 3;
-    this.add(this.lines, this.points);
-  }
-
-  begin() { this.np = 0; this.lines.begin(); }
-
-  /**
-   * One figure from world joints `j`; `s` is its scale (1 = a person), which sets star size and line width.
-   * `draw` (0..1) reveals the limbs in order.
-   */
-  figure(j: THREE.Vector3[], s: number, L: FigLook) {
-    const k = L.k;
-    if (k <= 0.002) return;
-    const lk = (L.lineK ?? 1) * k, draw = L.draw ?? 1;
-    for (let i = 0; i < NJ; i++) {
-      const p = j[i]!;
-      this.star(p, L.star, k, s * 0.085 * (i === 0 ? 1.7 : i === 6 || i === 7 ? 1.3 : i === 8 ? 1.15 : 1));
-    }
-    const shown = draw * STAR_EDGES.length;
-    for (let e = 0; e < STAR_EDGES.length; e++) {
-      const u = clamp(shown - e);
-      if (u <= 0) break;
-      const [a, b] = STAR_EDGES[e]!;
-      const pb = u < 1 ? this.tmp.copy(j[a]!).lerp(j[b]!, u) : j[b]!;
-      this.lines.seg(j[a]!, pb, L.line, lk, s * 0.011);
-    }
-  }
-
-  star(p: THREE.Vector3Like, c: THREE.Color, k: number, size: number) {
-    if (this.np >= this.points.n || k <= 0.002) return;
-    this.points.set(this.np++, p.x, p.y, p.z, c, k, size);
-  }
-
-  end() {
-    this.points.commit(this.np);
-    this.lines.end();
   }
 }
 
@@ -317,20 +186,4 @@ export function frame(up: THREE.Vector3Like, front: THREE.Vector3Like, out = new
   z.normalize();
   const x = new THREE.Vector3().crossVectors(y, z);
   return out.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
-}
-
-/** A ring of light (circle of segments) of radius r about `c` in the plane with normal `n`. */
-export function ring(L: StarLines, c: THREE.Vector3, n: THREE.Vector3, r: number, col: THREE.Color, k: number, w: number, segs = 72, wobble = 0, seed = 0) {
-  if (r <= 0 || k <= 0.002) return;
-  const nn = n.clone().normalize();
-  const a = Math.abs(nn.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
-  const u = new THREE.Vector3().crossVectors(nn, a).normalize(), v = new THREE.Vector3().crossVectors(nn, u);
-  let prev = new THREE.Vector3();
-  for (let i = 0; i <= segs; i++) {
-    const th = (i / segs) * Math.PI * 2;
-    const rr = r * (1 + wobble * Math.sin(th * 7 + seed) * 0.5 + wobble * Math.sin(th * 13 - seed * 2) * 0.3);
-    const p = c.clone().addScaledVector(u, Math.cos(th) * rr).addScaledVector(v, Math.sin(th) * rr);
-    if (i > 0) L.seg(prev, p, col, k, w);
-    prev = p;
-  }
 }

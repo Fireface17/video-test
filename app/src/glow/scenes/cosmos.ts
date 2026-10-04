@@ -15,7 +15,6 @@
 // slows down and converges into that single point (the outro starts from a star).
 // Shots are a list on the section's bar grid (bar k = k-th downbeat of the drop section), so the entry can
 // start later than the section (the drop's first bars may be another scene) and still land on its shots.
-// Break 2 (n = 2) is the old scene (cosmos-break.ts) for now.
 import * as THREE from 'three';
 import { Scene, type Frame } from '../../engine/scene';
 import { clamp, ease, hash, lerp, noise1, prog, pulse, smoothstep } from '../../engine/util';
@@ -31,7 +30,6 @@ import { Crowd, type CrowdLook } from './cosmos-crowd';
 import { DANCE, IDLE, Moves, type Mover } from './cosmos-motion';
 import { SunDisc, dustLaneMaterial } from './cosmos-lights';
 import { PaperLantern, StarSticker, heColor, sheColor } from '../lib/heroes';
-import { CosmosBreak } from './cosmos-break';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const Y = V(0, 1, 0);
@@ -63,7 +61,6 @@ const GRIP = GC.clone().addScaledVector(U, 0.12 * GS).addScaledVector(F, 0.22 * 
 const QG = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, U, F));
 
 export default class Cosmos extends Scene {
-  private legacy: CosmosBreak | null = null;
   st = new Stage(55, 0.1, 6000);
   n = 1;
   sec0 = 0;
@@ -100,7 +97,6 @@ export default class Cosmos extends Scene {
   private shake = 0;
   private waves: Wave[] = [];
   private rings = 0;
-  private tNow = 0;
   private js: THREE.Vector3[] = [];
   private jA: THREE.Vector3[] = [];
   private jB: THREE.Vector3[] = [];
@@ -109,10 +105,6 @@ export default class Cosmos extends Scene {
   override async init() {
     const { audio, params } = this.ctx;
     this.n = params.n ?? 1;
-    if (this.n === 2) {
-      this.legacy = new CosmosBreak(this.ctx);
-      return this.legacy.init();
-    }
     this.sec0 = audio.sections.find((s) => s.name === (this.n === 3 ? 'drop3' : 'drop1'))?.start ?? this.ctx.start;
     const w0 = Math.min(this.sec0, this.ctx.start) - 2, w1 = this.ctx.end + 3;
     this.downs = audio.downbeats.filter((d) => d >= w0 - 2 && d <= w1 + 2);
@@ -239,6 +231,9 @@ export default class Cosmos extends Scene {
     return a.timeOfBeat(Math.round(a.beatAt(d)) + (k - kk) * 4);
   }
 
+  /** When a shot's motion starts: the entry's first shot already moves through the transition into it. */
+  private from(sh: Shot) { return sh.t0 <= this.ctx.start + 0.01 ? this.ctx.start - 0.5 : sh.t0; }
+
   /** The beat nearest t. */
   private snap(t: number) { const a = this.ctx.audio; return a.timeOfBeat(Math.round(a.beatAt(t))); }
 
@@ -259,7 +254,7 @@ export default class Cosmos extends Scene {
         sh(G2, B(7), 'wide', { d0: 34, d1: 150, el0: 0.12, el1: 0.38, az0: 2.1, az1: 2.5, roll0: 0.2, roll1: 0.6, waves: 'core' }),
         sh(B(7), B(8), 'fly', { arm: 0, r0: 30, vr: 5, c0: [-3, -1.8, 5.2], g0: [4, -0.4, 0], roll0: -0.1, roll1: 0.12, waves: 'cam' }),
         sh(B(8), B(9), 'fly', { arm: 1, r0: 88, vr: -2.5, c0: [3, 8, 11], c1: [1.5, -1.5, 5], g0: [-4, 0, 0], g1: [-5, -0.5, 0], roll0: 0.5, roll1: -0.15, rings: true, waves: 'downs' }),
-        sh(B(9), B(10), 'fly', { arm: 0, r0: 60, vr: -5.5, burst: -4, c0: [4, 1.5, 8], c1: [-2, -1.5, -3], g0: [-9, 0, -1], g1: [-11, 0, -4], roll0: -0.25, roll1: 0.3, rings: true, waves: 'downs' }),
+        sh(B(9), B(10), 'fly', { arm: 0, r0: 60, vr: -5.5, burst: -4, c0: [2, 7, 9], c1: [1.5, -1, 5.5], g0: [-4, 0, 0], g1: [-5, 0.5, 0], roll0: -0.4, roll1: 0.25, rings: true, waves: 'downs' }),
         sh(B(10), B(11), 'wide', { d0: 120, d1: 95, el0: 0.95, el1: 0.85, az0: -0.6, az1: -0.2, roll0: 0, roll1: 0.15, rings: true, waves: 'core', off: [0, 0, 0] }),
         sh(B(11), B(12), 'giants', { d0: 30, d1: 24, el0: 0.4, el1: 0.3, az0: 0.6, az1: 0.25, tu: 0.12, lights: 1 }),
         sh(B(12), B(13), 'giants', { d0: 17, d1: 12, el0: 0.2, el1: 0.12, az0: -0.15, az1: 0, tu: 0.3, aim: 'grip', join: true }),
@@ -322,9 +317,7 @@ export default class Cosmos extends Scene {
   // ---- render ----
 
   override render(f: Frame, out: THREE.WebGLRenderTarget) {
-    if (this.legacy) return this.legacy.render(f, out);
     const t = f.t;
-    this.tNow = t;
     // (the lead-in of the transition into the entry belongs to its first shot)
     const ts = Math.max(t, this.ctx.start);
     const sh = this.shots.find((s) => ts < s.t1) ?? this.shots[this.shots.length - 1]!;
@@ -451,7 +444,7 @@ export default class Cosmos extends Scene {
    */
   private fly(t: number, sh: Shot, st: DrawState) {
     const o = sh.o, cam = this.st.cam;
-    const tau = t - Math.max(sh.t0, this.ctx.start - 0.5), dur = sh.t1 - Math.max(sh.t0, this.ctx.start - 0.5);
+    const t0s = this.from(sh), tau = t - t0s, dur = sh.t1 - t0s;
     const u = clamp(tau / dur), e = o.ease === 'outCubic' ? ease.outCubic(u) : o.ease === 'outExpo' ? ease.outExpo(u) : sine(u);
     const land = o.dive ? ease.outExpo(clamp(tau / 1.3)) : e;
     const r0 = o.rg ? Math.hypot(this.gap.pos.x, this.gap.pos.z) : o.r0;
@@ -472,7 +465,7 @@ export default class Cosmos extends Scene {
     // the waves start just behind the camera and race away along the arm
     const dir = g[0] >= c[0] ? 1 : -1;
     this.addWaves(t, sh, o.waves, (tc) => {
-      const rc = r0 + o.vr * (tc - sh.t0);
+      const rc = r0 + o.vr * (tc - t0s);
       return this.crowd.lkAt(o.arm, rc) + dir * (c[0] - 3);
     }, dir, o.arm);
     if (o.rg) this.joined(t, st, true);
@@ -481,7 +474,7 @@ export default class Cosmos extends Scene {
   /** Giants in front of the core: orbit (distance d, elevation el from straight in front, azimuth az). */
   private giants(t: number, sh: Shot, st: DrawState) {
     const o = sh.o, cam = this.st.cam, L = this.look;
-    const t0 = Math.max(sh.t0, this.ctx.start - 0.5), t1 = Math.min(sh.t1, this.ctx.end), u = clamp((t - t0) / (t1 - t0));
+    const t0 = this.from(sh), t1 = Math.min(sh.t1, this.ctx.end), u = clamp((t - t0) / (t1 - t0));
     const e = o.rush ? ease.inOutCubic(u) : sine(u), land = ease.outExpo(clamp((t - t0) / 0.6));
     const d = lerp(o.d0, o.d1, e) * (1 + 0.25 * (1 - land) * (o.rush ? 0 : 1));
     const el = lerp(o.el0, o.el1, e), az = lerp(o.az0, o.az1, e);
@@ -494,15 +487,16 @@ export default class Cosmos extends Scene {
     aim(cam, pos, target, lerp(o.roll0 ?? 0, o.roll1 ?? 0, e) + 0.03 * Math.sin(t * 0.9), U);
     cam.fov = o.rush ? lerp(52, 75, ease.inQuart(u)) : 50;
     // (the core shines behind them, but not so bright that it washes them out)
-    st.core = (o.reveal ? 1.0 : 0.45) * (1 + 0.45 * this.kick);
+    st.core = (o.reveal ? 1.0 : 0.3) * (1 + 0.45 * this.kick);
     st.coreK = o.reveal ? 0.8 : 0.3;
     st.disk = 0.45;
     if (o.rush) {
       // into the light of their joined hands
-      const k = ease.inQuart(u);
-      this.flares.glow(J.grip, L.flash, 0.6 + 3 * k, GS * (0.12 + 1.2 * k));
-      st.post.exposure = 1 + 0.6 * k;
-      this.flash = Math.max(this.flash, 0.6 * smoothstep(0.82, 1, u));
+      const k = ease.inCubic(u);
+      this.flares.glow(J.grip, L.flash, 0.6 + 2.2 * k, GS * (0.06 + 0.9 * k));
+      this.flares.glow(J.grip, L.accent, 0.5 * k, GS * (0.5 + 3 * k), 1, 2.5);
+      st.post.exposure = 1 + 0.4 * k;
+      this.flash = Math.max(this.flash, 0.3 * smoothstep(0.85, 1, u));
     }
     this.addWaves(t, sh, 'chops', () => 0, 1, -1, 46);
   }
@@ -510,13 +504,20 @@ export default class Cosmos extends Scene {
   /** The whole galaxy: an orbit about the core (d, el from straight above, az), people as its stars. */
   private wide(t: number, sh: Shot, st: DrawState) {
     const o = sh.o, cam = this.st.cam;
-    const t0 = Math.max(sh.t0, this.ctx.start - 0.5), u = clamp((t - t0) / (sh.t1 - t0));
+    const t0 = this.from(sh), u = clamp((t - t0) / (sh.t1 - t0));
     const e = o.dive ? ease.outCubic(u) : ease.outCubic(u);
     const d = lerp(o.d0, o.d1, e), el = lerp(o.el0, o.el1, e), az = lerp(o.az0, o.az1, sine(u));
     const pos = V(Math.sin(el) * Math.cos(az) * d, Math.cos(el) * d, Math.sin(el) * Math.sin(az) * d);
     const tgt = V(0, 0, 0);
     // screen-up: toward the far side of the disk, rolled
     const up = V(-Math.cos(az), 0, -Math.sin(az));
+    // opening the entry out of the city's rising lights (a zoom centred high in the frame): the core starts
+    // up there, where the lights went, and settles to the middle
+    if (this.reveal(t) < 1 && sh.t0 <= this.ctx.start + 0.01) {
+      const lift = 0.29 * (1 - ease.inOutCubic(prog(t, this.ctx.start - 0.35, this.ctx.start + 1.1)));
+      const f = tgt.clone().sub(pos).normalize(), uu = up.clone().addScaledVector(f, -up.dot(f)).normalize();
+      tgt.addScaledVector(uu, -lift * d);
+    }
     aim(cam, pos, tgt, lerp(o.roll0 ?? 0, o.roll1 ?? 0, sine(u)), up);
     cam.fov = 55;
     if (o.rings) this.rings = 1;
@@ -642,10 +643,10 @@ export default class Cosmos extends Scene {
   /** Drop 1's "take my hand" (1): the gap in the chain closes; the two at its ends join hands. */
   private gapShot(t: number, sh: Shot, st: DrawState) {
     const cam = this.st.cam, T = this.T;
-    const t0 = Math.max(sh.t0, this.ctx.start - 0.5), u = clamp((t - t0) / (sh.t1 - t0)), e = sine(u);
+    const t0 = this.from(sh), u = clamp((t - t0) / (sh.t1 - t0)), e = sine(u);
     const g = this.gap, r = Math.hypot(g.pos.x, g.pos.z);
     const A = this.af(g.arm, r);
-    const c: V3 = [lerp(-3.8, -0.8, e), lerp(1.0, 0.45, e), lerp(4.6, 3.1, e)];
+    const c: V3 = [lerp(-2.6, -0.5, e), lerp(0.9, 0.4, e), lerp(4.4, 3.3, e)];
     const pos = g.pos.clone().addScaledVector(A.t, c[0]).addScaledVector(A.n, c[1]).addScaledVector(Y, c[2]);
     const tgt = g.pos.clone().addScaledVector(A.n, 0.25).addScaledVector(A.t, lerp(-0.6, 0, e));
     aim(cam, pos, tgt, lerp(0.12, -0.04, e) + 0.02 * Math.sin(t * 1.1), A.n);
@@ -664,7 +665,8 @@ export default class Cosmos extends Scene {
     const close = after ? 1 : ease.inOutCubic(prog(t, T.hand1 - 0.5, T.hand1));
     const open = 0.65 * (1 - close);
     const ia = ch[g.link]!, ib = ch[g.link + 1]!;
-    st.hide = (i) => i === ia || i === ib;
+    // (nobody floats in front of the two: the space between their hands stays clear)
+    st.hide = (i) => i === ia || i === ib || (!P[i]!.chain && P[i]!.p.distanceToSquared(g.pos) < 3.2 * 3.2);
     st.shift = (i, Pp, p) => {
       if (!Pp.chain || this.crowd.arm[i] !== g.arm || open <= 0) return;
       const d = Pp.link - (g.link + 0.5);
@@ -711,7 +713,7 @@ export default class Cosmos extends Scene {
     st.extra = () => {
       prev?.();
       const D = this.D, C = L.crowd.chain;
-      const k = 1.05 + 0.6 * pulse(t, T.hand1, 0.35) * hold;
+      const k = 1.2 + 0.5 * pulse(t, T.hand1, 0.35) * hold;
       D.figure(jA, P[ia]!.body, C, k, { color2: L.crowd.deep, seed: 2.2 });
       D.figure(jB, P[ib]!.body, C, k, { color2: L.crowd.deep, seed: 5.7 });
       if (hold > 0) {
@@ -731,7 +733,7 @@ export default class Cosmos extends Scene {
   /** Drop 3: the star swells into the sun; pulling back over the golden galaxy, wave after wave of hands. */
   private sunShot(t: number, sh: Shot, st: DrawState) {
     const cam = this.st.cam;
-    const t0 = Math.max(sh.t0, this.ctx.start - 0.5), u = clamp((t - t0) / (sh.t1 - t0));
+    const t0 = this.from(sh), u = clamp((t - t0) / (sh.t1 - t0));
     const J = this.poseGiants(t, { ...sh, o: { join: true } }, st, true);
     const grow = ease.inOutCubic(prog(t, t0 - 0.1, sh.t1 - 0.25));
     // the two dissolve into stars that fly off into the light

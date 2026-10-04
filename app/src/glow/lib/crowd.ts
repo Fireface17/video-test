@@ -75,6 +75,11 @@ export class Crowd extends THREE.Group {
     this.add(this.dust);
   }
 
+  /** Register a motion under an id of your own (e.g. a looped stride cycle) for people's clip cues. */
+  addMotion(id: string, m: Motion) {
+    this.motions.set(id, m);
+  }
+
   /** Add a person (light people get their own figure). */
   addPerson(p: Person) {
     p.body ??= this.people.length % 2 as 0 | 1;

@@ -15,8 +15,8 @@ export interface SkyState {
 }
 
 export const SKY_GLSL = /* glsl */ `
-uniform vec3 sZen, sHor, sCity, sDawnLo, sDawnHi, sSunCol, sSunDir;
-uniform float sDawn, sSunK;
+uniform vec3 sZen, sHor, sCity, sDawnLo, sDawnHi, sSunCol, sSunDir, sScrDir, sScrCol;
+uniform float sDawn, sSunK, sCityK;
 float p8(float x) { x *= x; x *= x; return x * x; }
 vec3 skyCol(vec3 d) {
   float y = d.y, yy = max(y, 0.0);
@@ -25,7 +25,14 @@ vec3 skyCol(vec3 d) {
   vec3 c = mix(sHor, sZen, sqrt(g0) * (1.1 - 0.1 * g0));
   // light pollution of the city ahead (-z): a low sodium dome
   float fz = max(-h.y, 0.0);
-  c += sCity * (p8(fz) * exp(-yy * 16.0) + 0.15 * fz * fz * exp(-yy * 5.0));
+  c += sCity * sCityK * (p8(fz) * exp(-yy * 16.0) + 0.15 * fz * fz * exp(-yy * 5.0));
+  // the giant screen's light scattered in the haze around it (it dies with the screen)
+  if (sScrCol.r + sScrCol.g > 0.0) {
+    vec2 hs = normalize(sScrDir.xz + vec2(1e-6));
+    float daz = acos(clamp(dot(h, hs), -1.0, 1.0));
+    float del = y - sScrDir.y;
+    c += sScrCol * (exp(-daz * daz / 0.03 - del * del / 0.012) * 0.8 + exp(-daz * daz / 0.25) * exp(-yy * 7.0) * 0.25);
+  }
   if (sDawn > 0.0) {
     // dawn: a warm band low on the horizon toward the sun, the whole sky lifting
     vec2 sa2 = normalize(sSunDir.xz + vec2(1e-6));
@@ -49,11 +56,11 @@ export function skyUniforms() {
     sZen: { value: new THREE.Color() }, sHor: { value: new THREE.Color() }, sCity: { value: new THREE.Color() },
     sDawnLo: { value: new THREE.Color() }, sDawnHi: { value: new THREE.Color() }, sSunCol: { value: new THREE.Color() },
     sSunDir: { value: new THREE.Vector3(0, -0.1, 1).normalize() }, sDawn: { value: 0 }, sSunK: { value: 0 },
+    sScrDir: { value: new THREE.Vector3(0, 0.05, -1).normalize() }, sScrCol: { value: new THREE.Color(0, 0, 0) }, sCityK: { value: 1 },
   };
 }
 export type SkyU = ReturnType<typeof skyUniforms>;
 
-const lerpC = (a: THREE.Color, b: THREE.Color, k: number) => a.clone().lerp(b, k);
 const C = (hex: string, k = 1) => new THREE.Color(hex).multiplyScalar(k);
 
 export class Sky extends THREE.Group {
@@ -136,78 +143,106 @@ export class Sky extends THREE.Group {
     this.cloudMesh = new THREE.Mesh(new THREE.SphereGeometry(4450, 48, 12, 0, Math.PI * 2, 0, Math.PI / 2), cm);
     this.cloudMesh.renderOrder = -8;
     this.cloudMesh.frustumCulled = false;
-    this.plane = new GlowPoints(4, 1);
+    this.plane = new GlowPoints(8, 1);
     this.plane.renderOrder = -7;
     this.add(this.dome, this.stars, this.cloudMesh, this.plane);
   }
 
   /** Night → dawn colours, also writes the haze and ambient into the shared lighting uniforms. */
-  update(camPos: THREE.Vector3, t: number, dawn: number, sunDir: THREE.Vector3, sunK: number, cloudDrift: number) {
+  /**
+   * Night sky. `o.scrDir` / `o.scrK`: direction and brightness (0..1) of the giant screen's fake dawn, which
+   * lights the haze, the cloud undersides and every lit surface facing it; `o.cityK`: how much of the city's
+   * sodium glow is left (the blackout dims the sky dome and lets the stars through).
+   */
+  update(camPos: THREE.Vector3, t: number, o: { scrDir: THREE.Vector3; scrK: number; cityK: number; cloudDrift: number; planeK?: number }) {
     this.position.copy(camPos);
     const u = this.u;
-    const d = dawn, d2 = Math.min(1, d * 1.6);
-    u.sZen.value.copy(lerpC(C('#060b22', 0.6), C('#1f3a78', 0.75), Math.pow(d, 1.5)));
-    u.sHor.value.copy(lerpC(C('#13204a', 0.6), C('#8ea3c8', 0.6), Math.pow(d, 1.3)));
-    u.sCity.value.copy(C('#ff8a3a', 0.016 * (1 - 0.6 * d)));
-    u.sDawnLo.value.copy(C('#ffa23a', 2.0));
-    u.sDawnHi.value.copy(C('#ffbe6a', 0.32));
-    u.sSunCol.value.copy(lerpC(C('#ff7a2a'), C('#ffd27a'), Math.min(1, sunK)));
-    u.sSunDir.value.copy(sunDir);
-    u.sDawn.value = d;
-    u.sSunK.value = sunK;
-    // clouds
-    this.cu.off!.value.set(cloudDrift * 0.004 + 0.13, cloudDrift * 0.0015 + 0.71);
-    this.cu.litCity!.value.copy(C('#b98a7a', 0.065 * (1 - 0.6 * d)));
-    this.cu.litAmb!.value.copy(lerpC(C('#2a3460', 0.05), C('#5a6890', 0.45), d));
-    this.cu.litSun!.value.copy(C('#ff9d5c', 1.4 * d2));
+    const ck = o.cityK, sk = Math.max(0, o.scrK);
+    u.sZen.value.copy(C('#060b22', 0.6));
+    u.sHor.value.copy(C('#13204a', 0.6 * (0.7 + 0.3 * ck)));
+    u.sCity.value.copy(C('#ff8a3a', 0.016));
+    u.sCityK.value = ck;
+    u.sSunCol.value.setRGB(0, 0, 0);
+    u.sSunDir.value.copy(o.scrDir);
+    u.sDawn.value = 0;
+    u.sSunK.value = 0;
+    u.sScrDir.value.copy(o.scrDir);
+    u.sScrCol.value.copy(C('#ff8a4a', 0.05 * sk));
+    // the stars come out as the city's glow dies
+    (this.stars.material as THREE.ShaderMaterial).uniforms.size!.value = 1 + 0.35 * (1 - ck);
+    // clouds: lit from below by the city, and by the screen while it plays
+    this.cu.off!.value.set(o.cloudDrift * 0.004 + 0.13, o.cloudDrift * 0.0015 + 0.71);
+    this.cu.litCity!.value.copy(C('#b98a7a', 0.065 * (0.25 + 0.75 * ck)));
+    this.cu.litAmb!.value.copy(C('#2a3460', 0.05));
+    this.cu.litSun!.value.copy(C('#ff8d5c', 0.35 * sk));
     // haze & ambient (shared with every lit material)
-    HU.uHazeLo.value.copy(u.sHor.value).multiplyScalar(0.8 - 0.25 * d);
-    HU.uHazeCity.value.copy(C('#ff7a30', 0.02 * (1 - 0.6 * d)));
-    HU.uHazeSun.value.copy(C('#ffb050', 1.1 * d * d));
-    HU.uSunAz.value.set(sunDir.x, sunDir.z).normalize();
-    HU.uAmbHi.value.copy(lerpC(C('#2a3870', 0.05), C('#a8b0c8', 0.3), Math.pow(d, 1.2)));
-    HU.uAmbLo.value.copy(lerpC(C('#120f14', 0.03), C('#5a4a40', 0.12), d));
-    // an airliner crossing high overhead: red / green navigation lights, white strobes
+    HU.uHazeLo.value.copy(u.sHor.value).multiplyScalar(0.8);
+    HU.uHazeCity.value.copy(C('#ff7a30', 0.02 * (0.3 + 0.7 * ck)));
+    HU.uHazeSun.value.copy(C('#ff9a50', 0.09 * sk));
+    HU.uSunAz.value.set(o.scrDir.x, o.scrDir.z).normalize();
+    HU.uAmbHi.value.copy(C('#2a3870', 0.05 * (0.6 + 0.4 * ck)));
+    HU.uAmbLo.value.copy(C('#120f14', 0.03 * (0.6 + 0.4 * ck)));
+    HU.uSunDir.value.copy(o.scrDir);
+    HU.uFogD.value = 0.0042;
+    HU.uSunCol.value.copy(C('#ff9a5a', 0.05 * sk));
+    // aircraft (they have their own power): an airliner crossing high overhead, and one on its approach to
+    // the airport (Exit 24): landing lights, red / green navigation lights, white strobes, a red beacon
+    const pk = o.planeK ?? 1;
+    const strobe = (Math.floor(t * 60) % 72) < 4 ? 1 : 0;
+    const beacon = (Math.floor(t * 60) % 60) < 8 ? 1 : 0;
     const pa = (t - 17) * 0.012;
     const px = -900 + 1800 * pa, pz = -300 - 400 * pa, py = 1500;
-    const strobe = (Math.floor(t * 60) % 72) < 4 ? 1 : 0;
-    this.plane.set(0, px - 18, py, pz, C('#ff2a1a'), 1.6, 7);
-    this.plane.set(1, px + 18, py, pz + 4, C('#38ff7a'), 1.4, 7);
-    this.plane.set(2, px, py - 1, pz - 10, C('#ffffff'), 5 * strobe, 9);
-    this.plane.set(3, px, py + 2, pz + 12, C('#ff3a2a'), 2.5 * ((Math.floor(t * 60) % 60) < 8 ? 1 : 0), 6);
+    this.plane.set(0, px - 18, py, pz, C('#ff2a1a'), 1.6 * pk, 7);
+    this.plane.set(1, px + 18, py, pz + 4, C('#38ff7a'), 1.4 * pk, 7);
+    this.plane.set(2, px, py - 1, pz - 10, C('#ffffff'), 5 * strobe * pk, 9);
+    this.plane.set(3, px, py + 2, pz + 12, C('#ff3a2a'), 2.5 * beacon * pk, 6);
+    const qa = t - 18;
+    const qx = -1500 + 62 * qa, qy = 330 - 5 * qa, qz = -2100 + 18 * qa;
+    const strobe2 = (Math.floor(t * 60 + 20) % 66) < 4 ? 1 : 0;
+    this.plane.set(4, qx + 6, qy - 2, qz, C('#fff6e8'), 4.0 * pk, 10);
+    this.plane.set(5, qx - 6, qy - 2, qz + 1, C('#fff6e8'), 3.0 * pk, 9);
+    this.plane.set(6, qx, qy + 3, qz - 3, C('#ff3a2a'), 3.0 * ((Math.floor(t * 60 + 31) % 60) < 8 ? 1 : 0) * pk, 6);
+    this.plane.set(7, qx - 2, qy, qz - 14, C('#ffffff'), 6 * strobe2 * pk, 8);
     this.plane.commit();
-    HU.uSunDir.value.copy(sunDir);
-    HU.uFogD.value = 0.0042 - 0.0019 * d;
-    HU.uSunCol.value.copy(C('#ffb878', 0.75 * Math.min(1.2, Math.max(0, sunK - 0.1)) * smoothK(sunDir.y)));
-    void t;
   }
 }
-const smoothK = (y: number) => Math.min(1, Math.max(0, (y + 0.01) / 0.08));
 
 // ------------------------------------------------------------------------------------------- city
 
-export const CITY = { x: -180, z: -1900 };
+export const CITY = { x: -420, z: -2150 };
 
-/** The far city: instanced towers with procedural windows, aviation lights, and the hills around. */
+export interface CityOpts { x: number; z: number; seed: number; n?: number; hills?: boolean; core?: number; spread?: number; facing?: number }
+
+/**
+ * A far city: instanced towers with procedural windows, a carpet of street lights, aviation lights, and (for the
+ * main city) the hills around. `blackout(k)`: the power dies block by block in the order `ord` (0..1, per city
+ * block of ~140 m, along `facing`): each block's towers go dark floor by floor from the top, the street lights
+ * of the block with them, with a flicker on the way out.
+ */
 export class City extends THREE.Group {
   towers: THREE.InstancedMesh;
   lights: GlowPoints;
-  hills: THREE.Mesh;
-  hillLights: GlowPoints;
-  avi: { p: THREE.Vector3; phase: number; k: number }[] = [];
-  u = { cDawn: { value: 0 }, cGlow: { value: new THREE.Color() }, cHaze: { value: new THREE.Color() }, cFog: { value: 0.00028 }, cTime: { value: 0 } };
+  carpet: GlowPoints;
+  carpetData: { x: number; y: number; z: number; c: THREE.Color; k: number; ord: number; s: number }[] = [];
+  hills: THREE.Mesh | null = null;
+  hillLights: GlowPoints | null = null;
+  avi: { p: THREE.Vector3; phase: number; k: number; ord: number }[] = [];
+  u = { cDawn: { value: 0 }, cGlow: { value: new THREE.Color() }, cHaze: { value: new THREE.Color() }, cFog: { value: 0.00028 }, cTime: { value: 0 }, cBlack: { value: -1 } };
+  black = -1;
 
-  constructor() {
+  constructor(public o: CityOpts) {
     super();
-    const r = mulberry32(4242);
-    const N = 360;
+    const r = mulberry32(o.seed);
+    const N = o.n ?? 360;
+    const core = o.core ?? 1, spread = o.spread ?? 1;
     const geo = new THREE.BoxGeometry(1, 1, 1);
     geo.translate(0, 0.5, 0);
     const mat = new THREE.ShaderMaterial({
       uniforms: this.u,
       vertexShader: /* glsl */ `
         attribute vec4 bInfo; // seed, lit ratio, warmth, crown
-        varying vec3 vW; varying vec2 vF; varying float vFace; varying vec4 vInfo; varying float vY; varying float vH;
+        attribute float bOrd;
+        varying vec3 vW; varying vec2 vF; varying float vFace; varying vec4 vInfo; varying float vY; varying float vH; varying float vOrd;
         void main() {
           mat4 m = modelMatrix * instanceMatrix;
           vec3 sc = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
@@ -216,16 +251,18 @@ export class City extends THREE.Group {
           vec3 lp = position * sc;
           vFace = abs(normal.y) > 0.5 ? 2.0 : abs(normal.x) > 0.5 ? 0.0 : 1.0;
           vF = vec2(vFace < 0.5 ? lp.z * sign(normal.x) : lp.x * sign(normal.z), lp.y);
-          vInfo = bInfo; vY = position.y; vH = sc.y;
+          vInfo = bInfo; vY = position.y; vH = sc.y; vOrd = bOrd;
           gl_Position = projectionMatrix * viewMatrix * w;
         }`,
       fragmentShader: /* glsl */ `
-        uniform float cDawn, cFog, cTime; uniform vec3 cGlow, cHaze;
-        varying vec3 vW; varying vec2 vF; varying float vFace; varying vec4 vInfo; varying float vY; varying float vH;
+        uniform float cDawn, cFog, cTime, cBlack; uniform vec3 cGlow, cHaze;
+        varying vec3 vW; varying vec2 vF; varying float vFace; varying vec4 vInfo; varying float vY; varying float vH; varying float vOrd;
         float h12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
         void main() {
           float seed = vInfo.x;
-          vec3 base = vec3(0.0015, 0.002, 0.004) + cGlow * (1.0 - vY) * 0.5;
+          // the blackout: this tower's progress 0 (alive) .. 1 (dead), floors die from the top
+          float dk = clamp((cBlack - vOrd) / 0.05, 0.0, 1.0);
+          vec3 base = vec3(0.0015, 0.002, 0.004) + cGlow * (1.0 - vY) * 0.5 * (1.0 - dk);
           base *= vFace > 1.5 ? 0.5 : vFace > 0.5 ? 1.0 : 0.7;
           vec3 c = base;
           if (vFace < 1.5) {
@@ -239,12 +276,18 @@ export class City extends THREE.Group {
             vec3 wc = mix(vec3(0.55, 0.75, 1.0), vec3(1.0, 0.6, 0.26), warm) * (0.12 + 0.35 * h12(id + 3.7));
             float win = smoothstep(0.08, 0.16, f.x) * smoothstep(0.92, 0.84, f.x) * smoothstep(0.2, 0.3, f.y) * smoothstep(0.86, 0.78, f.y);
             float ground = step(1.0, id.y);
-            vec3 detail = wc * lit * win * ground;
-            vec3 avg = mix(vec3(0.55, 0.75, 1.0), vec3(1.0, 0.6, 0.26), vInfo.z) * vInfo.y * 0.88 * 0.4 * 0.3;
+            // floor by floor from the top: a floor is gone once the front has passed it, flickering as it goes
+            float fy = 1.0 - (id.y * cell.y) / max(vH, 1.0);
+            float front = dk * 1.1 - fy;
+            float alive = 1.0 - step(0.0, front);
+            float flick = step(-0.12, front) * alive;
+            alive *= 1.0 - flick * step(0.5, h12(id + floor(cTime * 24.0)));
+            vec3 detail = wc * lit * win * ground * alive;
+            vec3 avg = mix(vec3(0.55, 0.75, 1.0), vec3(1.0, 0.6, 0.26), vInfo.z) * vInfo.y * 0.88 * 0.4 * 0.3 * clamp(1.0 - dk * 1.1, 0.0, 1.0);
             float k = smoothstep(0.5, 1.2, max(fw.x, fw.y));
             c += mix(detail, avg, k) * (1.0 - 0.75 * cDawn);
-            // a lit crown on a few towers
-            float crown = vInfo.w * smoothstep(vH - 9.0, vH - 7.0, vY * vH) * step(vY * vH, vH - 1.0);
+            // a lit crown on a few towers (the first thing to go)
+            float crown = vInfo.w * smoothstep(vH - 9.0, vH - 7.0, vY * vH) * step(vY * vH, vH - 1.0) * (1.0 - step(0.01, dk));
             c += crown * vec3(0.7, 0.85, 1.0) * 1.2;
           }
           // aerial perspective
@@ -255,28 +298,59 @@ export class City extends THREE.Group {
         }`,
     });
     this.towers = new THREE.InstancedMesh(geo, mat, N);
-    const info = new Float32Array(N * 4);
+    const info = new Float32Array(N * 4), ord = new Float32Array(N);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
-    const tall: THREE.Vector3[] = [];
+    const tall: { p: THREE.Vector3; ord: number }[] = [];
+    const facing = o.facing ?? 0;
+    const fx = Math.sin(facing), fz = Math.cos(facing);
+    /** blackout order of a point: per block, swept along `facing`, with some disorder between blocks */
+    const ordAt = (x: number, z: number) => {
+      const bx = Math.floor((x - o.x) / 140), bz = Math.floor((z - o.z) / 140);
+      const cx = (bx + 0.5) * 140, cz = (bz + 0.5) * 140;
+      const along = (cx * fx + cz * fz) / (1400 * spread);
+      const hb = Math.abs(Math.sin(bx * 12.9898 + bz * 78.233 + o.seed) * 43758.5453) % 1;
+      return Math.min(0.97, Math.max(0, 0.5 + 0.45 * along + 0.18 * (hb - 0.5)));
+    };
     for (let i = 0; i < N; i++) {
       // downtown core, then sprawl
-      const core = i < 140;
-      const a = r() * Math.PI * 2, rad = core ? Math.pow(r(), 0.8) * 520 : 450 + r() * 1500;
-      const x = CITY.x + Math.cos(a) * rad * (core ? 1.3 : 1.6), z = CITY.z + Math.sin(a) * rad * (core ? 0.5 : 0.45) - (core ? 0 : 200);
-      const hgt = core ? 60 + Math.pow(r(), 1.8) * 260 * (1 - rad / 700) + 30 : 14 + Math.pow(r(), 3) * 70;
-      const w = core ? 26 + r() * 34 : 30 + r() * 60, dd = core ? 24 + r() * 30 : 25 + r() * 50;
-      p.set(x, -2, z); q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (r() - 0.5) * 0.5); s.set(w, hgt, dd);
+      const isCore = i < N * 0.39;
+      const a = r() * Math.PI * 2, rad = isCore ? Math.pow(r(), 0.8) * 520 * core : (450 + r() * 1500) * spread;
+      const x = o.x + Math.cos(a) * rad * (isCore ? 1.3 : 1.6), z = o.z + Math.sin(a) * rad * (isCore ? 0.5 : 0.45) - (isCore ? 0 : 200 * Math.sign(o.z || -1));
+      const hgt = isCore ? 60 + Math.pow(r(), 1.8) * 260 * (1 - rad / (700 * core)) + 30 : 14 + Math.pow(r(), 3) * 70;
+      const w = isCore ? 26 + r() * 34 : 30 + r() * 60, dd = isCore ? 24 + r() * 30 : 25 + r() * 50;
+      p.set(x, -2, z); q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (r() - 0.5) * 0.5); s.set(w, Math.max(10, hgt), dd);
       m.compose(p, q, s);
       this.towers.setMatrixAt(i, m);
-      info[i * 4] = r() * 10; info[i * 4 + 1] = core ? 0.06 + r() * 0.22 : 0.04 + r() * 0.12; info[i * 4 + 2] = core ? 0.25 + r() * 0.4 : 0.75; info[i * 4 + 3] = core && hgt > 200 && r() < 0.5 ? 1 : 0;
-      if (hgt > 150) tall.push(new THREE.Vector3(x, hgt - 2, z));
+      info[i * 4] = r() * 10; info[i * 4 + 1] = isCore ? 0.06 + r() * 0.22 : 0.04 + r() * 0.12; info[i * 4 + 2] = isCore ? 0.25 + r() * 0.4 : 0.75; info[i * 4 + 3] = isCore && hgt > 200 && r() < 0.5 ? 1 : 0;
+      ord[i] = ordAt(x, z) + 0.015 * r();
+      if (hgt > 150) tall.push({ p: new THREE.Vector3(x, hgt - 2, z), ord: ord[i]! });
     }
     geo.setAttribute('bInfo', new THREE.InstancedBufferAttribute(info, 4));
+    geo.setAttribute('bOrd', new THREE.InstancedBufferAttribute(ord, 1));
     this.towers.computeBoundingSphere(); // (culled when we look away from the city)
 
+    // the street grid: sodium lamps along the avenues, a few white ones, dense downtown
+    const NC = 2200;
+    this.carpet = new GlowPoints(NC, 1);
+    for (let i = 0; i < NC; i++) {
+      const rr = Math.pow(r(), 0.7) * 1500 * spread;
+      const a = r() * Math.PI * 2;
+      let x = o.x + Math.cos(a) * rr * 1.5, z = o.z + Math.sin(a) * rr * 0.55;
+      // snap to a street grid (avenues one way, streets the other)
+      if (r() < 0.5) x = Math.round(x / 70) * 70 + 4; else z = Math.round(z / 90) * 90 + 4;
+      const white = r() < 0.18;
+      const k = (0.25 + 0.5 * r()) * (rr < 600 ? 1 : 0.6);
+      this.carpetData.push({ x, y: 4 + r() * 4, z, c: white ? C('#e8eeff') : C('#ff9a40'), k, ord: ordAt(x, z) + 0.01 * r(), s: 2.4 + r() * 1.8 });
+    }
     // aviation lights (blinking red) on the tall towers and a few masts on the hills
     this.lights = new GlowPoints(140, 1);
-    for (const t of tall) this.avi.push({ p: t.clone().add(new THREE.Vector3(0, 3, 0)), phase: r(), k: 1 });
+    for (const t of tall) this.avi.push({ p: t.p.clone().add(new THREE.Vector3(0, 3, 0)), phase: r(), k: 1, ord: t.ord });
+    this.add(this.towers, this.carpet, this.lights);
+    if (o.hills) this.buildHills(r);
+    this.paintCarpet(0);
+  }
+
+  private buildHills(r: () => number) {
     // hills: a ridge ring around the origin, closer on the sides, far ahead and behind
     const S = 360;
     const pos: number[] = [], idx: number[] = [];
@@ -286,17 +360,17 @@ export class City extends THREE.Group {
       return 70 + 60 * h;
     };
     const radius = (az: number) => 2600 + 1700 * Math.pow(Math.abs(Math.cos(az)), 2);
+    const ca = Math.atan2(this.o.x, -this.o.z);
     for (let i = 0; i <= S; i++) {
       const az = (i / S) * Math.PI * 2;
       const R = radius(az);
       const x = Math.sin(az) * R, z = -Math.cos(az) * R;
       let h = ridge(az);
       // lower in front of the city so the skyline stands clear
-      const ca = Math.atan2(CITY.x, -CITY.z);
       h *= 0.35 + 0.65 * (1 - Math.exp(-Math.pow((az > Math.PI ? az - Math.PI * 2 : az) - ca, 2) / 0.05));
       pos.push(x, -30, z, x, h, z);
       if (i < S) { const k = i * 2; idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); }
-      if (i % 9 === 0 && h > 90) this.avi.push({ p: new THREE.Vector3(x * 0.995, h + 28, z * 0.995), phase: r(), k: 0.7 });
+      if (i % 9 === 0 && h > 90) this.avi.push({ p: new THREE.Vector3(x * 0.995, h + 28, z * 0.995), phase: r(), k: 0.7, ord: 0.98 });
     }
     const hg = new THREE.BufferGeometry();
     hg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -318,24 +392,41 @@ export class City extends THREE.Group {
       this.hillLights.set(i, Math.sin(az) * R, y, -Math.cos(az) * R, c, 0.25 + r() * 0.5, 2.2 + r() * 2.5);
     }
     this.hillLights.commit();
-    this.add(this.towers, this.hills, this.hillLights, this.lights);
+    this.add(this.hills, this.hillLights);
   }
 
-  update(t: number, dawn: number, haze: THREE.Color) {
+  private paintCarpet(t: number) {
+    const b = this.black;
+    this.carpetData.forEach((d, i) => {
+      const dk = (b - d.ord) / 0.05;
+      let k = dk >= 1 ? 0 : d.k;
+      if (dk > -0.4 && dk < 1) k *= (Math.sin(t * 61 + i * 7.1) > 0.2 ? 1 : 0.15);
+      this.carpet.set(i, d.x, d.y, d.z, d.c, k, d.s);
+    });
+    this.carpet.commit();
+  }
+
+  /** k: blackout progress (-1 = all lit, 1.1 = all dark). */
+  blackout(k: number) { this.black = k; this.u.cBlack.value = k; }
+
+  update(t: number, dawn: number, haze: THREE.Color, hillK = 1) {
     this.u.cDawn.value = dawn;
     this.u.cGlow.value.copy(C('#ff8a40', 0.02 * (1 - dawn)));
     this.u.cHaze.value.copy(haze);
     this.u.cTime.value = t;
+    if (this.black > -0.5) this.paintCarpet(t);
     // aviation lights: 1.5 s cycle, 0.5 s on, a few in sync
     let n = 0;
     for (const a of this.avi) {
       const ph = ((t / 1.5 + a.phase * (n % 3 === 0 ? 0 : 1)) % 1 + 1) % 1;
       const on = ph < 0.33 ? 1 : 0.03;
-      this.lights.set(n++, a.p.x, a.p.y, a.p.z, C('#ff2a1a'), 2.4 * on * a.k * (1 - 0.6 * dawn), 9);
+      const alive = this.black > a.ord + 0.02 ? 0 : 1;
+      this.lights.set(n++, a.p.x, a.p.y, a.p.z, C('#ff2a1a'), 2.4 * on * a.k * (1 - 0.6 * dawn) * alive, 9);
       if (n >= this.lights.n) break;
     }
     for (let i = n; i < this.lights.n; i++) this.lights.hide(i);
     this.lights.commit();
+    if (this.hillLights) this.hillLights.visible = hillK > 0.5;
   }
 }
 
@@ -465,6 +556,8 @@ export class Landscape extends THREE.Group {
   lights: GlowPoints;
   cars: GlowPoints;
   treeData: { x: number; u: number; s: number; v: number }[] = [];
+  lightData: { x: number; y: number; z: number; c: THREE.Color; k: number; s: number; h: number }[] = [];
+  private front = 1e9;
   exclude: { x: number; u: number; r: number }[] = [];
   static NT = 300;
   static LOOP = 760;
@@ -517,22 +610,41 @@ export class Landscape extends THREE.Group {
     this.trees.frustumCulled = false;
     // scattered lights out in the land (static world positions around the route)
     this.lights = new GlowPoints(900, 1);
-    let n = 0;
     for (let i = 0; i < 520; i++) {
       const side = r() < 0.5 ? -1 : 1;
       const x = side * (110 + Math.pow(r(), 0.7) * 1400), z = 300 - r() * 2600;
       const warm = r() < 0.75;
-      this.lights.set(n++, x, 1.5 + r() * 6, z, warm ? C('#ffb36b') : C('#dfe9ff'), 0.25 + Math.pow(r(), 3) * 1.2, 1.4 + r() * 1.4);
+      this.lightData.push({ x, y: 1.5 + r() * 6, z, c: warm ? C('#ffb36b') : C('#dfe9ff'), k: 0.25 + Math.pow(r(), 3) * 1.2, s: 1.4 + r() * 1.4, h: r() });
     }
     // a parallel road on the right, ~420 m out: a row of sodium lamps
     for (let i = 0; i < 120; i++) {
       const z = 300 - i * 24;
-      this.lights.set(n++, 420 + Math.sin(z * 0.002) * 60, 8, z, C('#ff9a3c'), 0.9, 2.6);
+      this.lightData.push({ x: 420 + Math.sin(z * 0.002) * 60, y: 8, z, c: C('#ff9a3c'), k: 0.9, s: 2.6, h: -1 });
     }
-    for (let i = n; i < this.lights.n; i++) this.lights.hide(i);
-    this.lights.commit();
+    this.front = -1e9;
+    this.paint(-1e9, 0);
     this.cars = new GlowPoints(24, 1);
     this.add(this.trees, this.lights, this.cars);
+  }
+
+  /** The power dies along the land: lights at road coordinate u < `frontU` go out (a flicker as the front passes). */
+  private paint(frontU: number, t: number) {
+    this.lightData.forEach((d, i) => {
+      const u = -d.z - (d.h < 0 ? 0 : (d.h - 0.5) * 300);
+      const past = frontU - u;
+      let k = past > 0 ? 0 : d.k;
+      if (past > -60 && past <= 0) k *= Math.sin(t * 53 + i * 3.7) > 0 ? 1 : 0.1;
+      this.lights.set(i, d.x, d.y, d.z, d.c, k, d.s);
+    });
+    for (let i = this.lightData.length; i < this.lights.n; i++) this.lights.hide(i);
+    this.lights.commit();
+  }
+
+  /** Blackout front along the land (road coordinate; -1e9 = all lit). */
+  power(frontU: number, t: number) {
+    if (frontU < -1e8 && this.front < -1e8) return;
+    this.front = frontU;
+    this.paint(frontU < -1e8 ? -1e9 : frontU, t);
   }
 
   update(camU: number, t: number) {

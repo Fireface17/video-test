@@ -584,80 +584,155 @@ export function carGeometry() {
   return merge(parts);
 }
 
-export interface Car { lane: number; dir: 1 | -1; v: number; phase: number; truck: boolean; tint: THREE.Color }
+/** A tractor unit and a box trailer: length along z, nose toward -z, origin on the ground at its middle. */
+export function truckGeometry() {
+  const parts: THREE.BufferGeometry[] = [];
+  // trailer (13.6 m) and the cab (2.4 m) in front of it
+  parts.push(boxAt(2.5, 3.0, 13.6, 0, 2.55, 1.2));
+  parts.push(boxAt(2.45, 2.1, 2.3, 0, 2.05, -6.9));
+  parts.push(boxAt(2.3, 0.9, 2.2, 0, 3.55, -6.8, 0, 0, -0.1)); // the cab's roof fairing
+  parts.push(boxAt(2.3, 0.5, 2.6, 0, 0.75, -6.8)); // bumper / chassis
+  parts.push(boxAt(1.0, 0.3, 14, 0, 0.9, 0.2)); // chassis rails
+  for (const z of [-7.4, -4.6, 4.6, 5.9, 7.2]) for (const x of [-1.05, 1.05]) {
+    const w = new THREE.CylinderGeometry(0.5, 0.5, 0.35, 14);
+    w.rotateZ(Math.PI / 2); w.translate(x, 0.5, z);
+    parts.push(w);
+  }
+  return merge(parts);
+}
+
+export interface Vehicle { dir: 1 | -1; x: number; u0: number; v: number; truck: boolean; tint: THREE.Color; len: number }
+/** Our own path (to keep the traffic out of our lane) and the stretch of road that must be empty at the end. */
+export interface Route { s: (t: number) => number; x: (t: number) => number; active: (t: number) => boolean; t0: number; t1: number; quiet: [number, number] }
 
 export class Traffic extends THREE.Group {
   bodies: THREE.InstancedMesh;
+  trucks: THREE.InstancedMesh;
   lights: GlowPoints;
   trails: Streaks;
-  cars: Car[] = [];
-  static L = 900; // stream loop length (m)
+  cars: Vehicle[] = [];
+  trk: Vehicle[] = [];
+  t0: number;
 
-  constructor() {
+  constructor(route: Route) {
     super();
     const r = mulberry32(77);
-    for (let i = 0; i < 26; i++) {
-      const dir = i < 16 ? -1 : 1; // -1: oncoming
-      this.cars.push({
-        lane: Math.floor(r() * 3), dir, v: dir < 0 ? 27 + r() * 8 : 21 + r() * 5, phase: r() * Traffic.L,
-        truck: dir > 0 && r() < 0.2, tint: C(['#1a1d24', '#3a3f47', '#0e1a2e', '#4a1515', '#d8d8dc', '#2b2b2b'][Math.floor(r() * 6)]!, 0.5),
-      });
+    this.t0 = route.t0;
+    const s0 = route.s(route.t0), s1 = route.s(route.t1);
+    const tints = ['#1a1d24', '#3a3f47', '#0e1a2e', '#4a1515', '#d8d8dc', '#2b2b2b', '#5a5f66', '#20304a'];
+    const all: Vehicle[] = [];
+    // oncoming: a steady stream over everything we'll meet
+    for (let i = 0; i < 46; i++) {
+      const truck = r() < 0.16;
+      const lane = truck ? 2 : Math.floor(r() * 3);
+      all.push({ dir: -1, x: -ROAD.laneX(lane), u0: s0 - 60 + (i + r() * 0.8) * ((s1 - s0 + 2900) / 46), v: truck ? 23 + r() * 3 : 27 + r() * 7, truck, tint: C(tints[Math.floor(r() * tints.length)]!, 0.5), len: truck ? 17 : 4.7 });
+    }
+    // our direction: mostly slower than us (we overtake them), a few faster ones overtake us
+    for (let i = 0; i < 30; i++) {
+      const fast = i % 7 === 3;
+      const truck = !fast && r() < 0.3;
+      const lane = truck ? (r() < 0.75 ? 2 : 1) : Math.floor(r() * 3);
+      all.push({ dir: 1, x: ROAD.laneX(lane), u0: s0 + 25 + (i + r() * 0.7) * ((s1 - s0 + 1500) / 30), v: fast ? 36 + r() * 4 : truck ? 20 + r() * 3 : 22 + r() * 5, truck, tint: C(tints[Math.floor(r() * tints.length)]!, 0.5), len: truck ? 17 : 4.7 });
+    }
+    // keep them out of our way: never in our lane near us, and away from the last stretch (it ends dark)
+    const T = (v: Vehicle, t: number) => v.u0 + v.dir * v.v * (t - route.t0);
+    const clash = (v: Vehicle) => {
+      for (let t = route.t0; t <= route.t1 + 0.4; t += 0.05) {
+        const gap = T(v, t) - route.s(t);
+        if (t >= route.quiet[0] && t <= route.quiet[1] && gap > -60 && gap < 900) return true;
+        if (v.dir < 0 || !route.active(t)) continue;
+        if (Math.abs(gap) < v.len / 2 + 22 && Math.abs(v.x - route.x(t)) < 2.9) return true;
+      }
+      return false;
+    };
+    for (const v of all) {
+      let ok = false;
+      for (let a = 0; a < 24 && !ok; a++) {
+        if (!clash(v)) { ok = true; break; }
+        if (v.dir > 0 && a % 3 !== 2) v.x = ROAD.laneX((Math.round((v.x - 1) / ROAD.lane - 0.5) + 1 + (a % 3)) % 3);
+        else v.u0 += v.dir > 0 ? 45 : 70;
+      }
+      if (ok) (v.truck ? this.trk : this.cars).push(v);
     }
     const paint = litMat({ color: C('#ffffff'), rough: 0.25, metal: 0.4, spec: 1.2 });
-    this.bodies = new THREE.InstancedMesh(carGeometry(), paint, this.cars.length);
-    this.bodies.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.cars.length * 3), 3);
+    this.bodies = new THREE.InstancedMesh(carGeometry(), paint, Math.max(1, this.cars.length));
+    this.bodies.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, this.cars.length) * 3), 3);
     this.cars.forEach((c, i) => this.bodies.setColorAt(i, c.tint));
+    this.bodies.count = this.cars.length;
     this.bodies.frustumCulled = false;
-    this.lights = new GlowPoints(this.cars.length * 6, 1);
-    this.trails = new Streaks(this.cars.length * 4);
-    this.add(this.bodies, this.lights, this.trails);
-  }
-
-  /** Road coordinate of car i at t (relative streams wrap far ahead of the camera). */
-  carU(c: Car, t: number, camU: number) {
-    const raw = c.phase + c.dir * c.v * t * (c.dir < 0 ? 1 : 1);
-    const rel = (((raw - camU + 60) % Traffic.L) + Traffic.L) % Traffic.L - 60;
-    return camU + rel;
+    const tpaint = litMat({ color: C('#ffffff'), rough: 0.45, metal: 0.2, spec: 0.6, grime: 0.5 });
+    this.trucks = new THREE.InstancedMesh(truckGeometry(), tpaint, Math.max(1, this.trk.length));
+    this.trucks.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, this.trk.length) * 3), 3);
+    this.trk.forEach((c, i) => this.trucks.setColorAt(i, i % 3 === 0 ? C('#c8ccd2', 0.6) : i % 3 === 1 ? C('#6a1a16', 0.6) : C('#1c2a44', 0.6)));
+    this.trucks.count = this.trk.length;
+    this.trucks.frustumCulled = false;
+    this.lights = new GlowPoints(this.cars.length * 6 + this.trk.length * 30 + 8, 1);
+    this.trails = new Streaks((this.cars.length + this.trk.length) * 2 + 4);
+    this.add(this.bodies, this.trucks, this.lights, this.trails);
   }
 
   update(t: number, camU: number, camSpeed: number, trailK: number) {
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
     const white = C('#fff4e6'), red = C('#ff1a10'), amber = C('#ff9a2a');
     let nl = 0, nt = 0;
     const dt = 0.045; // trail exposure (s)
+    const L = this.lights;
+    const place = (v: Vehicle, i: number, mesh: THREE.InstancedMesh) => {
+      const u = v.u0 + v.dir * v.v * (t - this.t0);
+      p.set(v.x, 0, -u);
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), v.dir < 0 ? Math.PI : 0);
+      m.compose(p, q, sc);
+      mesh.setMatrixAt(i, m);
+      return u;
+    };
+    const fadeOf = (u: number) => { const d = Math.abs(u - camU); return 1 / (1 + d / 140) / (1 + Math.max(0, d - 600) / 200); };
     this.cars.forEach((c, i) => {
-      const u = this.carU(c, t, camU);
-      const x = (c.dir < 0 ? -1 : 1) * ROAD.laneX(c.lane);
-      const len = c.truck ? 2.4 : 1, hgt = c.truck ? 2.4 : 1;
-      p.set(x, 0, -u);
-      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), c.dir < 0 ? Math.PI : 0);
-      s.set(c.truck ? 1.35 : 1, hgt, len);
-      m.compose(p, q, s);
-      this.bodies.setMatrixAt(i, m);
-      const d = Math.abs(u - camU);
-      const fade = 1 / (1 + d / 120) / (1 + Math.max(0, d - 300) / 100);
-      const front = -u - c.dir * 2.35 * len; // world z of the nose
-      const rear = -u + c.dir * 2.35 * len;
-      // relative motion for the trails (what the camera sees move during the exposure)
+      const u = place(c, i, this.bodies);
+      const fade = fadeOf(u);
+      const front = -u - c.dir * 2.35, rear = -u + c.dir * 2.35;
       const rel = (c.dir * c.v - camSpeed) * dt * (c.dir < 0 ? 2.2 : 1);
       for (const sx of [-0.68, 0.68]) {
-        const hx = x + sx * (c.truck ? 1.25 : 1);
+        const hx = c.x + sx;
         if (c.dir < 0) {
-          // oncoming: headlights toward us
-          this.lights.set(nl++, hx, 0.68, front, white, 1.1 * fade, 0.45);
-          this.lights.set(nl++, hx, 0.62, rear, red, 0.25 * fade, 0.3);
+          L.set(nl++, hx, 0.68, front, white, 1.2 * fade, 0.45);
+          L.set(nl++, hx, 0.62, rear, red, 0.25 * fade, 0.3);
           if (trailK > 0 && nt < this.trails.cap) this.trails.set(nt++, { x: hx, y: 0.68, z: front + rel }, { x: hx, y: 0.68, z: front }, white, 0.9 * trailK * fade, 0.09);
         } else {
-          this.lights.set(nl++, hx, c.truck ? 1.0 : 0.75, rear, red, 1.4 * fade, 0.38);
-          if (c.truck) this.lights.set(nl++, hx * 1.02, 3.2, rear, amber, 0.5 * fade, 0.18);
-          this.lights.set(nl++, hx, 0.66, front, white, 0.8 * fade, 0.4);
-          if (trailK > 0 && nt < this.trails.cap) this.trails.set(nt++, { x: hx, y: c.truck ? 1.0 : 0.75, z: rear + rel }, { x: hx, y: c.truck ? 1.0 : 0.75, z: rear }, red, 0.8 * trailK * fade, 0.08);
+          L.set(nl++, hx, 0.75, rear, red, 1.5 * fade, 0.38);
+          L.set(nl++, hx, 0.66, front, white, 0.8 * fade, 0.4);
+          if (trailK > 0 && nt < this.trails.cap) this.trails.set(nt++, { x: hx, y: 0.75, z: rear + rel }, { x: hx, y: 0.75, z: rear }, red, 0.8 * trailK * fade, 0.08);
         }
       }
+      // the high-mounted brake light
+      if (c.dir > 0) L.set(nl++, c.x, 1.3, rear - 0.2, red, 0.5 * fade, 0.18);
     });
     this.bodies.instanceMatrix.needsUpdate = true;
-    for (let i = nl; i < this.lights.n; i++) this.lights.hide(i);
-    this.lights.commit();
+    // trucks: marker lights everywhere (amber along the sides, red at the back, a row on the cab roof)
+    this.trk.forEach((c, i) => {
+      const u = place(c, i, this.trucks);
+      const fade = fadeOf(u);
+      const zc = -u; // trailer centre ~ origin + 1.2 toward the back
+      const back = zc + c.dir * 8.0, nose = zc - c.dir * 8.0;
+      for (const sx of [-1, 1]) {
+        // rear: tail lights low, outline markers high
+        L.set(nl++, c.x + sx * 1.0, 1.0, back, red, (c.dir > 0 ? 1.5 : 0.3) * fade, 0.36);
+        L.set(nl++, c.x + sx * 1.2, 4.0, back, red, 0.9 * fade, 0.2);
+        // headlights
+        L.set(nl++, c.x + sx * 0.95, 0.85, nose, white, (c.dir < 0 ? 1.4 : 0.7) * fade, 0.5);
+        // side markers along the trailer
+        for (let k = 0; k < 6; k++) L.set(nl++, c.x + sx * 1.27, 0.95, back - c.dir * (0.6 + k * 2.4), amber, 0.75 * fade, 0.16);
+        L.set(nl++, c.x + sx * 1.27, 3.95, nose + c.dir * 2.4, amber, 0.8 * fade, 0.16);
+      }
+      for (let k = 0; k < 5; k++) L.set(nl++, c.x - 0.8 + k * 0.4, 4.1, nose + c.dir * 0.6, amber, 0.7 * fade, 0.15);
+      const rel = (c.dir * c.v - camSpeed) * dt * (c.dir < 0 ? 2.2 : 1);
+      if (trailK > 0 && nt < this.trails.cap - 1) {
+        const z0 = c.dir < 0 ? nose : back, col = c.dir < 0 ? white : red;
+        for (const sx of [-1, 1]) this.trails.set(nt++, { x: c.x + sx, y: 0.95, z: z0 + rel }, { x: c.x + sx, y: 0.95, z: z0 }, col, 0.7 * trailK * fade, 0.09);
+      }
+    });
+    this.trucks.instanceMatrix.needsUpdate = true;
+    for (let i = nl; i < L.n; i++) L.hide(i);
+    L.commit();
     this.trails.commit(nt);
   }
 }
