@@ -53,6 +53,7 @@ export class Sky extends THREE.Group {
   dome: THREE.Mesh;
   cloudMesh: THREE.Mesh;
   stars: GlowPoints;
+  plane: GlowPoints;
   cu: Record<string, THREE.IUniform>;
 
   constructor(cloudTex: THREE.Texture) {
@@ -126,7 +127,9 @@ export class Sky extends THREE.Group {
     this.cloudMesh = new THREE.Mesh(new THREE.SphereGeometry(4450, 48, 24), cm);
     this.cloudMesh.renderOrder = -8;
     this.cloudMesh.frustumCulled = false;
-    this.add(this.dome, this.stars, this.cloudMesh);
+    this.plane = new GlowPoints(4, 1);
+    this.plane.renderOrder = -7;
+    this.add(this.dome, this.stars, this.cloudMesh, this.plane);
   }
 
   /** Night → dawn colours, also writes the haze and ambient into the shared lighting uniforms. */
@@ -145,8 +148,8 @@ export class Sky extends THREE.Group {
     u.sSunK.value = sunK;
     // clouds
     this.cu.off!.value.set(cloudDrift * 0.004 + 0.13, cloudDrift * 0.0015 + 0.71);
-    this.cu.litCity!.value.copy(C('#ff7f3f', 0.03 * (1 - 0.5 * d)));
-    this.cu.litAmb!.value.copy(lerpC(C('#1a2140', 0.02), C('#5a6890', 0.45), d));
+    this.cu.litCity!.value.copy(C('#ff8a4a', 0.07 * (1 - 0.5 * d)));
+    this.cu.litAmb!.value.copy(lerpC(C('#2a3460', 0.05), C('#5a6890', 0.45), d));
     this.cu.litSun!.value.copy(C('#ff9d5c', 1.4 * d2));
     // haze & ambient (shared with every lit material)
     HU.uHazeLo.value.copy(u.sHor.value).multiplyScalar(0.8 - 0.25 * d);
@@ -155,7 +158,17 @@ export class Sky extends THREE.Group {
     HU.uSunAz.value.set(sunDir.x, sunDir.z).normalize();
     HU.uAmbHi.value.copy(lerpC(C('#2a3870', 0.05), C('#a8b0c8', 0.3), Math.pow(d, 1.2)));
     HU.uAmbLo.value.copy(lerpC(C('#120f14', 0.03), C('#5a4a40', 0.12), d));
+    // an airliner crossing high overhead: red / green navigation lights, white strobes
+    const pa = (t - 17) * 0.012;
+    const px = -900 + 1800 * pa, pz = -300 - 400 * pa, py = 1500;
+    const strobe = (Math.floor(t * 60) % 72) < 4 ? 1 : 0;
+    this.plane.set(0, px - 18, py, pz, C('#ff2a1a'), 2.2, 30);
+    this.plane.set(1, px + 18, py, pz + 4, C('#38ff7a'), 2.0, 30);
+    this.plane.set(2, px, py - 1, pz - 10, C('#ffffff'), 6 * strobe, 34);
+    this.plane.set(3, px, py + 2, pz + 12, C('#ff3a2a'), 3 * ((Math.floor(t * 60) % 60) < 8 ? 1 : 0), 24);
+    this.plane.commit();
     HU.uSunDir.value.copy(sunDir);
+    HU.uFogD.value = 0.0042 - 0.0019 * d;
     HU.uSunCol.value.copy(C('#ffb060', 1.6 * Math.max(0, sunK - 0.1) * smoothK(sunDir.y)));
     void t;
   }

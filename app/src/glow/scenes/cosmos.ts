@@ -16,7 +16,7 @@ import { Scene, type Frame } from '../../engine/scene';
 import { clamp, ease, hash, lerp, mulberry32, noise1, prog, pulse, smoothstep } from '../../engine/util';
 import { Stage, aim, skyDome } from '../lib/stage';
 import { col } from '../lib/palette';
-import { RealFigure, loadBody, limbDir, bend } from '../lib/people';
+import { RealFigure, loadBody, limbDir, bend, dance } from '../lib/people';
 import { starJoints } from '../lib/stars';
 import { Earth } from '../lib/earth';
 import { StarStreaks } from './fall-stars';
@@ -99,8 +99,10 @@ export default class Cosmos extends Scene {
     this.downs = audio.downbeats.filter((d) => d >= w0 - 4 && d <= w1 + 2);
     this.chops = audio.events('chop', w0, w1);
     if (this.n === 1) {
-      const a = lyrics.get('Take my hand', 0), b = lyrics.get('Take my hand', 1);
-      this.T = { take1: a.words[0]!.start, hand1: a.words[2]!.start, take2: b.words[0]!.start, hand2: b.words[2]!.start };
+      // (the two "Take my hand" lines of the drop; the chorus lines also contain the words)
+      const [a, b] = lyrics.linesIn(this.ctx.start, this.ctx.end).filter((l) => /^take my hand/i.test(l.text));
+      const w = (l: typeof a, i: number, d: number) => l?.words[i]?.start ?? d;
+      this.T = { take1: w(a, 0, this.bar(11) + 1.0), hand1: w(a, 2, this.bar(11) + 1.3), take2: w(b, 0, this.bar(13) + 1.0), hand2: w(b, 2, this.bar(13) + 1.45) };
     }
     this.look = this.makeLook();
     const S = this.st;
@@ -135,7 +137,7 @@ export default class Cosmos extends Scene {
   private makeLook(): Look {
     if (this.n === 3) return {
       star: col('#fff3d6', 2.4), line: col('gold', 0.5).lerp(col('ember', 0.5), 0.25), accent: col('gold', 1.6).lerp(col('white', 1.6), 0.15), join: col('#fff1c8', 3),
-      skyTop: col('ember', 0.012), skyHor: col('ember', 0.05).lerp(col('gold', 0.05), 0.3), gas: col('ember', 0.2).lerp(col('gold', 0.2), 0.45), fil: col('gold', 0.32),
+      skyTop: col('ember', 0.012), skyHor: col('ember', 0.05).lerp(col('gold', 0.05), 0.3), gas: col('ember', 0.13).lerp(col('gold', 0.13), 0.45), fil: col('gold', 0.22),
       streak: col('#fff0c8', 1.1), streak2: col('gold', 1),
     };
     if (this.n === 2) return {
@@ -245,10 +247,10 @@ export default class Cosmos extends Scene {
       const { c, n, R } = at(tc, k, i);
       const age = t - tc, e = ease.outExpo(clamp(age / 0.7));
       const fade = Math.pow(0.5, age / 0.32);
-      ring(this.fx, c, n, R * (0.08 + 0.92 * e), L.accent, 1.6 * g * fade, R * 0.012 * (1 + 2 * (1 - e)), 80, 0.04, i);
-      ring(this.fx, c, n, R * 0.62 * e, L.star, 0.5 * g * fade * fade, R * 0.006, 64, 0.08, i + 3);
-      this.flares.add(c, L.accent, 2.2 * g * pulse(t, tc, 0.09), R * 0.35);
-      this.flares.add(c, L.star, 0.5 * g * pulse(t, tc, 0.2), R * 0.18, 9, 9);
+      ring(this.fx, c, n, R * (0.08 + 0.92 * e), L.accent, 1.3 * g * fade, R * 0.0035 * (1 + 3 * (1 - e)), 96);
+      ring(this.fx, c, n, R * 0.7 * e, L.star, 0.45 * g * fade * fade, R * 0.002, 80);
+      this.flares.glow(c, L.accent, 1.1 * g * pulse(t, tc, 0.08), R * 0.16);
+      this.flares.glow(c, L.star, 0.18 * g * pulse(t, tc, 0.15), R * 0.1, 7, 6);
       this.rip.push({ c, t0: tc, v: (R * 0.9) / 0.45, w: R * 0.22, k: 2.4 * g });
       // sparks thrown out along the ring
       const r = mulberry32(i * 31 + 7);
@@ -290,6 +292,7 @@ export default class Cosmos extends Scene {
     (sky.glow!.value as THREE.Color).setRGB(0, 0, 0);
     let post: Record<string, any> = {};
 
+    const PT0 = performance.now();
     switch (sh.kind) {
       case 'tunnel': this.tunnel(t, sh); break;
       case 'giant': this.giant(t, sh); break;
@@ -310,6 +313,8 @@ export default class Cosmos extends Scene {
     this.figs.end();
     this.fx.end();
     this.flares.end();
+    (this as any)._pt = ((this as any)._pt ?? 0) + performance.now() - PT0; (this as any)._pn = ((this as any)._pn ?? 0) + 1; (this as any)._pp = Math.max((this as any)._pp ?? 0, this.bank.posed);
+    if ((this as any)._pn % 20 === 0) console.warn(`PERFJS ${sh.kind} ${((this as any)._pt / 20).toFixed(1)}ms posed<=${(this as any)._pp} figs=${this.figs.np / 13 | 0} lines=${this.figs.lines.n + this.fx.n}`), (this as any)._pt = 0, (this as any)._pp = 0;
     this.st.render(this.ctx.renderer, out);
     const k = this.kick, sk = this.shake;
     return {
@@ -354,14 +359,14 @@ export default class Cosmos extends Scene {
     aim(cam, pos, pos.clone().add(dir), roll);
     cam.fov = 66 + 7 * this.kick + 22 * (1 - land);
     // rings of dancers: heads outward, facing down the tunnel (toward the camera when it looks ahead)
-    const D = 9, NR = 17, j0 = Math.floor(S / D);
+    const D = 11, NR = 16, j0 = Math.floor(S / D);
     const styles: number[] = o.styles;
     for (let jj = -1; jj < NR; jj++) {
-      const j = j0 + jj, z = S - j * D; // (camera-relative; ahead is -z)
+      const j = o.back ? j0 - jj : j0 + 1 + jj, z = S - j * D; // (camera-relative; ahead is -z)
       const dist = o.back ? z : -z;
-      const fade = smoothstep(NR * D, NR * D * 0.65, Math.abs(z)) * smoothstep(-1, 5, -z);
+      const fade = smoothstep(NR * D, NR * D * 0.6, dist) * smoothstep(-1, 6, dist);
       if (fade <= 0.001) continue;
-      const m = j % 3 === 0 ? 12 : 9, R = 5.5 + 3.5 * hash(j, 1), sc = 1.15 + 0.5 * hash(j, 2);
+      const m = j % 3 === 0 ? 12 : 10, R = 8 + 4 * hash(j, 1), sc = 1.9 + 0.7 * hash(j, 2);
       const spin = hash(j, 3) * TAU + (j % 2 ? 1 : -1) * 0.35 * (t - sh.t0);
       const style = styles[(((j % styles.length) + Math.floor(bars / 2)) % styles.length + styles.length) % styles.length]!;
       const off = (((j % 3) + 3) % 3) * 0.08;
@@ -372,16 +377,16 @@ export default class Cosmos extends Scene {
         const pose = this.bank.get(i % 2, beat - off, style, 1, 0);
         this.put(pose, p, frame(up, V(0, 0, o.back ? -1 : 1)), sc, i % 2 === 1, { star: L.star, line: L.line, k: fade * (0.85 + 0.9 * this.kick) });
       }
-      void dist;
     }
     // the light at the end of the tunnel
     const ahead = V(0, 0, o.back ? 1 : -1);
-    this.flares.add(ahead.clone().multiplyScalar(900), L.accent, 0.5 + 0.8 * this.kick, 120);
-    this.flares.add(ahead.clone().multiplyScalar(900), L.star, 0.35 + 0.3 * this.kick, 40, 10, 9);
+    this.flares.glow(ahead.clone().multiplyScalar(900), col('#f4fbff', 2.5), 0.5 + 0.5 * this.kick, 9);
+    this.flares.glow(ahead.clone().multiplyScalar(900), L.accent, 0.12 + 0.2 * this.kick, 70, 1, 3);
+    this.flares.glow(ahead.clone().multiplyScalar(900), L.star, 0.04 + 0.08 * this.kick, 36, 9, 6);
     this.warpStreaks(S, v, V(0, 0, 1));
     this.chopBursts(t, sh, (tc, k) => {
       const s0 = this.travel(tc, sh.t0, o.fast ? 46 : 34, o.fast ? 150 : 110).s;
-      return { c: V(0, 0, (S - s0) + (o.back ? 18 : -38)), n: V(0, 0, 1), R: 11 + 6 * k };
+      return { c: V(0, 0, (S - s0) + (o.back ? 20 : -45)), n: V(0, 0, 1), R: 15 + 7 * k };
     });
   }
 
@@ -410,8 +415,8 @@ export default class Cosmos extends Scene {
     const G = o.count === 2 ? 11 : 15, beat = a.beatAt(t), bars = this.bars(t, sh.t0);
     const land = this.land(t, sh, 0.5);
     const th = (o.th0 ?? 0) + (o.side ?? 1) * (0.55 * (1 - land) + 0.07 * (t - sh.t0));
-    const dist = (o.count === 2 ? 3.4 : 2.7) * G * (1 + 0.25 * (1 - land));
-    const h = (o.low ? -0.55 : -0.25) * G;
+    const dist = (o.count === 2 ? 2.5 : 1.9) * G * (1 + 0.35 * (1 - land));
+    const h = (o.low ? -0.6 : -0.3) * G;
     const pos = V(Math.sin(th) * dist, h, Math.cos(th) * dist);
     const target = V(0, (o.low ? 0.35 : 0.2) * G, 0).add(V(noise1(t * 0.8, 5), noise1(t * 0.7, 6), 0).multiplyScalar(0.06 * G));
     aim(cam, pos, target, (o.side ?? 1) * (0.12 + 0.35 * (1 - land)) + 0.04 * Math.sin(t * 1.3));
@@ -447,10 +452,10 @@ export default class Cosmos extends Scene {
     const L = this.look;
     const cp = this.st.cam.position;
     const w = p.clone().add(cp);
-    this.flares.add(w, col('#fff6dd', 3), k, 70);
-    this.flares.add(w, col('gold', 1.4), k * 0.9, 420, 1, 3);
-    this.flares.add(w, L.accent, k * 0.35, 1400, 1, 2.5);
-    this.flares.add(w, col('#fff1c8', 1.2), k * 0.5, 160, 14, 8);
+    this.flares.glow(w, col('#fff6dd', 3), k, 60);
+    this.flares.glow(w, col('gold', 1.2), k * 0.45, 260, 1, 3.5);
+    this.flares.glow(w, L.accent, k * 0.12, 900, 1, 3);
+    this.flares.glow(w, col('#fff1c8', 1.2), k * 0.12, 90, 12, 6);
     this.skyGlow(p, col('gold', 0.6).multiplyScalar(k));
   }
 
@@ -462,24 +467,24 @@ export default class Cosmos extends Scene {
     g.quaternion.setFromUnitVectors(V(0, 1, 0), normal.clone().normalize()).multiply(new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), spin));
     g.material.uniforms.size!.value = scale;
     // its bright bulge
-    this.flares.add(pos, col('#fff4e0', 1.1), 0.9, scale * 0.35, 1, 3);
-    this.flares.add(pos, this.look.accent, 0.25, scale * 0.9, 1, 2);
+    this.flares.glow(pos, col('#fff4e0', 1.1), 0.55, scale * 0.06, 1, 4);
+    this.flares.glow(pos, this.look.accent, 0.08, scale * 0.2, 1, 3);
   }
 
   /** A galaxy whose arms are made of people, seen from above as the camera descends into it. */
   private field(t: number, sh: Shot) {
     const o = sh.o, L = this.look, cam = this.st.cam, a = this.ctx.audio;
-    const Rg = 170, beat = a.beatAt(t), bars = this.bars(t, sh.t0), lt = t - sh.t0;
+    const Rg = 200, beat = a.beatAt(t), bars = this.bars(t, sh.t0), lt = t - sh.t0;
     const spin = 0.05 * lt + 0.4;
     this.showGalaxy(V(0, 0, 0), Rg * 1.15, V(0, 1, 0), spin);
     const land = this.land(t, sh, 0.6);
     const k = prog(t, sh.t0, sh.t1, ease.inOutCubic);
-    const el = lerp(72, 34, k) * DEG + 0.3 * (1 - land), az = 0.6 + 0.25 * k + 0.4 * (1 - land), R = lerp(330, 150, k);
+    const el = lerp(58, 24, k) * DEG + 0.3 * (1 - land), az = 0.6 + 0.45 * k + 0.4 * (1 - land), R = lerp(260, 105, k);
     const pos = V(Math.cos(el) * Math.sin(az) * R, Math.sin(el) * R, Math.cos(el) * Math.cos(az) * R);
     aim(cam, pos, V(0, -8, 0).lerp(V(Math.sin(az) * 30, 0, Math.cos(az) * 30), k), 0.15 * Math.sin(lt * 0.9) - 0.4 * (1 - land));
     cam.fov = 55 + 5 * this.kick;
     const styles: number[] = o.styles;
-    const nPer = 64, cs = Math.cos(spin), sn = Math.sin(spin);
+    const nPer = 38, cs = Math.cos(spin), sn = Math.sin(spin);
     for (let arm = 0; arm < 2; arm++) {
       const style = styles[(arm + Math.floor(bars / 2) * 2) % styles.length]!;
       for (let i = 0; i < nPer; i++) {
@@ -487,14 +492,14 @@ export default class Cosmos extends Scene {
         const [ax, az2] = armAt(u, arm);
         const x0 = ax * Rg * 1.15 + (hash(i, arm, 2) - 0.5) * 10, z0 = az2 * Rg * 1.15 + (hash(i, arm, 3) - 0.5) * 10;
         const x = x0 * cs + z0 * sn, z = -x0 * sn + z0 * cs; // (same turn as the galaxy's points)
-        const p = V(x, (hash(i, arm, 4) - 0.5) * 14 * (1.2 - u), z);
+        const p = V(x, (hash(i, arm, 4) - 0.5) * 30 * (1.2 - u), z);
         const off = Math.round(u * 3) * 0.08; // the step travels out along the arm
         const pose = this.bank.get(i % 2, beat - off, style, 1, 0);
         const up = V(x, 0, z).normalize();
-        this.put(pose, p, frame(up, V(0, 1, 0)), 2.6 + 1.6 * hash(i, arm, 5) - 1.2 * u, i % 2 === 1, { star: L.star, line: L.line, k: 0.9 + 0.8 * this.kick });
+        this.put(pose, p, frame(up, V(0, 1, 0)), 13 + 5 * hash(i, arm, 5) - 6 * u, i % 2 === 1, { star: L.star, line: L.line, k: 0.9 + 0.8 * this.kick });
       }
     }
-    this.flares.add(V(0, 0, 0), L.star, 0.8 + 0.8 * this.kick, 50, 7, 9);
+    this.flares.glow(V(0, 0, 0), L.star, 0.06 + 0.1 * this.kick, 30, 7, 6);
     this.chopBursts(t, sh, (_tc, kk) => ({ c: V(0, 0, 0), n: V(0, 1, 0), R: Rg * (0.45 + 0.4 * kk) }), 1.2);
   }
 
@@ -505,15 +510,15 @@ export default class Cosmos extends Scene {
     const nrm = V(0.18, 1, 0.12).normalize();
     const qn = new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), nrm);
     const { s: turn } = this.travel(t, sh.t0, 0.12, 0.5, 0.2);
-    const k = prog(t, sh.t0, sh.t1, ease.inOutSine);
+    const k = prog(t, sh.t0, sh.t1, ease.inOutQuad);
     const land = this.land(t, sh, 0.5);
     // swoop: from outside and above, down through the ring plane, rolling
-    const az = lerp(-0.3, 0.9, k), el = lerp(32, -6, k) * DEG, R = lerp(170, 72, k) * (1 + 0.3 * (1 - land));
+    const az = lerp(-0.3, 0.9, k), el = lerp(55, 16, k) * DEG, R = lerp(190, 105, k) * (1 + 0.3 * (1 - land));
     const pos = V(Math.cos(el) * Math.sin(az) * R, Math.sin(el) * R, Math.cos(el) * Math.cos(az) * R).applyQuaternion(qn);
     aim(cam, pos, V(0, 4, 0), lerp(-0.15, 0.45, k) + 0.5 * (1 - land), nrm);
     cam.fov = 56 + 6 * this.kick;
     const styles: number[] = o.styles;
-    const rings = [{ R: 58, m: 64, s: 3.1, dir: 1 }, { R: 34, m: 36, s: 2.3, dir: -1 }];
+    const rings = [{ R: 70, m: 56, s: 5.5, dir: 1 }, { R: 42, m: 34, s: 4.2, dir: -1 }];
     rings.forEach((rg, ri) => {
       const style = styles[(ri + Math.floor(bars / 2) * 2) % styles.length]!;
       for (let i = 0; i < rg.m; i++) {
@@ -526,14 +531,14 @@ export default class Cosmos extends Scene {
     });
     // the star
     const sk = 1 + 0.5 * this.kick;
-    if (this.n === 3) this.sun(V(0, 4, 0).sub(cam.position), 0.7 * sk);
-    else {
-      this.flares.add(V(0, 4, 0), col('#f4fbff', 3), sk, 9);
-      this.flares.add(V(0, 4, 0), L.accent, 0.8 * sk, 60, 1, 3.5);
-      this.flares.add(V(0, 4, 0), L.star, 0.4 * sk, 30, 12, 8);
+    {
+      if (this.n === 3) this.skyGlow(V(0, 4, 0).sub(cam.position), col('gold', 0.25));
+      this.flares.glow(V(0, 4, 0), this.n === 3 ? col('#fff4d8', 3) : col('#f4fbff', 3), sk, 3.5);
+      this.flares.glow(V(0, 4, 0), L.accent, 0.3 * sk, 22, 1, 4);
+      this.flares.glow(V(0, 4, 0), L.star, 0.05 * sk, 16, 10, 6);
     }
-    ring(this.fx, V(0, 0, 0), nrm, 58, L.line, 0.35 + 0.3 * this.kick, 0.12, 120);
-    ring(this.fx, V(0, 0, 0), nrm, 34, L.line, 0.3 + 0.3 * this.kick, 0.1, 96);
+    ring(this.fx, V(0, 0, 0), nrm, 70, L.line, 0.3 + 0.3 * this.kick, 0.1, 120);
+    ring(this.fx, V(0, 0, 0), nrm, 42, L.line, 0.25 + 0.3 * this.kick, 0.08, 96);
     this.chopBursts(t, sh, () => ({ c: V(0, 4, 0), n: nrm, R: 75 }));
   }
 
@@ -551,7 +556,7 @@ export default class Cosmos extends Scene {
       fig.quaternion.setFromAxisAngle(V(0, 1, 0), -s * turn);
       for (const k of [0, 1]) fig.setFoot(k, 0);
       const style = styles[i]!;
-      const bounce = style < 4 ? dancePair(fig, beat + i * 0.04, style, energy, i) : 0;
+      const bounce = style < 4 ? dance(fig, beat + i * 0.04, style, energy, i) : 0;
       fig.position.y = bounce;
       if (i === 1 && raise > 0) {
         // B's outer (left, +x) hand up high
@@ -590,9 +595,9 @@ export default class Cosmos extends Scene {
     const jk = smoothstep(T.hand1 - 0.06, T.hand1 + 0.02, t);
     if (jk > 0) {
       this.fx.seg(this.jA[J.haL]!, this.jB[J.haR]!, L.join, (0.8 + 2.5 * pulse(t, T.hand1, 0.3)) * jk, 0.05 * P);
-      this.flares.add(gripW, L.join, 0.6 * jk + 3 * pulse(t, T.hand1, 0.25), P * (0.5 + 1.2 * pulse(t, T.hand1, 0.4)));
-      this.flares.add(gripW, col('#fff6e0', 2), 1.4 * pulse(t, T.hand1, 0.35) + 0.25 * jk, P * 2.4, 12, 10);
-      this.flash = 0.45 * pulse(t, T.hand1, 0.12);
+      this.flares.glow(gripW, L.join, 0.45 * jk + 1.1 * pulse(t, T.hand1, 0.2), P * (0.1 + 0.2 * pulse(t, T.hand1, 0.3)));
+      this.flares.glow(gripW, col('#fff6e0', 2), 0.3 * pulse(t, T.hand1, 0.3) + 0.04 * jk, P * 1.2, 10, 6);
+      this.flash = 0.1 * pulse(t, T.hand1, 0.08);
       if (t - T.hand1 < 0.15) this.shake = 1 - (t - T.hand1) / 0.15;
       const age = t - T.hand1;
       ring(this.fx, gripW, V(0, 0, 1), P * 6 * ease.outExpo(clamp(age / 0.9)), L.join, 2 * Math.pow(0.5, age / 0.35), P * 0.03, 96);
@@ -603,13 +608,12 @@ export default class Cosmos extends Scene {
     // camera: close on the reaching hands, pulling back as they join
     const back = prog(t, T.hand1, T.hand1 + 1.6, ease.outCubic);
     const land = this.land(t, sh, 0.5);
-    const d = lerp(2.4, 5.6, back) * P * (1 + 0.4 * (1 - land));
-    const th = lerp(-0.22, 0.12, prog(t, sh.t0, sh.t1, ease.inOutSine));
+    const d = lerp(2.3, 4.3, back) * P * (1 + 0.4 * (1 - land));
+    const th = lerp(-0.22, 0.12, prog(t, sh.t0, sh.t1, ease.inOutQuad));
     const tgt = V(0, lerp(0.25, 0.3, back) * P, 0);
     const pos = V(Math.sin(th) * d, tgt.y - lerp(0.25, 0.6, back) * P, Math.cos(th) * d);
     aim(cam, pos, tgt, -0.06 + 0.3 * (1 - land) + 0.03 * Math.sin(t * 1.1));
     cam.fov = 50 + 5 * this.kick;
-    this.showGalaxy(V(-8 * P, 12 * P, -60 * P), 40 * P, V(0.3, 1, 0.5), t * 0.03);
   }
 
   /**
@@ -620,7 +624,7 @@ export default class Cosmos extends Scene {
     const L = this.look;
     const qn = new THREE.Quaternion().setFromUnitVectors(V(0, 0, 1), normal);
     radii.forEach((rr, ri) => {
-      const R = rr * P, s = 0.42 * P * (1 + 0.18 * ri);
+      const R = rr * P, s = 0.5 * P * (1 + 0.2 * ri);
       // as many as fit hand to hand (arms out: hands ~0.78 from the centre, 0.45 above the pelvis)
       const m = Math.max(8, Math.round((TAU * (R + 0.45 * s)) / (1.62 * s)));
       const open = tHold < 0 ? 0 : prog(t, tHold + ri * 0.08, tHold + 0.45 + ri * 0.08, ease.outCubic);
@@ -646,8 +650,8 @@ export default class Cosmos extends Scene {
         const lk = Math.min(h0[2]!.x, h1[2]!.x);
         if (lk <= 0) continue;
         const mid = h0[0]!.clone().lerp(h1[1]!, 0.5);
-        this.fx.seg(h0[0]!, h1[1]!, L.join, lk * (0.9 + 1.2 * pulse(t, tl + 0.55, 0.3)), s * 0.03);
-        this.figs.star(mid, L.join, lk * 1.4, s * 0.16);
+        this.fx.seg(h0[0]!, h1[1]!, L.join, lk * (0.7 + 1.2 * pulse(t, tl + 0.55, 0.3)), s * 0.011);
+        this.figs.star(mid, L.join, lk * (1 + 1.5 * pulse(t, tl + 0.55, 0.3)), s * 0.1);
       }
     });
   }
@@ -664,120 +668,128 @@ export default class Cosmos extends Scene {
     this.figs.figure(this.jB, P, { star: L.star, line: L.line, k: kf, lineK: 1.3 });
     const gripW = this.jA[J.haL]!.clone().add(this.jB[J.haR]!).multiplyScalar(0.5);
     this.fx.seg(this.jA[J.haL]!, this.jB[J.haR]!, L.join, 1 + 1.5 * pulse(t, tLink, 0.3), 0.05 * P);
-    this.flares.add(gripW, L.join, 0.7 + 2 * pulse(t, tLink, 0.3), P * 0.7);
-    this.flares.add(gripW, col('#fff6e0', 2), 0.3 + pulse(t, tLink, 0.4), P * 2.2, 12, 10);
+    this.flares.glow(gripW, L.join, 0.45 + 1.0 * pulse(t, tLink, 0.3), P * 0.14);
+    this.flares.glow(gripW, col('#fff6e0', 2), 0.04 + 0.3 * pulse(t, tLink, 0.4), P * 1.2, 10, 6);
     const radii = this.n === 3 ? [2.5, 4.0, 5.6, 7.3] : [2.5, 4.0, 5.6];
     this.wreath(t, beat, V(0, 0.25 * P, 0), P, radii, tHold, tLink, 0);
     if (t > tLink) {
       this.rip.push({ c: gripW, t0: tLink, v: P * 8, w: P * 1.4, k: 2 });
-      this.flash = 0.3 * pulse(t, tLink, 0.12);
+      this.flash = 0.1 * pulse(t, tLink, 0.08);
       if (t - tLink < 0.12) this.shake = 1 - (t - tLink) / 0.12;
     }
     // camera: straight on, pulling back to show the whole mandala, slowly turning; the last half bar pushes in
     const land = this.land(t, sh, 0.5);
     const pull = prog(t, sh.t0, tLink + 1.2, ease.inOutCubic);
-    const lastD = this.downs.filter((d) => d < sh.t1 - 0.4 && d > sh.t0 + 0.4).pop() ?? sh.t1;
-    const push = this.n === 1 ? prog(t, this.bar(15), this.ctx.end + 0.3, ease.inCubic) : prog(t, lastD, sh.t1, ease.inCubic);
-    const d = lerp(4.2, (radii[radii.length - 1]! + 2.6) * 1.75, pull) * P * (1 - 0.8 * push) * (1 + 0.3 * (1 - land));
+    const push = this.n === 1 ? prog(t, this.bar(15), this.ctx.end + 0.3, ease.inCubic) : prog(t, sh.t1 - 0.8, sh.t1, ease.inCubic);
+    const d = lerp(4.2, radii[radii.length - 1]! * 1.55, pull) * P * (1 - 0.8 * push) * (1 + 0.3 * (1 - land));
     const tgt = V(0, 0.25 * P, 0);
     const th = 0.1 * Math.sin((t - sh.t0) * 0.5) - 0.25 * (1 - land);
     aim(cam, V(Math.sin(th) * d, tgt.y - 0.12 * d, Math.cos(th) * d), tgt, 0.25 * (t - sh.t0) * 0.3 + 0.4 * (1 - land) + 0.6 * push);
     cam.fov = 54 + 6 * this.kick + 20 * push;
-    this.flash = Math.max(this.flash, 0.6 * push * push);
+    // the push ends in the light of their joined hands
+    this.flares.glow(gripW, L.join, 2.5 * push * push, P * (0.2 + 1.5 * push * push), 1, 3);
     if (this.n === 3) this.sun(V(0, 0.3, -1).multiplyScalar(2200), 0.6 + 0.2 * this.kick);
-    else this.showGalaxy(V(10 * P, -20 * P, -90 * P), 60 * P, V(0.2, 1, 0.6), t * 0.02);
-    this.chopBursts(t, sh, (_tc, k, i) => ({ c: gripW.clone().add(V((hash(i, 3) - 0.5) * 8 * P, (hash(i, 4) - 0.5) * 6 * P, 0)), n: V(0, 0, 1), R: (2 + k) * P }));
+    this.chopBursts(t, sh, (_tc, k) => ({ c: gripW.clone(), n: V(0, 0, 1), R: (5 + 3 * k) * P }));
   }
 
   /** Drop 3 opens: the sun rises over the Earth's limb and people rise from it as golden stars. */
   private earthShot(t: number, sh: Shot) {
     const L = this.look, cam = this.st.cam, a = this.ctx.audio;
     const beat = a.beatAt(t), bars = this.bars(t, sh.t0), lt = t - sh.t0;
-    const R = 6.371 * 30;
-    this.useEarth(R, V(0, 0.08, -1), 1);
+    const R = 420, h0 = 55, dip = Math.acos(R / (R + h0));
     const land = this.land(t, sh, 0.8);
-    // low over the limb, pushing forward toward the sunrise
-    const h = lerp(26, 18, prog(t, sh.t0, sh.t1)) + 12 * (1 - land);
-    const pos = V(0, h, -lt * 4);
-    const look = V(0.05 * Math.sin(lt * 0.4), -0.05 + 0.08 * (1 - land), -1);
-    aim(cam, pos, pos.clone().add(look), 0.05 * Math.sin(lt * 0.7) - 0.15 * (1 - land));
+    // high over the limb, drifting toward the sunrise; the horizon a little below the middle of the frame
+    const pos = V(0, h0 + 10 * (1 - land), -lt * 5);
+    const pitch = -dip + 7 * DEG - 0.12 * (1 - land) + 0.03 * Math.sin(lt * 0.5);
+    aim(cam, pos, pos.clone().add(V(0.04 * Math.sin(lt * 0.4), Math.sin(pitch), -Math.cos(pitch))), 0.05 * Math.sin(lt * 0.7) - 0.18 * (1 - land));
     cam.fov = 58 + 5 * this.kick;
-    const sunDir = V(0.0, 0.06 + 0.02 * prog(t, sh.t0, sh.t1), -1).normalize();
-    this.sun(sunDir.clone().multiplyScalar(2400), (0.6 + 0.6 * smoothstep(sh.t0 - 0.3, sh.t0 + 0.4, t)) * (1 + 0.2 * this.kick));
-    // people rise from the lit Earth: each one a point of light at first, unfolding into a dancing star-figure
+    const sunDir = V(0.08, Math.sin(-dip + (4 + 1.2 * lt) * DEG), -1).normalize();
+    this.useEarth(R, sunDir, 1, 1, 0.45);
+    this.sun(sunDir.clone().multiplyScalar(2400), (0.55 + 0.45 * smoothstep(sh.t0 - 0.3, sh.t0 + 0.4, t)) * (1 + 0.2 * this.kick));
+    // people rise from the lit Earth: each a point of light at first, unfolding into a dancing star-figure
     const style = [STARJUMP, 0][Math.floor(Math.max(0, bars) * 2) % 2]!;
-    for (let i = 0; i < 70; i++) {
-      const tb = sh.t0 - 2.5 + hash(i, 1) * 4.5, age = t - tb;
+    this.risers(t, beat, { n: 64, t0: sh.t0 - 3, span: sh.t1 - sh.t0 + 2.2, R, from: V(0, h0, 0), speed: 9, scale: 2.6, style, k: 0.85 + 0.8 * this.kick, seed: 3, dmin: 45, dmax: 230 });
+    this.chopBursts(t, sh, (_tc, k, i) => ({ c: V((hash(i, 8) - 0.5) * 60, h0 + 10 + hash(i, 9) * 30, pos.z - 90 - hash(i, 10) * 60), n: V(0, 0.3, 1), R: 24 + 12 * k }));
+  }
+
+  /**
+   * People rising from the Earth (radius R, top at y = 0): born at random times in [t0, t0 + span] on the
+   * surface ahead of `from` (dmin..dmax away), a point of light that rises and unfolds into a dancer.
+   */
+  private risers(t: number, beat: number, o: { n: number; t0: number; span: number; R: number; from: THREE.Vector3; speed: number; scale: number; style: number; k: number; seed: number; dmin: number; dmax: number; energy?: number }) {
+    const L = this.look;
+    for (let i = 0; i < o.n; i++) {
+      const hs = (k: number) => hash(i, o.seed, k);
+      const tb = o.t0 + hs(1) * o.span, age = t - tb;
       if (age < 0) continue;
-      const x = (hash(i, 2) - 0.5) * 140, z0 = -20 - hash(i, 3) * 160 - lt * 4 * 0;
-      const y = -2 + age * (5 + 6 * hash(i, 4)) + age * age * 1.2;
-      const ground = R - Math.sqrt(Math.max(0, R * R - x * x - z0 * z0)); // (the surface curves away)
-      const p = V(x, y - ground, z0);
-      const grow = smoothstep(0, 1.2, age), s = lerp(0.3, 2.4 + 1.6 * hash(i, 5), grow);
-      const pose = this.bank.get(i % 2, beat - (i % 3) * 0.08, style, grow, 0);
-      const fade = smoothstep(0, 0.3, age);
-      this.put(pose, p, frame(V(0, 1, 0), V(-x * 0.2, 0, pos.z - z0)), s, i % 2 === 1, { star: L.star, line: L.line, k: fade * (0.8 + 0.8 * this.kick), draw: grow });
+      const d = o.dmin + (o.dmax - o.dmin) * Math.sqrt(hs(2)), az = (hs(3) - 0.5) * 1.5;
+      const x = o.from.x + Math.sin(az) * d, z = o.from.z - Math.cos(az) * d;
+      const ground = -(o.R - Math.sqrt(Math.max(0, o.R * o.R - x * x - z * z)));
+      const v = o.speed * (0.7 + 0.6 * hs(4));
+      const p = V(x + noise1(t * 0.3, i) * 2, ground + age * v + 0.15 * v * age * age, z);
+      const grow = smoothstep(0.15, 1.6, age);
+      const s = lerp(0.3, o.scale * (0.75 + 0.5 * hs(5)) * (0.6 + d / o.dmax), grow);
+      const fade = smoothstep(0, 0.35, age);
+      // the light it was born as, bright at first
+      this.figs.star(V(p.x, p.y + 0.2 * s, p.z), L.star, fade * (1.6 * (1 - grow) + 0.2) * o.k, (0.25 + 0.4 * (1 - grow)) * (1 + d / 80));
+      if (grow <= 0.01) continue;
+      const pose = this.bank.get(i % 2, beat - (i % 3) * 0.1, o.style, o.energy ?? 1, 0);
+      const up = V(noise1(t * 0.2, i + 9) * 0.25, 1, noise1(t * 0.2, i + 19) * 0.25);
+      this.put(pose, p, frame(up, V(o.from.x - x, 0, o.from.z - z + 1e-3)), s, i % 2 === 1, { star: L.star, line: L.line, k: fade * o.k, draw: grow });
     }
-    this.chopBursts(t, sh, (_tc, k, i) => ({ c: V((hash(i, 8) - 0.5) * 60, 18 + hash(i, 9) * 20, pos.z - 60 - hash(i, 10) * 50), n: V(0, 0.3, 1), R: 18 + 10 * k }));
   }
 
   /** The Earth below (radius R, top of the sphere at y = 0) with the sun toward `sun` and dawn `dawn`. */
-  private useEarth(R: number, sun: THREE.Vector3, dawn: number, cityGain = 1) {
+  private useEarth(R: number, sun: THREE.Vector3, dawn: number, cityGain = 1, air = 1) {
     const e = this.earth;
     e.visible = true;
     e.scale.setScalar(R / e.radius);
     e.position.set(0, -R, 0);
-    // turn it so lit Europe sits under us, the terminator ahead
+    // (turned so lit cities sit under us)
     e.rotation.set(0.9, -0.2, 0.1);
     const su = e.surface.material.uniforms, au = e.air.material.uniforms;
     (su.sun!.value as THREE.Vector3).copy(sun).normalize();
     su.dawn!.value = dawn;
     su.cityGain!.value = cityGain;
     (au.sun!.value as THREE.Vector3).copy(sun).normalize();
-    au.dawn!.value = dawn;
+    au.dawn!.value = dawn * 0.6;
+    au.k!.value = air;
+    // (a thinner shell than the Earth's own: seen this close, 3.5% of the radius reads as a thick band)
+    e.air.scale.setScalar(1.012 / 1.035);
     e.time = this.tNow;
   }
 
-  /** Break: floating above the night Earth among slow dancers. */
+  /** Break: floating above the night Earth; lights rise from the cities and unfold into slow dancers. */
   private float(t: number, sh: Shot) {
-    const L = this.look, cam = this.st.cam, a = this.ctx.audio;
+    const cam = this.st.cam, a = this.ctx.audio;
     const lt = t - sh.t0, beat = a.beatAt(t) / 2; // half time
-    const R = 6.371 * 25;
-    this.useEarth(R, V(1, -0.2, 0.3), 0, 0.9);
-    const pos = V(Math.sin(lt * 0.1) * 4, 34 + lt * 1.2, -lt * 3);
-    const look = V(0.1 * Math.sin(lt * 0.25), -0.16 + 0.03 * Math.sin(lt * 0.4), -1);
-    aim(cam, pos, pos.clone().add(look), 0.06 * Math.sin(lt * 0.3) - 0.1);
-    cam.fov = 52;
-    this.floaters(t, beat, V(0, 40, -40), 1, 0.45);
-    this.chopBursts(t, sh, (_tc, k, i) => ({ c: V((hash(i, 8) - 0.5) * 50, 38 + hash(i, 9) * 22, -50 - lt * 3 - hash(i, 10) * 40), n: V(0, 0, 1), R: 7 + 6 * k }), 0.5);
+    const R = 420, h0 = 45, dip = Math.acos(R / (R + h0));
+    this.useEarth(R, V(1, -0.3, 0.2), 0, 0.8, 0.4);
+    const pos = V(Math.sin(lt * 0.1) * 3, h0 + lt * 1.5, -lt * 3);
+    const pitch = lerp(-dip - 10 * DEG, -dip + 9 * DEG, prog(t, sh.t0 - 0.5, sh.t1, ease.inOutQuad));
+    aim(cam, pos, pos.clone().add(V(0.08 * Math.sin(lt * 0.25), Math.sin(pitch), -Math.cos(pitch))), 0.06 * Math.sin(lt * 0.3) - 0.08);
+    cam.fov = 54;
+    this.risers(t, beat, { n: 56, t0: sh.t0 - 9, span: sh.t1 - sh.t0 + 9, R, from: V(0, h0, 0), speed: 3.4, scale: 4.8, style: bars2(this.bars(t, sh.t0), [1, 0]), k: 0.95, seed: 5, dmin: 22, dmax: 190, energy: 0.5 });
+    this.chopBursts(t, sh, (_tc, k, i) => ({ c: V((hash(i, 8) - 0.5) * 60, h0 + 10 + hash(i, 9) * 20, pos.z - 60 - hash(i, 10) * 40), n: V(0, 0.4, 1), R: 10 + 8 * k }), 0.5);
   }
 
-  /** A loose cloud of slow, floating dancers round `c`. */
-  private floaters(t: number, beat: number, c: THREE.Vector3, spread: number, energy: number, k = 1) {
-    const L = this.look;
-    const style = [1, 0][Math.floor(this.bars(t, this.ctx.start) / 4) % 2]!;
-    for (let i = 0; i < 44; i++) {
-      const p = V((hash(i, 1) - 0.5) * 110, (hash(i, 2) - 0.5) * 50, (hash(i, 3) - 0.5) * 140).multiplyScalar(spread).add(c);
-      p.y += Math.sin(t * 0.4 + i) * 1.5 + (t - this.ctx.start) * 0.6 * hash(i, 4);
-      const up = V(noise1(t * 0.1, i) * 0.6, 1, noise1(t * 0.1, i + 50) * 0.4);
-      const pose = this.bank.get(i % 2, beat - (i % 3) * 0.1, style, energy, 0);
-      this.put(pose, p, frame(up, V(-p.x * 0.01, 0, 1)), 1.6 + 1.6 * hash(i, 5), i % 2 === 1, { star: L.star, line: L.line, k: k * (0.75 + 0.3 * Math.sin(t * 0.7 + i)) });
-    }
-  }
-
-  /** Break: a slow orbit round two dancers facing each other, the others floating round them. */
+  /** Break: high above the Earth, two of them slow-dance facing each other; the others float up round them. */
   private duet(t: number, sh: Shot) {
     const L = this.look, cam = this.st.cam, a = this.ctx.audio;
-    const lt = t - sh.t0, beat = a.beatAt(t) / 2, P = 3.2;
-    this.posePair(beat, 1.5, 0, V(0, 0.3, 0.2), V(0, 0, 0), ID, P, [1, 1], 0.4, 0.5, 0.9);
-    this.figs.figure(this.jA, P, { star: L.star, line: L.line, k: 1.1 });
-    this.figs.figure(this.jB, P, { star: L.star, line: L.line, k: 1.1 });
-    this.floaters(t, beat, V(0, 0, -10), 0.75, 0.45, 0.85);
-    const th = -0.5 + lt * 0.12, d = 15 - lt * 0.5;
-    aim(cam, V(Math.sin(th) * d, -2 + lt * 0.3, Math.cos(th) * d), V(0, 0.4 * P, 0), 0.08 * Math.sin(lt * 0.5));
+    const lt = t - sh.t0, beat = a.beatAt(t) / 2, P = 5;
+    const R = 420, C = V(0, 55, -40);
+    this.useEarth(R, V(1, -0.3, 0.2), 0, 0.8, 0.4);
+    const sway = Math.sin(beat * Math.PI * 0.5);
+    this.posePair(beat, 1.35 - 0.1 * prog(t, sh.t0, sh.t1), 0, V(0, 0.3, 0.2), C.clone().add(V(0, 0.4 * sway, 0)), new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), 0.06 * sway), P, [1, 1], 0.35, 0.45, 0.95);
+    this.figs.figure(this.jA, P, { star: L.star, line: L.line, k: 1.2 });
+    this.figs.figure(this.jB, P, { star: L.star, line: L.line, k: 1.2 });
+    this.risers(t, beat, { n: 40, t0: sh.t0 - 12, span: sh.t1 - sh.t0 + 12, R, from: C.clone().setY(40), speed: 3.2, scale: 4, style: 1, k: 0.75, seed: 6, dmin: 30, dmax: 170, energy: 0.5 });
+    // a slow orbit, a little above them, the Earth's limb curving behind
+    const th = -0.55 + lt * 0.13, d = 20 - lt * 0.8;
+    const pos = C.clone().add(V(Math.sin(th) * d, 6.5 - lt * 0.4, Math.cos(th) * d));
+    aim(cam, pos, C.clone().add(V(0, 0.35 * P, 0)), 0.06 * Math.sin(lt * 0.5));
     cam.fov = 50;
-    this.showGalaxy(V(-300, 200, -1400), 900, V(0.4, 1, 0.6), t * 0.02);
-    this.chopBursts(t, sh, (_tc, k) => ({ c: V(0, 0.4 * P, 0), n: V(Math.sin(th), 0, Math.cos(th)), R: (3 + 2 * k) * P }), 0.6);
+    this.chopBursts(t, sh, (_tc, k) => ({ c: C.clone().add(V(0, 0.4 * P, 0)), n: pos.clone().sub(C), R: (4 + 2 * k) * P }), 0.6);
   }
 
   /** Break → bridge: the camera tilts up and rises faster and faster toward a bright point in deep blue. */
@@ -785,32 +797,37 @@ export default class Cosmos extends Scene {
     const L = this.look, cam = this.st.cam, a = this.ctx.audio;
     const lt = t - sh.t0, beat = a.beatAt(t) / 2;
     const tEnd = this.ctx.end;
-    const tilt = prog(t, sh.t0, tEnd - 0.6, ease.inOutCubic);
-    // the bright point: where the zoom into the bridge is centred (uv 0.5, 0.62: 7° above the frame centre)
-    const pitch = lerp(0.1, 1.25, tilt);
+    const R = 420, C = V(0, 55, -40);
+    const tilt = prog(t, sh.t0, tEnd - 0.5, ease.inOutCubic);
+    const pitch = lerp(-0.25, 1.2, tilt);
     const fwd = V(0, Math.sin(pitch), -Math.cos(pitch));
-    const { s: climb, v } = this.travel(t, sh.t0, 0, 0);
-    void climb; void v;
-    const speed = 4 + 70 * ease.inCubic(prog(t, sh.t0 + 1, tEnd + 0.4));
-    const dist = 4 * (t - sh.t0) + 70 / 4 * Math.pow(Math.max(0, prog(t, sh.t0 + 1, tEnd + 0.4)), 4) * (tEnd + 0.4 - sh.t0 - 1);
-    const pos = V(0, 10 + dist * 0.9, -dist * 0.4);
-    aim(cam, pos, pos.clone().add(fwd), 0.1 * Math.sin(lt * 0.4) * (1 - tilt));
-    cam.fov = 52 + 6 * ease.inCubic(prog(t, tEnd - 1.5, tEnd + 0.4));
-    const right = V(1, 0, 0), upv = V().crossVectors(right, fwd).normalize();
-    const pt = fwd.clone().applyAxisAngle(right, 7.1 * DEG);
-    void upv;
-    const glow = smoothstep(sh.t0 + 0.5, tEnd + 0.4, t);
+    // climbing, faster and faster (closed form: a steady drift plus a quartic surge)
+    const T1 = tEnd + 0.45 - sh.t0, u = clamp(lt / T1);
+    const dist = 3 * lt + 180 * Math.pow(u, 5);
+    const speed = 3 + (900 / T1) * Math.pow(u, 4);
+    const pos = C.clone().add(V(4, 6 + dist, 22 - dist * 0.25));
+    aim(cam, pos, pos.clone().add(fwd), 0.12 * Math.sin(lt * 0.4) * (1 - tilt));
+    cam.fov = 52 + 6 * ease.inCubic(prog(t, tEnd - 1.5, tEnd + 0.45));
+    if (tilt < 0.7) this.useEarth(R, V(1, -0.3, 0.2), 0, 0.8, 0.4);
+    // the bright point, where the zoom into the bridge is centred (uv 0.5, 0.62: above the frame centre)
+    const ang = Math.atan(0.24 * Math.tan((cam.fov / 2) * DEG));
+    const pt = fwd.clone().applyAxisAngle(V(1, 0, 0), ang);
+    const glow = smoothstep(sh.t0 + 0.3, tEnd + 0.45, t);
     const pw = pos.clone().addScaledVector(pt, 1800);
-    this.flares.add(pw, col('#eef3ff', 3), 0.3 + 1.6 * glow, 18 + 50 * glow);
-    this.flares.add(pw, L.accent, 0.4 + 0.8 * glow, 200 + 500 * glow, 1, 3);
-    this.flares.add(pw, col('#dfe6ff', 1.5), glow * 0.8, 120, 12, 9);
-    this.skyGlow(pt, col('blue', 0.25).multiplyScalar(glow));
-    // the dancers stay behind (below) as we rise
-    this.floaters(t, beat, V(0, 0, -10), 0.9, 0.45, 1 - 0.6 * tilt);
+    this.flares.glow(pw, col('#eef3ff', 3), 0.4 + 1.6 * glow, 8 + 14 * glow);
+    this.flares.glow(pw, L.accent, 0.25 + 0.5 * glow, 60 + 220 * glow, 1, 4);
+    this.flares.glow(pw, col('#dfe6ff', 1.5), glow * 0.2, 120, 10, 6);
+    this.skyGlow(pt, col('blue', 0.3).multiplyScalar(glow));
+    // the two and the others stay below as we rise
+    const P = 5, sway = Math.sin(beat * Math.PI * 0.5);
+    this.posePair(beat, 1.2, 0, V(0, 0.3, 0.2), C.clone().add(V(0, 0.4 * sway, 0)), ID, P, [1, 1], 0.35, 0.45, 0.95);
+    this.figs.figure(this.jA, P, { star: L.star, line: L.line, k: 1.1 });
+    this.figs.figure(this.jB, P, { star: L.star, line: L.line, k: 1.1 });
+    this.risers(t, beat, { n: 40, t0: sh.t0 - 14, span: tEnd - sh.t0 + 14, R, from: C.clone().setY(40), speed: 3.2, scale: 4, style: 1, k: 0.75, seed: 6, dmin: 30, dmax: 170, energy: 0.5 });
     // stars begin to stream past
-    this.warpStreaks(dist * 6, speed * 6, pt.clone().negate(), smoothstep(sh.t0 + 0.8, sh.t0 + 2.5, t));
-    this.chopBursts(t, sh, (_tc, k) => ({ c: pos.clone().addScaledVector(pt, 120), n: pt, R: 30 + 20 * k }), 0.8);
-    return { exposure: 1 + 0.15 * glow };
+    this.warpStreaks(dist * 4, speed * 4, pt.clone().negate(), smoothstep(sh.t0 + 0.5, sh.t0 + 2.2, t));
+    this.chopBursts(t, sh, (_tc, k) => ({ c: pos.clone().addScaledVector(pt, 140), n: pt, R: 30 + 20 * k }), 0.7);
+    return { exposure: 1 + 0.12 * glow };
   }
 
   /**
@@ -889,8 +906,5 @@ export default class Cosmos extends Scene {
   }
 }
 
-/** lib/people `dance` (re-exported here so the pair's bodies use the same steps as the crowd). */
-import { dance as danceLib } from '../lib/people';
-function dancePair(fig: RealFigure, beat: number, style: number, energy: number, seed: number) { return danceLib(fig, beat, style, energy, seed); }
 /** The step for this point of a shot: a new one every two bars. */
 function bars2(bars: number, styles: number[]) { return styles[Math.floor(Math.max(0, bars) / 2) % styles.length]!; }

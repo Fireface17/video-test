@@ -110,7 +110,7 @@ export function galaxy(n: number, seed: number, arms = 2) {
       k = (0.25 + Math.pow(r(), 3) * 1.2) * (1.1 - 0.5 * u);
       c.setRGB(1, 1, 1);
     }
-    p.set(i, x, y, z, c, k, 0.004 + Math.pow(r(), 5) * 0.012);
+    p.set(i, x, y, z, c, k * 0.8, 0.0018 + Math.pow(r(), 6) * 0.006);
   }
   p.commit();
   return p;

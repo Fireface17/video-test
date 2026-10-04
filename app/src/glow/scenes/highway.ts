@@ -33,6 +33,7 @@ type Shot = 'dive' | 'gauge' | 'boards' | 'mirror' | 'sun' | 'station' | 'pylon'
 interface Cam { pos: THREE.Vector3; yaw: number; pitch: number; roll: number; fov: number }
 interface WordRow { words: number[]; u: number; len: number }
 
+const DBG = (): Record<string, boolean> => (globalThis as any).__HW ?? {};
 export default class Highway extends Scene {
   scene = new THREE.Scene();
   cam = new THREE.PerspectiveCamera(50, 16 / 9, 0.05, 12000);
@@ -89,8 +90,8 @@ export default class Highway extends Scene {
     T.whip = nearestBeat(L2.words[3]!.start);
     T.l3 = beatBefore(L3.start);
     T.pylon = nextDown(L3.words[2]!.start - 0.1);
-    T.flare = nearestBeat(this.S1 - 0.42);
-    T.reveal = (() => { const d = this.downs.find((x) => x > L3.words[4]!.start + 0.2); return d && T.flare - d > 0.5 ? d : T.flare; })();
+    T.flare = Math.min(this.downs.find((x) => x > L3.words[4]!.start + 0.2) ?? this.S1 - 0.4, nearestBeat(this.S1 - 0.38));
+    T.reveal = T.flare;
 
     // ---- world
     this.tex = bakeTextures(renderer);
@@ -330,7 +331,7 @@ export default class Highway extends Scene {
       }
       case 'flare': {
         // behind the pylon, looking into the sun: the camera slides so the sun bursts past the panel's edge
-        const p = prog(t, T.flare, this.S1 + 0.05, ease.inOutCubic);
+        const p = prog(t, T.flare, this.S1 - 0.04, ease.inOutCubic);
         const sd = this.sunDir(t);
         const pyl = new THREE.Vector3(18.2, 0, -this.stationU);
         const side = new THREE.Vector3().crossVectors(sd, new THREE.Vector3(0, 1, 0)).normalize();
@@ -365,16 +366,18 @@ export default class Highway extends Scene {
 
   render(f: Frame, out: THREE.WebGLRenderTarget) {
     const t = f.t, { renderer, audio } = this.ctx;
+    if (DBG().empty) { renderer.setRenderTarget(out); renderer.setClearColor(0, 1); renderer.clear(); return {}; }
+
     const T = this.T;
     const shot = this.shotAt(t);
     const L2 = this.L[2]!, L3 = this.L[3]!;
     const ws0 = this.L[0]!.words;
 
     // ---- dawn and the sun (behind us: +z)
-    const tSun = L2.words[2]!.start;
+    const tSun = L2.words[2]!.start, tUp = L2.words[4]!.start;
     const dawn = clamp(0.16 * prog(t, T.l2 - 0.4, tSun, ease.inOutQuad) + 0.44 * prog(t, tSun, L2.end, ease.inOutCubic) + 0.4 * prog(t, L2.end, this.S1, ease.linear));
     const sunDir = this.sunDir(t);
-    const sunK = clamp(0.25 + 0.75 * prog(t, tSun - 0.3, tUp, ease.inOutQuad)) * (t > T.l2 - 0.5 ? 1 : 0) + 3.5 * prog(t, T.flare + 0.15, this.W1, ease.inQuad);
+    const sunK = clamp(0.25 + 0.75 * prog(t, tSun - 0.3, tUp, ease.inOutQuad)) * (t > T.l2 - 0.5 ? 1 : 0) + 2.0 * prog(t, T.flare + 0.15, this.W1, ease.inQuad);
 
     if (shot === 'gauge') return this.renderGauge(t, f, out);
 
@@ -426,7 +429,7 @@ export default class Highway extends Scene {
     } else HU.uPoolCol.value.setRGB(0, 0, 0);
 
     // ---- sun words
-    this.arc.visible = shot === 'sun' || shot === 'mirror' || shot === 'flare' || shot === 'reveal';
+    this.arc.visible = shot === 'sun' || shot === 'mirror';
     const arcCenter = (from: THREE.Vector3) => from.clone().add(new THREE.Vector3(sunDir.x, 0, sunDir.z).normalize().multiplyScalar(900));
     // ---- interior
     this.interior.visible = shot === 'mirror' || (shot === 'sun' && t < T.whip + 0.1);
@@ -456,14 +459,18 @@ export default class Highway extends Scene {
     this.road.u.reflK!.value = 1;
     const iv2 = this.interior.visible;
     this.interior.visible = false;
-    this.refl.render(renderer, this.hideFor(() => this.scene), this.cam);
+    if (!DBG().norefl) this.refl.render(renderer, this.hideFor(() => this.scene), this.cam); else this.hideFor(() => this.scene);
     this.unhide();
     this.sky.stars.visible = hideStars;
     this.interior.visible = iv2;
     renderer.setRenderTarget(out);
     renderer.setClearColor(0x000000, 1);
     renderer.clear(true, true, true);
+    { const D = DBG(); if (D.noland) this.land.visible = false; if (D.nocity) this.city.visible = false; if (D.notraffic) this.traffic.visible = false;
+      if (D.noroad) this.road.visible = false; if (D.nolamps) this.lamps.visible = false; if (D.nofurn) this.furn.visible = false; if (D.nosky) this.sky.visible = false;
+      if (D.notrees) this.land.trees.visible = false; if (D.nocones) this.lamps.cones.visible = false; }
     renderer.render(this.scene, this.cam);
+    this.land.visible = this.city.visible = this.traffic.visible = this.road.visible = this.lamps.visible = this.furn.visible = this.sky.visible = this.land.trees.visible = this.lamps.cones.visible = true;
 
     // ---- the sun's lens flare (once it is up and in view)
     let flareK = 0;

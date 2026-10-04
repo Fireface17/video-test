@@ -134,7 +134,7 @@ export function bakeTextures(renderer: THREE.WebGLRenderer): HwTextures {
       float tone = 0.5 + 0.22 * n1 + 0.08 * n2 - 0.18 * rep + 0.1 * wp;
       // puddles: low spots, mostly along the wheel paths and the edges
       float edge = smoothstep(10.6, 11.9, ax) + smoothstep(1.6, 0.9, ax);
-      float wetv = n1 * 0.9 + n2 * 0.35 + wp * 0.45 + edge * 0.5;
+      float wetv = n1 * 0.9 + n2 * 0.45 + wp * 0.15 + edge * 0.5;
       float puddle = smoothstep(0.18, 0.42, wetv);
       // sealed cracks: thin wiggly tar lines along cell borders
       vec4 cw = pworley(vUv * vec2(6.0, 24.0) + vec2(pnoise(vUv * vec2(24.0, 96.0), vec2(24.0, 96.0)) * 0.12, 0.0), vec2(6.0, 24.0), 0.85);

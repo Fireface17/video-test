@@ -176,7 +176,7 @@ export class RoadSurface extends THREE.Mesh {
           float cosV = clamp(dot(vec3(0.0, 1.0, 0.0), V), 0.0, 1.0);
           float fres = 0.02 + 0.98 * pow(1.0 - cosV, 5.0);
           float fresR = 0.03 + 0.97 * pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 5.0);
-          vec3 refl = mix(rBlur * (0.55 + 0.45 * damp), rSharp, puddle) * mix(fresR, fres, puddle);
+          vec3 refl = mix(rBlur * (0.7 + 0.3 * damp), mix(rBlur, rSharp, 0.6), puddle) * mix(fresR, fres, puddle * 0.7);
           refl *= (1.0 - paint * 0.7) * mix(0.35, 1.0, max(damp, puddle)) * reflK * mix(0.04, 1.0, asph);
           c += refl;
           c = hwFog(c, P, cameraPosition);

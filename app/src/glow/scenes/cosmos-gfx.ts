@@ -116,7 +116,8 @@ export class Flares extends THREE.Mesh {
         void main() {
           vec4 mv = modelViewMatrix * vec4(iPos, 1.0);
           if (mv.z > -0.1 || iShape.x <= 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vC = vec3(0.0); vP = vec2(0.0); vF = 1.0; return; }
-          mv.xy += position.xy * vec2(iShape.x * iShape.y, iShape.x);
+          // (stretched: a thin anamorphic streak, as wide as size × stretch)
+          mv.xy += position.xy * vec2(iShape.x * iShape.y, iShape.x * min(1.0, 1.4 / iShape.y));
           vC = iCol; vP = position.xy; vF = iShape.z;
           gl_Position = projectionMatrix * mv;
         }`,
@@ -138,7 +139,7 @@ export class Flares extends THREE.Mesh {
 
   begin() { this.n = 0; }
 
-  add(p: THREE.Vector3Like, c: THREE.Color, k: number, size: number, stretch = 1, fall = 5) {
+  glow(p: THREE.Vector3Like, c: THREE.Color, k: number, size: number, stretch = 1, fall = 5) {
     if (this.n >= this.cap || k <= 0.001 || size <= 0) return;
     const i = this.n++;
     this.P.set([p.x, p.y, p.z], i * 3);
@@ -256,7 +257,7 @@ function step(fig: RealFigure, beat: number, style: number, energy: number, seed
   const e = energy;
   const arm = (i: number, raise: number, fwd: number, elbow: number, twist = 0, toward = new THREE.Vector3(-(i ? 1 : -1) * 0.4, 0.1, 1)) => {
     const s = i ? 1 : -1, u = limbDir(s, raise, fwd);
-    fig.setArm(i, u, bend(u, toward.clone().setX(toward.x), elbow), twist);
+    fig.setArm(i, u, bend(u, toward, elbow), twist);
   };
   const leg = (i: number, spread: number, fwd: number, knee: number) => {
     const s = i ? 1 : -1, th = limbDir(s, spread, fwd);
@@ -279,12 +280,14 @@ function step(fig: RealFigure, beat: number, style: number, energy: number, seed
     fig.setSpine(-0.1 * x, 0.03 * sw, -0.15 - 0.15 * x, 0);
     bounce = 0.22 * Math.sin(Math.PI * clamp(1 - ph * 1.6)) * e;
   } else {
-    // HOLD: arms out to the sides at shoulder height, as if holding the neighbours' hands; a sway on the beat
+    // HOLD: holding the neighbours' hands, arms open to the sides; the joined hands swing up together on
+    // every other beat (a crowd's "hands up"), a sway and a knee bounce in between
     const o = open;
-    for (const i of [0, 1]) arm(i, 0.45 + 1.15 * o + 0.06 * sw * (i ? 1 : -1), 0.12, 0.25 - 0.1 * o, 0, new THREE.Vector3(-(i ? 1 : -1) * 0.2, 0.6, 1));
-    for (const i of [0, 1]) leg(i, 0.08, 0.03, 0.12 * hit * e);
-    fig.setSpine(-0.05, 0.1 * sw * e, -0.2, 0.12 * sw * e);
-    bounce = -0.04 * hit * e;
+    const up = Math.pow(Math.max(0, Math.cos((beat / 2 - Math.floor(beat / 2)) * Math.PI * 2)), 3) * e; // 1 on even beats
+    for (const i of [0, 1]) arm(i, 0.35 + o * (0.85 + 0.75 * up) + 0.07 * sw * (i ? 1 : -1), 0.15, 0.45 - 0.25 * o, 0, new THREE.Vector3(-(i ? 1 : -1) * 0.3, 0.7, 1));
+    for (const i of [0, 1]) leg(i, 0.07 + 0.02 * (i ? sw : -sw), 0.04, 0.3 * hit * e);
+    fig.setSpine(-0.08 - 0.08 * up, 0.12 * sw * e, -0.15 - 0.15 * up, 0.12 * sw * e);
+    bounce = -0.07 * hit * e + 0.04 * up;
   }
   for (const i of [0, 1]) fig.setHand(i, style === CLAP ? 0.05 : 0.2);
   return bounce;
