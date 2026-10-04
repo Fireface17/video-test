@@ -22,7 +22,7 @@ const FOV = 50;
 const DEG = Math.PI / 180;
 const TAU = Math.PI * 2;
 const TEXT_DIST = 4.0; // the lyric line floats this far in front of the camera
-const TEXT_SIZE = 0.125;
+const TEXT_SIZE = 0.19;
 const N_STARS = 4600, STAR_R0 = 4.5, STAR_R1 = 80, STAR_Z0 = -215, STAR_LEN = 265; // flying-frame z in [-215, 50]
 const N_FAR = 1500;
 const SPARK_DT = 0.016, SPARK_LIFE = 1.0, SPARK_DRAG = 7; // sparks shed by the bodies drift back at 7 m/s
@@ -198,12 +198,12 @@ export default class Fall extends Scene {
     this.sparks.renderOrder = 3;
     S.add(this.sparks);
 
-    // lyrics: small neon script, one row, in the lower third; cool white first, gold for "golden"
+    // lyrics: neon script, one row, in the lower third; cool white first, gold for "golden"
     const cool = col('white').lerp(col('cyan'), 0.35).multiplyScalar(2.1);
     const goldC = col('gold', 2.4);
     L.forEach((line, i) => {
       const c = i < 2 ? cool : goldC;
-      const neon = new NeonLine(line, [line.words.map((_, k) => k)], { font: 'script', size: TEXT_SIZE, color: c, radius: TEXT_SIZE * 0.022 });
+      const neon = new NeonLine(line, [line.words.map((_, k) => k)], { font: 'script', size: TEXT_SIZE, color: c, radius: TEXT_SIZE * 0.026 });
       neon.visible = false;
       neon.renderOrder = 10;
       S.add(neon);
@@ -480,7 +480,7 @@ export default class Fall extends Scene {
       ly.neon.visible = vis;
       if (!vis) continue;
       const age = t - appear;
-      const p = new THREE.Vector3((-0.44 - 0.01 * age) * halfW + noise1(t * 0.3, 200 + ly.line.i) * 0.01, (-0.74 + 0.035 * age) * halfH, -TEXT_DIST).applyQuaternion(cb.q).add(cb.pos);
+      const p = new THREE.Vector3((-0.5 - 0.01 * age) * halfW + noise1(t * 0.3, 200 + ly.line.i) * 0.01, (-0.74 + 0.035 * age) * halfH, -TEXT_DIST).applyQuaternion(cb.q).add(cb.pos);
       ly.neon.position.copy(p);
       ly.neon.quaternion.copy(cb.q).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, noise1(t * 0.17, 220 + ly.line.i) * 0.06, noise1(t * 0.23, 230 + ly.line.i) * 0.01)));
       const fadeOut = ly.last ? 1 : 1 - smoothstep(ly.t1 + 0.15, gone, t);
