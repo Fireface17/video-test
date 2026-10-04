@@ -36,6 +36,8 @@ const GLYPHS: Record<string, string> = {
 const ORDER = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ.’ $';
 const NG = ORDER.length;
 
+let glyphCache: THREE.DataTexture | null = null;
+export function ledGlyphs() { return (glyphCache ??= glyphTexture()); }
 function glyphTexture() {
   const w = NG * 5, h = 7;
   const data = new Uint8Array(w * h * 4);
@@ -134,7 +136,7 @@ export class Station extends THREE.Group {
 
   constructor() {
     super();
-    const glyphs = glyphTexture();
+    const glyphs = ledGlyphs();
     // ---- pylon (at the group origin): legs, a tall panel, LED rows
     const steel = litMat({ color: C('#59616c', 0.45), rough: 0.5, metal: 0.6, spec: 0.7, grime: 0.5 });
     const PWd = 3.4, PHt = 6.8, base = 4.0;
@@ -186,6 +188,7 @@ export class Station extends THREE.Group {
       b.rotation.y = Math.PI;
       this.pylon.add(b);
     }
+    this.pylon.rotation.y = -0.75; // (the group turns +0.35: the panel faces the oncoming lanes)
     this.add(this.pylon);
 
     // ---- canopy, pumps, shop (behind the pylon, further from the road)
@@ -255,5 +258,45 @@ export class Station extends THREE.Group {
     HU.uPoolPos.value.copy(p);
     HU.uPoolCol.value.copy(C('#e6f2ff', 1.6 * k));
     HU.uPoolR.value = 16;
+  }
+}
+
+/**
+ * An overhead variable-message sign on a slim gantry: a black housing with an amber dot-matrix line and
+ * four amber beacons at its corners that flash alternately on the beat.
+ */
+export class VmsGantry extends THREE.Group {
+  row: LedRow;
+  beacons: THREE.Mesh[] = [];
+  constructor(text: string, steel: THREE.Material) {
+    super();
+    const n = text.length, cell = 0.78;
+    this.row = new LedRow(n, cell, C('#ffab2a', 2.4), ledGlyphs());
+    const pw = cell * n, ph = cell * 8 / 6;
+    const y = 6.6, x = 6.4;
+    this.row.position.set(x, y, 0.36);
+    this.row.setText(text);
+    const span0 = -0.4, span1 = 15.9;
+    this.add(new THREE.Mesh(merge([
+      boxAt(0.42, y + 1.2, 0.42, span0, (y + 1.2) / 2, 0), boxAt(0.42, y + 1.2, 0.42, span1, (y + 1.2) / 2, 0),
+      boxAt(span1 - span0, 0.3, 0.3, (span0 + span1) / 2, y + 1.15, 0), boxAt(span1 - span0, 0.2, 0.2, (span0 + span1) / 2, y + 0.35, -0.2),
+      boxAt(pw + 1.4, ph + 0.9, 0.6, x, y, 0),
+    ]), steel));
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(pw + 0.5, ph + 0.4), new THREE.MeshBasicMaterial({ color: C('#020203') }));
+    face.position.set(x, y, 0.33);
+    this.add(face, this.row);
+    for (const [bx, by] of [[-1, 1], [1, 1], [-1, -1], [1, -1]] as const) {
+      const b = new THREE.Mesh(new THREE.CircleGeometry(0.16, 20), new THREE.MeshBasicMaterial({ color: C('#ffa020', 0) }));
+      b.position.set(x + bx * (pw / 2 + 0.45), y + by * (ph / 2 + 0.15), 0.34);
+      this.add(b);
+      this.beacons.push(b);
+    }
+  }
+  /** Beacons: alternate pairs, `ph` = beat phase 0..1, k = on. */
+  flash(ph: number, k: number) {
+    this.beacons.forEach((b, i) => {
+      const on = (i === 0 || i === 3) === ph < 0.5 ? 1 : 0;
+      (b.material as THREE.MeshBasicMaterial).color.copy(C('#ffa020', 4 * on * k));
+    });
   }
 }

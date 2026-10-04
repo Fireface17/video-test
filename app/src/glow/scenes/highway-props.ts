@@ -5,7 +5,8 @@ import * as THREE from 'three';
 import type { Line } from '../../engine/lyrics';
 import { clamp, ease, prog } from '../../engine/util';
 import { displayTextGeometry, loadDisplayFont } from '../lib/fonts';
-import { glowMat } from './highway-common';
+import { HU, HW_GLSL, glowMat } from './highway-common';
+import { SKY_GLSL, type SkyU } from './highway-env';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 const C = (hex: string, k = 1) => new THREE.Color(hex).multiplyScalar(k);
@@ -16,19 +17,19 @@ const DEG = Math.PI / 180;
  * point (on the horizon), facing the camera; word i is born at the sun when sung and flies out to its slot.
  */
 export class SunArc extends THREE.Group {
-  words: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; slot: number; w: number }[] = [];
+  words: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; slot: number; w: number; lx: number }[] = [];
   halo: THREE.Mesh;
   R = 235;
   constructor(public line: Line) { super(); this.halo = new THREE.Mesh(); }
 
   async build() {
     const font = await loadDisplayFont('tiltneon');
-    const size = 50;
+    const size = 46;
     const geos = this.line.words.map((w) => displayTextGeometry(font, w.w.toUpperCase(), size, { tracking: 0.02 }));
     const widths = geos.map((g) => g.boundingBox!.max.x - g.boundingBox!.min.x);
     const gap = size * 0.55;
     const total = widths.reduce((a, b) => a + b, 0) + gap * (widths.length - 1);
-    this.R = total / (150 * DEG);
+    this.R = total / (140 * DEG);
     const R = this.R;
     const span = total / R; // radians of arc used
     let acc = 0;
@@ -39,7 +40,7 @@ export class SunArc extends THREE.Group {
       const mat = new THREE.MeshBasicMaterial({ color: C('#fff3e0', 0), transparent: true, depthWrite: false, fog: false });
       const mesh = new THREE.Mesh(g, mat);
       this.add(mesh);
-      this.words.push({ mesh, mat, slot, w: widths[i]! });
+      this.words.push({ mesh, mat, slot, w: widths[i]!, lx: mid - total / 2 });
     });
     this.halo = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), glowMat(C('#ffb35a', 1), { soft: 3.5 }));
     this.add(this.halo);
@@ -49,7 +50,7 @@ export class SunArc extends THREE.Group {
    * Pose at time t. `center` = world position of the arc centre, `cam` faces it; `rise` 0..1 global lift;
    * `k` overall brightness.
    */
-  update(t: number, center: THREE.Vector3, cam: THREE.Camera, k: number, mirror = false, size = 1) {
+  update(t: number, center: THREE.Vector3, cam: THREE.Camera, k: number, mirror = false, size = 1, line = false) {
     this.position.copy(center);
     this.quaternion.copy(cam.quaternion);
     this.scale.set(mirror ? -size : size, size, size);
@@ -59,10 +60,16 @@ export class SunArc extends THREE.Group {
       const p = prog(t, s, s + 0.7, ease.outExpo);
       const born = t >= s ? 1 : 0;
       // born just above the sun, flies out along its ray to the slot on the arc
-      const r = R * (0.22 + 0.78 * p);
-      const a = w.slot + (1 - p) * (w.slot > Math.PI / 2 ? 0.25 : -0.25);
-      w.mesh.position.set(Math.cos(a) * r, Math.sin(a) * r, 0);
-      w.mesh.rotation.z = a - Math.PI / 2;
+      if (line) {
+        // (the mirror's narrow view) a straight line just above the sun, rising out of it
+        w.mesh.position.set(w.lx, R * 0.1 * p - R * 0.05, 0);
+        w.mesh.rotation.z = 0;
+      } else {
+        const r = R * (0.22 + 0.78 * p);
+        const a = w.slot + (1 - p) * (w.slot > Math.PI / 2 ? 0.25 : -0.25);
+        w.mesh.position.set(Math.cos(a) * r, Math.sin(a) * r, 0);
+        w.mesh.rotation.z = a - Math.PI / 2;
+      }
       w.mesh.scale.setScalar(0.35 + 0.65 * p);
       const flash = Math.exp(-Math.max(0, t - s) / 0.18);
       w.mat.color.copy(C('#fff1dc', born * k * (1.25 + 2.5 * flash)));
@@ -132,4 +139,51 @@ export function sunElevation(t: number, tSun: number, tUp: number, tEnd: number)
   if (t < tSun) return -1.6 * DEG + 0.5 * DEG * prog(t, tSun - 1.2, tSun, ease.inOutQuad);
   const a = -1.1 * DEG + 1.6 * DEG * prog(t, tSun, tUp, ease.inOutCubic);
   return a + 2.2 * DEG * clamp((t - tUp) / Math.max(0.1, tEnd - tUp));
+}
+
+/**
+ * The bonnet of our car at the bottom of the POV frame: dark blue-black paint under a clearcoat that
+ * mirrors the sky and slides the streetlights over itself. Car space: x right, -z forward, the driver's eye
+ * at the origin.
+ */
+export class Hood extends THREE.Mesh {
+  constructor(skyU: SkyU) {
+    const g = new THREE.PlaneGeometry(1.95, 1.8, 24, 16);
+    g.rotateX(-Math.PI / 2);
+    const p = g.getAttribute('position') as THREE.BufferAttribute;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), z = p.getZ(i); // z in [-0.9, 0.9]
+      const f = (z + 0.9) / 1.8; // 0 at the windscreen, 1 at the nose (z grows toward the camera here)
+      const crown = -0.07 * Math.pow(x / 0.97, 2);
+      const fall = -0.2 * Math.pow(1 - f, 1.6);
+      const edge = -0.12 * Math.pow(Math.max(0, Math.abs(x) - 0.75) / 0.22, 2);
+      p.setY(i, crown + fall + edge);
+    }
+    g.computeVertexNormals();
+    g.translate(0, -0.24, -1.75);
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { ...HU, ...skyU },
+      vertexShader: /* glsl */ `varying vec3 vW; varying vec3 vN; varying vec2 vUv;
+        void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; vN = normalize(mat3(modelMatrix) * normal); vUv = uv; gl_Position = projectionMatrix * viewMatrix * w; }`,
+      fragmentShader: HW_GLSL + SKY_GLSL + /* glsl */ `
+        varying vec3 vW; varying vec3 vN; varying vec2 vUv;
+        void main() {
+          vec3 N = normalize(vN), V = normalize(cameraPosition - vW);
+          vec3 R = reflect(-V, N);
+          float fr = 0.04 + 0.96 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
+          vec3 env = skyCol(normalize(vec3(R.x, max(R.y, 0.02), R.z)));
+          vec3 spec;
+          vec3 diff = hwLight(vW, N, V, 0.07, 2.2, spec);
+          vec3 base = vec3(0.006, 0.008, 0.016);
+          // fine metallic flake
+          float fl = fract(sin(dot(floor(vUv * 900.0), vec2(12.9898, 78.233))) * 43758.5453);
+          vec3 c = base * diff * (0.8 + 0.4 * fl) + env * fr * 0.9 + spec * 0.6;
+          // the bonnet's edges fall off into shadow
+          c *= smoothstep(0.0, 0.08, vUv.x) * smoothstep(1.0, 0.92, vUv.x);
+          gl_FragColor = vec4(c, 1.0);
+        }`,
+    });
+    super(g, mat);
+    this.frustumCulled = false;
+  }
 }

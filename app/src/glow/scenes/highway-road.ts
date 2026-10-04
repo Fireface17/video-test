@@ -78,7 +78,7 @@ export class RoadSurface extends THREE.Mesh {
       wRect: { value: Array.from({ length: NWORDS }, () => new THREE.Vector4(0, -1e4, 0, -1e4)) },
       wAtlas: { value: Array.from({ length: NWORDS }, () => new THREE.Vector4()) },
       wState: { value: Array.from({ length: NWORDS }, () => new THREE.Vector4()) },
-      wet: { value: 1 }, reflK: { value: 1 }, studK: { value: 1 }, dbg: { value: 0 },
+      wet: { value: 1 }, reflK: { value: 1 }, studK: { value: 1 }, dbg: { value: 0 }, wBox: { value: new THREE.Vector4(0, 0, -1, -1) },
     };
     const mat = new THREE.ShaderMaterial({
       uniforms: u,
@@ -90,7 +90,7 @@ export class RoadSurface extends THREE.Mesh {
         uniform sampler2D tA, tN, tM, tR, tRB, tW;
         uniform mat4 texMat;
         uniform vec4 wRect[NW]; uniform vec4 wAtlas[NW]; uniform vec4 wState[NW];
-        uniform float wet, reflK, dbg;
+        uniform float wet, reflK, dbg; uniform vec4 wBox;
         varying vec3 vW;
         // box-filtered coverage of the stripe [c - hw, c + hw] over a pixel footprint fw
         float cov(float x, float fw, float c, float hw) { return clamp((min(x + 0.5 * fw, c + hw) - max(x - 0.5 * fw, c - hw)) / fw, 0.0, 1.0); }
@@ -105,35 +105,34 @@ export class RoadSurface extends THREE.Mesh {
           float fx = max(abs(dx.x) + abs(dy.x), 1e-4), fu = max(abs(dx.y) + abs(dy.y), 1e-4);
           float asph = cov(ax, fx, (0.3 + ${ROAD.asphalt.toFixed(2)}) * 0.5, (${ROAD.asphalt.toFixed(2)} - 0.3) * 0.5);
           // ---- textures
-          vec4 mac = texture2D(tM, vec2((x + 16.0) / 32.0, u / 128.0));
-          vec4 mac2 = texture2D(tM, vec2((x + 16.0) / 32.0 + 0.5, u / 311.0 + 0.37));
+          vec4 mac = vec4(0.5, 0.3, 0.8, 0.0);
+          if (dbg != 6.0) mac = texture2D(tM, vec2((x + 16.0) / 32.0, u / 128.0));
           vec2 d1 = xu / 1.6;
           vec2 d2 = mat2(0.8, -0.6, 0.6, 0.8) * xu / 0.71 + 0.31;
-          // detail fades out with distance (and is skipped where it cannot be seen)
-          vec4 a1 = vec4(0.32, 0.4, 0.6, 0.3), a2 = a1, n1 = vec4(0.5, 0.5, 1.0, 0.5), n2 = n1;
-          if (dist < 140.0) { a1 = texture2D(tA, d1); n1 = texture2D(tN, d1); }
-          if (dist < 22.0) { a2 = texture2D(tA, d2); n2 = texture2D(tN, d2); }
-          float tone = mac.r * 0.75 + mac2.r * 0.5 - 0.1;
+          // packed detail (albedo, roughness, normal xy); the fine layer only near the lens
+          vec4 a1 = vec4(0.3, 0.6, 0.5, 0.5), a2 = a1;
+          if (dist < 140.0 && dbg != 5.0) a1 = texture2D(tN, d1);
+          if (dist < 22.0 && dbg != 5.0) a2 = texture2D(tN, d2);
+          float tone = mac.r * 1.25 - 0.1;
           float alb = mix(a1.r, a2.r, 0.4) * (0.55 + 0.6 * tone) * 0.2;
-          float cavity = mix(n1.a, n2.a, 0.4);
-          vec3 tn = normalize(vec3((n1.xy * 2.0 - 1.0) + (n2.xy * 2.0 - 1.0) * 0.6, 1.0));
+          float cavity = 1.0 - mix(a1.g, a2.g, 0.4);
+          vec3 tn = normalize(vec3((a1.zw * 2.0 - 1.0) + (a2.zw * 2.0 - 1.0) * 0.6, 1.0));
           float crack = mac.a * asph;
           alb *= 1.0 - 0.75 * crack;
           // wetness: puddles in the low spots, water held in the cavities everywhere else
-          float puddle = clamp(max(mac.g, mac2.g * 0.8) * wet, 0.0, 1.0) * asph;
-          float damp = wet * mix(0.55, 1.0, 1.0 - cavity) * asph + 0.25 * wet * (1.0 - asph);
+          float puddle = clamp(mac.g * wet, 0.0, 1.0) * asph;
+          float damp = wet * mix(0.55, 1.0, cavity) * asph + 0.25 * wet * (1.0 - asph);
           // ---- markings
           float mk = 0.0;
           mk += cov(ax, fx, ${ROAD.inner.toFixed(2)}, 0.075) + cov(ax, fx, ${ROAD.outer.toFixed(2)}, 0.1);
           float dsh = dashCov(u + (x < 0.0 ? 5.0 : 0.0), fu);
           mk += (cov(ax, fx, ${(ROAD.inner + ROAD.lane).toFixed(2)}, 0.075) + cov(ax, fx, ${(ROAD.inner + 2 * ROAD.lane).toFixed(2)}, 0.075)) * dsh;
-          float wear = mix(a1.b, 1.0, 0.4) * mac.b;
+          float wear = mix(a1.g, 1.0, 0.4) * mac.b;
           float paintCov = smoothstep(0.32, 0.5, wear + 0.25 * fu);
           mk = clamp(mk, 0.0, 1.0) * paintCov;
           // ---- the lyric lettering (fresh thermoplastic, painted when the word is sung)
           float word = 0.0, wglow = 0.0;
-          for (int i = 0; i < NW; i++) {
-            if (dbg == 3.0) break;
+          if (x > wBox.x && x < wBox.z && u > wBox.y && u < wBox.w) for (int i = 0; i < NW; i++) {
             vec4 r = wRect[i];
             vec2 q = vec2((x - r.x) / (r.z - r.x), (u - r.y) / (r.w - r.y));
             if (q.x < 0.0 || q.x > 1.0 || q.y < 0.0 || q.y > 1.0) continue;
@@ -150,7 +149,7 @@ export class RoadSurface extends THREE.Mesh {
             word = max(word, c);
             wglow = max(wglow, c * (st.y + 2.2 * exp(-front * 14.0) * step(st.x, 1.0)));
           }
-          word *= smoothstep(0.25, 0.42, mix(a1.b, 1.0, 0.65) * (0.7 + 0.3 * mac.b) + 0.3 * fu);
+          word *= smoothstep(0.25, 0.42, mix(a1.g, 1.0, 0.65) * (0.7 + 0.3 * mac.b) + 0.3 * fu);
           // ---- surface
           float paint = max(mk, word);
           vec3 albedo = vec3(alb) * vec3(0.95, 0.97, 1.03);
@@ -159,7 +158,7 @@ export class RoadSurface extends THREE.Mesh {
           albedo = mix(verge, albedo, asph);
           albedo *= mix(1.0, 0.35, clamp(puddle * 0.8 + damp * 0.6, 0.0, 1.0)); // wet asphalt darkens
           albedo = mix(albedo, vec3(0.62, 0.62, 0.6), paint);
-          float rough = mix(mix(a1.b, a2.b, 0.4), 0.65, paint);
+          float rough = mix(mix(a1.g, a2.g, 0.4), 0.65, paint);
           // normal: bumpy aggregate, smoothed by the water film and flat in the puddles
           vec3 nb = normalize(mix(tn, vec3(0.0, 0.0, 1.0), clamp(puddle * 0.92 + damp * 0.35, 0.0, 1.0)));
           vec3 N = normalize(vec3(nb.x, nb.z, -nb.y));
@@ -176,8 +175,8 @@ export class RoadSurface extends THREE.Mesh {
           float dk = clamp(6.0 / dist, 0.15, 1.0);
           vec2 dist1 = nb.xy * vec2(0.012, 0.02) * dk;
           vec3 rSharp = vec3(0.0), rBlur = vec3(0.0);
-          if (dbg != 2.0) { rSharp = texture2D(tR, ruv + dist1 * 0.35 + vec2(0.0, sin(u * 2.3 + x * 0.7) * 0.0015 * dk)).rgb;
-          rBlur = texture2D(tRB, ruv + dist1).rgb; }
+          rBlur = texture2D(tRB, ruv + dist1).rgb;
+          if (puddle > 0.01) rSharp = texture2D(tR, ruv + dist1 * 0.35 + vec2(0.0, sin(u * 2.3 + x * 0.7) * 0.0015 * dk)).rgb;
           float cosV = clamp(dot(vec3(0.0, 1.0, 0.0), V), 0.0, 1.0);
           float fres = 0.02 + 0.98 * pow(1.0 - cosV, 5.0);
           float fresR = 0.03 + 0.97 * pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 5.0);
@@ -192,7 +191,7 @@ export class RoadSurface extends THREE.Mesh {
     this.u = u;
     this.scale.set(3000, 1, 6000);
     this.frustumCulled = false;
-    this.renderOrder = -5;
+    this.renderOrder = 5; // after the other opaque geometry: hidden road pixels are never shaded
   }
 
   follow(cam: THREE.Vector3) {
@@ -439,12 +438,13 @@ export class Streetlights extends THREE.Group {
     const k0 = Math.floor((camU - 30) / P);
     const m = new THREE.Matrix4();
     let nc = 0, nh = 0;
+    const off = new THREE.Matrix4().makeScale(0, 0, 0);
     for (let i = 0; i < Streetlights.N; i++) {
       const u = (k0 + i) * P;
       m.makeTranslation(0, 0, -u);
       this.poles.setMatrixAt(i, m);
-      this.lenses.setMatrixAt(i, m);
-      if (nc < Streetlights.NC && u > camU - 30) this.cones.setMatrixAt(nc++, m);
+      this.lenses.setMatrixAt(i, u >= offU ? m : off);
+      if (nc < Streetlights.NC && u > camU - 30 && u >= offU) this.cones.setMatrixAt(nc++, m);
     }
     this.cones.count = nc;
     this.poles.instanceMatrix.needsUpdate = true;

@@ -127,15 +127,16 @@ vec3 hwLight(vec3 P, vec3 N, vec3 V, float rough, float specK, out vec3 spec) {
 // haze colour seen in direction d (the sky's own horizon colour that way)
 vec3 hwHaze(vec3 d) {
   vec2 h = normalize(d.xz + vec2(1e-5));
-  float city = pow(max(-h.y, 0.0), 3.0);
-  float sun = pow(max(dot(h, uSunAz), 0.0), 4.0);
-  return uHazeLo + uHazeCity * city + uHazeSun * sun;
+  float fz = max(-h.y, 0.0), fs = max(dot(h, uSunAz), 0.0);
+  fs *= fs;
+  return uHazeLo + uHazeCity * (fz * fz * fz) + uHazeSun * (fs * fs);
 }
 vec3 hwFog(vec3 c, vec3 P, vec3 camPos) {
   vec3 V = P - camPos; float d = length(V);
   // denser near the ground
   float hk = mix(1.0, 0.45, smoothstep(2.0, 60.0, P.y));
-  float f = 1.0 - exp(-pow(d * uFogD * hk, 1.35));
+  float x = d * uFogD * hk;
+  float f = 1.0 - exp(-x * sqrt(x) * 0.85 - x * 0.15);
   return mix(c, hwHaze(V / d), f);
 }
 `;
@@ -213,9 +214,16 @@ export function litMat(o: LitOpts = {}) {
         float rgh = rough;
         vec3 em = emis;
         if (grime > 0.0) {
-          float g = hwH12(floor(vW.xz * 3.0 + vW.y * 2.0)) * 0.5 + hwH12(floor(vW.xy * 0.7 + vW.z * 0.3)) * 0.5;
-          alb *= 1.0 - grime * 0.45 * g;
-          rgh = clamp(rgh + grime * 0.3 * (g - 0.5), 0.05, 1.0);
+          // streaky weathering: smooth value noise, stretched vertically (rain runs), darker low down
+          vec3 q = vW * vec3(1.3, 0.25, 1.3);
+          vec3 i = floor(q), f = fract(q); f = f * f * (3.0 - 2.0 * f);
+          float n00 = mix(hwH12(i.xz + i.y * 17.0), hwH12(i.xz + vec2(1.0, 0.0) + i.y * 17.0), f.x);
+          float n01 = mix(hwH12(i.xz + vec2(0.0, 1.0) + i.y * 17.0), hwH12(i.xz + vec2(1.0, 1.0) + i.y * 17.0), f.x);
+          float n10 = mix(hwH12(i.xz + (i.y + 1.0) * 17.0), hwH12(i.xz + vec2(1.0, 0.0) + (i.y + 1.0) * 17.0), f.x);
+          float n11 = mix(hwH12(i.xz + vec2(0.0, 1.0) + (i.y + 1.0) * 17.0), hwH12(i.xz + vec2(1.0, 1.0) + (i.y + 1.0) * 17.0), f.x);
+          float g = mix(mix(n00, n01, f.z), mix(n10, n11, f.z), f.y);
+          alb *= 1.0 - grime * (0.4 * g + 0.25 * exp(-vW.y * 1.5));
+          rgh = clamp(rgh + grime * 0.35 * (g - 0.3), 0.05, 1.0);
         }
         ${o.frag ?? ''}
         vec3 N = normalize(vN);

@@ -25,14 +25,18 @@ import {
   moonAtJS, moonMaterial, mullionGeometry, roomMaterial, skyMaterial, worldUniforms,
 } from './ghosts-gfx';
 import {
-  Crowd, LINK, LONELY, Phones, RAISE, SPACING, bakeBody, floorPt, heroMaterial, poseLinked, poseLonely, restLegs, type BodyBake, type Lonely,
+  Crowd, LINK, LONELY, Phones, RAISE, SPACING, bakeBody, floorPt, heroMaterial, lighten, poseLinked, poseLonely, restLegs, type BodyBake, type Lonely,
 } from './ghosts-people';
 import { arcText, frostText, lightLetters, subLine } from './ghosts-text';
 
+/** Debug: log where the camera comes closer than 1.1 m to anyone (init). */
+const DEBUG_CLEAR = false;
 /** Centre of the crowd: the woman of the three friends stands here. */
 const O = new THREE.Vector3(0, 0, -2.5);
 /** Gap between the turns of the double spiral (m). */
 const GAP = 1.5;
+/** How much of Michelle's hair buns is kept (1 = the model as is). */
+const HAIR = 0.4;
 const SPIRAL_R = 7.3;
 const UP = new THREE.Vector3(0, 1, 0);
 const V3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
@@ -192,7 +196,7 @@ export default class Ghosts extends Scene {
 
     // ---- outside: the sky dome, the moon with its halo (and the line that curves around it)
     const sky = new THREE.Mesh(new THREE.SphereGeometry(180, 48, 24), skyMaterial(U));
-    sky.renderOrder = -20;
+    sky.renderOrder = 5; // after the walls, so only the window and the open roof shade the stars
     sky.frustumCulled = false;
     this.moonMat = moonMaterial(U);
     const moon = new THREE.Mesh(new THREE.PlaneGeometry(MOON.r * 2, MOON.r * 2), this.moonMat);
@@ -210,18 +214,8 @@ export default class Ghosts extends Scene {
     this.glass.position.set(WIN.x, (WIN.ys + WIN.hw + WIN.y0) / 2, GLASS_Z);
     S.add(this.glass);
 
-    // ---- moonlight shafts, one per window pane
-    const xs = [-WIN.hw, WIN.cols[0]!, WIN.cols[1]!, WIN.hw];
-    const ys = [WIN.y0, ...WIN.rows, WIN.ys + WIN.hw];
-    const pr = mulberry32(31);
-    for (let ci = 0; ci < 3; ci++)
-      for (let ri = 0; ri < ys.length - 1; ri++) {
-        const x0 = xs[ci]!, x1 = xs[ci + 1]!, y0 = ys[ri]!;
-        let y1 = ys[ri + 1]!;
-        const cx = (x0 + x1) / 2;
-        if (ri === ys.length - 2) y1 = WIN.ys + Math.sqrt(Math.max(0, WIN.hw * WIN.hw - cx * cx)) * 0.92;
-        this.panes.push({ c: V3(WIN.x + cx, (y0 + y1) / 2, WIN.z), w: x1 - x0 - 2 * WIN.mull, h: y1 - y0 - 2 * WIN.mull, k: 0.75 + 0.5 * pr() });
-      }
+    // ---- moonlight: one wide shaft from the window down to its patch on the floor (the bars come from the mask)
+    this.panes.push({ c: V3(WIN.x, (WIN.y0 + WIN.ys + WIN.hw) / 2, WIN.z), w: WIN.hw * 2, h: WIN.ys + WIN.hw - WIN.y0, k: 1 });
     this.shafts = new Shafts(this.panes.length, U);
     S.add(this.shafts);
 
@@ -230,7 +224,7 @@ export default class Ghosts extends Scene {
     const bakes: BodyBake[] = [
       bakeBody(new RealFigure(rpm, 'rpm', col('white')), false, 0.3),
       bakeBody(new RealFigure(rpm, 'rpm', col('white'), undefined, { hat: true }), true, 0.7),
-      bakeBody(new RealFigure(mi, 'michelle', col('white')), false, 0.6),
+      bakeBody(new RealFigure(mi, 'michelle', col('white')), false, 0.6, 0.016, HAIR),
     ];
     // the three friends: a man (A), a woman (B, in the middle), a man in a hat (C); a line facing +x
     const warmHero = [col('#ffb06c', 1.1), col('#ffc08e', 1.1), col('#ffc47e', 1.05)];
@@ -242,6 +236,7 @@ export default class Ghosts extends Scene {
     heroDef.forEach(([g, kind, hat, lonely, v, k, loneYaw], i) => {
       const mat = heroMaterial(U, this.cold.clone(), warmHero[i]!, i * 3.7 + 1);
       const fig = new RealFigure(g, kind, col('white'), mat, { prepass: true, hat });
+      lighten(fig, 0.011, kind === 'michelle' ? HAIR : 1);
       const link = O.clone().add(V3(0, 0, k * SPACING));
       const lone = link.clone().add(V3(0.12 * (i - 1), 0, k * 0.35));
       this.heroes.push({ fig, mat, lonely, v, lone, loneYaw, link, warm: warmHero[i]! });
@@ -266,6 +261,7 @@ export default class Ghosts extends Scene {
 
     // ---- the lyrics
     await this.buildLyrics();
+    if (DEBUG_CLEAR) this.debugClearance();
   }
 
   // -------------------------------------------------------------------------------------------------
@@ -352,7 +348,7 @@ export default class Ghosts extends Scene {
         }
         for (const [a, bq] of sight) {
           const r = segD(a, bq, lp.x, lp.z);
-          if (r.d < 0.72 && r.u > 0.06 && r.u < 0.96) { away(lp, r.cx, r.cz, 0.05); break; }
+          if (r.d < 0.75 && r.u > 0.05 && r.u < 1) { away(lp, r.cx, r.cz, 0.05); break; }
         }
         for (const h of this.heroes) if (Math.hypot(h.lone.x - lp.x, h.lone.z - lp.z) < 0.85) away(lp, h.lone.x, h.lone.z, 0.05);
       }
@@ -361,9 +357,42 @@ export default class Ghosts extends Scene {
         if (d < 0.78) { const k = (0.78 - d) * 0.5; away(a, bq.x, bq.z, k); away(bq, a.x, a.z, k); }
       }
     }
+    // anyone still in the way finds the nearest free spot around their place in the chain
+    const ok = (lp: THREE.Vector3, self: Person) => {
+      for (const c of cams) {
+        const vx = lp.x - c.p.x, vz = lp.z - c.p.z, dd = Math.hypot(vx, vz);
+        if (dd < 1.0 || (dd < 2.5 && (vx * c.d.x + vz * c.d.z) / (dd || 1) > 0.8)) return false;
+      }
+      for (const [a, bq] of sight) { const r = segD(a, bq, lp.x, lp.z); if (r.d < 0.65 && r.u > 0.05 && r.u < 1) return false; }
+      for (const h of this.heroes) if (Math.hypot(h.lone.x - lp.x, h.lone.z - lp.z) < 0.8) return false;
+      for (const q of P) if (q !== self && Math.hypot(q.lone.x - lp.x, q.lone.z - lp.z) < 0.68) return false;
+      return true;
+    };
+    for (const p of P) {
+      if (ok(p.lone, p)) continue;
+      search: for (let r = 0.3; r < 4; r += 0.2) for (let a = 0; a < 16; a++) {
+        const c = p.link.clone().add(V3(Math.cos(a * 0.3927 + r) * r, 0, Math.sin(a * 0.3927 + r) * r));
+        if (ok(c, p)) { p.lone.copy(c); break search; }
+      }
+    }
     this.crowd = new Crowd(bakes, this.people.map((p) => ({ body: p.body, pose: p.pose })), this.U, this.cold);
     this.phoneIds = this.people.map((_, i) => i).filter((i) => this.crowd.phones[i]);
     this.phones = new Phones(this.phoneIds.length + 1);
+  }
+
+  private debugClearance() {
+    const rows: string[] = [];
+    for (let t = this.ctx.start; t < this.ctx.end; t += 0.1) {
+      const c = this.camAt(t).pos;
+      let best = 1e9, who = '';
+      this.chain.forEach((ch, ci) => {
+        const p = ch[0] === 'p' ? this.personAt(this.people[ch[1]]!, t, ci).pos : this.heroes[ch[1]]!.link;
+        const d = Math.hypot(p.x - c.x, p.z - c.z) + Math.max(0, c.y - 2.0);
+        if (d < best) { best = d; who = `${ch[0]}${ch[1]}${ch[0] === 'p' ? ` arm${this.people[ch[1]]!.arm} k${this.people[ch[1]]!.k}` : ''}`; }
+      });
+      if (best < 1.1) rows.push(`t=${t.toFixed(1)} cam (${c.x.toFixed(2)}, ${c.y.toFixed(2)}, ${c.z.toFixed(2)}) nearest ${who} at ${best.toFixed(2)}`);
+    }
+    console.warn('[ghosts] clearance\n' + rows.join('\n'));
   }
 
   /** Lights that leave the joined hands at each wave and float up out of the hall. */
@@ -488,7 +517,7 @@ export default class Ghosts extends Scene {
     // close under the window, looking up through the middle pane at the moon
     const pos = V3(0.22, 1.06, -9.1).lerp(V3(0.16, 0.98, -9.36), ease.inOutQuad(k));
     const tgt = MOON.pos.clone().add(V3(0, -MOON.r * 0.12, 0));
-    return { pos, tgt, fov: lerp(29.5, 26.5, ease.inOutQuad(k)), roll: 0.0 };
+    return { pos, tgt, fov: lerp(27, 24.5, ease.inOutQuad(k)), roll: 0.0 };
   }
 
   private shot4(t: number): Shot {
@@ -510,25 +539,23 @@ export default class Ghosts extends Scene {
     // the build: from the edge of the hall, the crowd below and the roof opening above; turning on the bars
     const k = prog(t, T.build!, T.rise!);
     const surge = this.bars.filter((d) => d > T.build! + 0.1 && d < T.rise!).reduce((a, d) => a + ease.outExpo(clamp((t - d) / 0.7)), 0);
-    const ang = 1.85 + 0.06 * k + 0.11 * surge, r = 8.9 - 0.4 * surge;
-    const pos = O.clone().add(V3(Math.cos(ang) * r, 2.1 + 0.9 * k + 0.55 * surge, Math.sin(ang) * r));
-    const tgt = O.clone().add(V3(0, 3.3 + 0.7 * surge, 0));
-    return { pos, tgt, fov: 56, roll: 0.02 };
+    const ang = 1.85 + 0.05 * k + 0.1 * surge, r = 10.2 - 0.3 * surge;
+    const pos = O.clone().add(V3(Math.cos(ang) * r, 1.9 + 0.6 * k + 0.45 * surge, Math.sin(ang) * r));
+    const tgt = O.clone().add(V3(0, 3.5 + 0.5 * surge, 0));
+    return { pos, tgt, fov: 62, roll: 0.02 };
   }
 
   private shot6(t: number): Shot {
     const T = this.T;
-    // up through the open roof, looking down at everyone with their hands up and the lights rising past;
-    // on the last bar the camera turns up with the lights into the sky
-    const k = prog(t, T.rise!, T.end! + 0.2);
-    const e = ease.inOutQuad(k);
-    const pos = O.clone().add(V3(lerp(5.2, 2.2, e), lerp(5.0, 14.5, e), lerp(5.6, 3.6, e)));
-    const look = O.clone().add(V3(0, 0.6, -0.6));
-    const tilt = ease.inOutCubic(prog(t, T.last! - 0.1, T.end! + 0.1));
-    const tgt = look.lerp(pos.clone().add(V3(-1.4, 6, -2.2)), tilt);
-    const surge = this.bars.filter((d) => d > T.rise! + 0.1).reduce((a, d) => a + 0.5 * ease.outExpo(clamp((t - d) / 0.6)), 0);
+    // up to the open roof, looking down at everyone with their hands up while the lights float up past the
+    // lens; on the last bar the camera turns up and shoots up with the lights into the sky
+    const k = ease.inOutQuad(prog(t, T.rise!, T.last!));
+    const w = ease.inQuad(prog(t, T.last!, T.end! + 0.25));
+    const pos = O.clone().add(V3(lerp(5.0, 2.7, k) - 0.8 * w, lerp(4.6, 9.4, k) + 2.5 * w, lerp(5.4, 3.7, k) - 0.6 * w));
+    const surge = this.bars.filter((d) => d > T.rise! + 0.1 && d < T.last! - 0.1).reduce((a, d) => a + 0.45 * ease.outExpo(clamp((t - d) / 0.6)), 0);
     pos.y += surge;
-    return { pos, tgt, fov: lerp(54, 62, e), roll: 0.03 * Math.sin(t * 1.3) };
+    const tgt = O.clone().add(V3(-1.7, 0.6, -3.3));
+    return { pos, tgt, fov: lerp(56, 60, k) + 12 * w, roll: 0.03 * Math.sin(t * 1.3) + 0.05 * w };
   }
 
   /** Camera at t (pure). */
@@ -615,7 +642,7 @@ export default class Ghosts extends Scene {
       const kHand = plan[i]!.map(([, [a, b]]) => ease.inOutCubic(prog(t, a, b)));
       const kBody = ease.inOutCubic(prog(t, Math.min(...plan[i]!.map((p) => p[1][0])) - 0.1, Math.min(...plan[i]!.map((p) => p[1][1])) + 0.5));
       // turn toward the partner while reaching, then settle facing front
-      const turnTo = i === 0 ? -0.65 : i === 2 ? 0.65 : 0;
+      const turnTo = i === 0 ? 0.6 : i === 2 ? -0.6 : 0;
       const settle = ease.inOutCubic(prog(t, T.got! - 0.2, T.e19! - 0.2));
       const yaw = lerpAngle(h.loneYaw, yawLink + turnTo * (1 - settle), kBody);
       f.position.copy(h.lone).lerp(h.link, kBody).setY(f.hipHeight + 0.005 * Math.sin(t * 1.7 + i));
@@ -704,10 +731,12 @@ export default class Ghosts extends Scene {
     aim(cam, shot.pos, shot.tgt, shot.roll);
 
     // ---- the moon: swallowed by the night from "swallow"; the hall goes dark
-    const eat = prog(t, T.nights! + 0.2, T.swallow!, ease.inOutQuad) * 0.42 + prog(t, T.swallow!, T.cut3! - 0.1, ease.inOutCubic) * 0.58;
+    // the night creeps in on "night's", takes the moon through "swallow the moon", then closes over everything
+    const eat = prog(t, T.nights! + 0.2, T.swallow!, ease.inOutQuad) * 0.36 + prog(t, T.swallow!, T.moon! + 0.5, ease.inOutQuad) * 0.36
+      + prog(t, T.moon! + 0.5, T.cut3! - 0.08, ease.inQuad) * 0.28;
     for (const m of [this.moonMat, this.haloMat]) m.uniforms.uEat!.value = eat;
     // the line around the moon is read first, then swallowed last, as the night closes over everything
-    for (const a of this.arcs) a.tr.material.uniforms.uEat!.value = prog(eat, 0.6, 1.0);
+    for (const a of this.arcs) a.tr.material.uniforms.uEat!.value = prog(eat, 0.7, 1.0);
     const vis = 1 - smoothstep(0.45, 0.82, eat);
     U.uMoonK.value = vis * (0.95 + 0.05 * Math.sin(t * 0.7));
     this.haloMat.uniforms.uK!.value = vis;
@@ -742,6 +771,7 @@ export default class Ghosts extends Scene {
     let fillN = 0;
     const fillC = new THREE.Color(0, 0, 0);
     const gainG = 0.85 + 0.15 * U.uMoonK.value;
+    const surgeEnd = 1 + 0.9 * ease.inQuad(prog(t, T.last!, T.end! + 0.2));
     const phM = new THREE.Matrix4(), phQ = new THREE.Quaternion();
     let phN = 0;
     this.chain.forEach((c, ci) => {
@@ -751,7 +781,7 @@ export default class Ghosts extends Scene {
       sc.setScalar(p.s);
       m.compose(s.pos.clone().setY(0.004 * Math.sin(t * 1.4 + p.seed)), qq, sc);
       const phone = this.crowd.phones[c[1]] ? 1 - smoothstep(0.05, 0.3, s.kb) : 0;
-      const gain = (1 + 1.4 * pulse(t, p.tL, 0.13)) * (s.flow > 0 ? 1 + 0.12 * kick : gainG);
+      const gain = (1 + 1.4 * pulse(t, p.tL, 0.13)) * (s.flow > 0 ? (1 + 0.12 * kick) * (1 + 0.22 * s.up) * surgeEnd : gainG);
       this.crowd.set(c[1], m, [s.kb, s.kL, s.kR, s.up], [s.flow, p.seed * 0.137 % 1 + p.seed, gain, phone], p.warm, p.near);
       const ph = this.crowd.phones[c[1]];
       if (ph) {
@@ -789,8 +819,7 @@ export default class Ghosts extends Scene {
       const pn = this.panes[i]!;
       const len = pn.c.y / MOON_L.y;
       const b = pn.c.clone().addScaledVector(MOON_L, -len);
-      const wa = 0.5 * Math.sqrt(pn.w * pn.h) * 0.85;
-      this.shafts.set(i, pn.c, b, wa, wa * 1.3, 0.13 * pn.k * (0.85 + 0.15 * noise1(t * 0.6, i)), cam.position);
+      this.shafts.set(i, pn.c, b, pn.w * 1.3, pn.w * 2.6, 0.16 * (0.88 + 0.12 * noise1(t * 0.6, i)), cam.position);
     }
     this.shafts.commit();
     this.shafts.visible = U.uMoonK.value > 0.01;
@@ -799,14 +828,14 @@ export default class Ghosts extends Scene {
     // ---- lyrics
     this.poseLyrics(t, H);
 
-    this.st.render(this.ctx.renderer, out);
+        this.st.render(this.ctx.renderer, out);
     void S;
     const end = T.end!;
-    const flash = 0.03 * pulse(t, T.light!, 0.06) + 0.6 * ease.inQuad(prog(t, end - 0.5, end + 0.15));
+    const flash = 0.03 * pulse(t, T.light!, 0.06) + 0.2 * ease.inQuad(prog(t, end - 0.25, end + 0.2));
     const db = this.bars.reduce((a, d) => a + pulse(t, d, 0.18), 0);
     return {
       bloom: 0.95 + 0.4 * prog(t, T.build!, end), bloomThreshold: 0.8, bloomRadius: 0.85, halation: 0.12, vignette: 0.45 - 0.2 * prog(t, T.rise!, end), grain: 0.05, ca: 0.8,
-      flash, zoom: 1 + 0.004 * kick + 0.006 * db, exposure: 1 + 0.6 * ease.inQuad(prog(t, T.last!, end + 0.1)),
+      flash, zoom: 1 + 0.004 * kick + 0.006 * db + 0.04 * ease.inQuad(prog(t, T.last!, end + 0.2)), exposure: 1 + 1.1 * ease.inQuad(prog(t, T.last!, end + 0.2)),
     };
   }
 
@@ -847,7 +876,12 @@ export default class Ghosts extends Scene {
       G.set(n++, p.x, p.y, p.z, col('#ffe0c4'), hk[c]! * 1.8, 1.4);
       G.set(n++, p.x, p.y, p.z, warm, hk[c]! * 0.45, 7);
     }
-    void T;
+    // the last beat: a light swells from the middle of the spiral
+    const burst = ease.inQuad(prog(t, T.last!, T.end! + 0.2));
+    if (burst > 0) {
+      G.set(n++, O.x, 1.6, O.z, col('#fff1e0'), 2.5 * burst, 6 + 30 * burst);
+      G.set(n++, O.x, 1.6, O.z, warm, 1.2 * burst, 40 + 90 * burst);
+    }
     G.commit(n);
     // risers
     const R = this.rising;
@@ -856,11 +890,12 @@ export default class Ghosts extends Scene {
       const a = t - s.t0;
       if (a < 0 || a > 6) continue;
       const p0 = this.claspUp[s.c]!;
-      const y = p0.y + 0.9 * a + 0.55 * a * a;
+      const fast = s.t0 >= this.T.last! - 0.01;
+      const y = p0.y + (fast ? 4 * a + 62 * a * a : 0.9 * a + 0.55 * a * a);
       if (y > 60) continue;
       const x = p0.x + noise1(a * 0.8 + s.seed, 7) * 0.5 * a, z = p0.z + noise1(a * 0.8 + s.seed, 9) * 0.5 * a;
       const k = smoothstep(0, 0.15, a) * (0.75 + 0.25 * Math.sin(t * 7 + s.seed));
-      R.set(r++, x, y, z, warm, 1.6 * k, 0.9 + 0.6 * hash(s.seed, 3));
+      R.set(r++, x, y, z, warm, (fast ? 2.6 : 1.7) * k, (fast ? 2.4 : 1.3) + 0.8 * hash(s.seed, 3));
     }
     R.commit(r);
   }
@@ -977,9 +1012,9 @@ export default class Ghosts extends Scene {
       hg.grp.visible = t > t0 - 0.05 && t < t1;
       const d = 6;
       const tv = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * d;
-      hg.grp.position.copy(cam.position).addScaledVector(fwd, d).addScaledVector(upv, (k === 0 ? 0.42 : 0.12) * tv);
+      hg.grp.position.copy(cam.position).addScaledVector(fwd, d).addScaledVector(upv, (k === 0 ? 0.6 : 0.5) * tv);
       hg.grp.quaternion.copy(cam.quaternion);
-      hg.grp.scale.setScalar(tv * (k === 0 ? 0.24 : 0.36));
+      hg.grp.scale.setScalar(tv * (k === 0 ? 0.26 : 0.4));
       hg.words.forEach((w) => {
         const on = flickerOn(t, w.t0, k * 3 + 1);
         const punch = 1 + 0.3 * pulse(t, w.t0, 0.08);

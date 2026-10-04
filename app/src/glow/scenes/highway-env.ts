@@ -17,20 +17,28 @@ export interface SkyState {
 export const SKY_GLSL = /* glsl */ `
 uniform vec3 sZen, sHor, sCity, sDawnLo, sDawnHi, sSunCol, sSunDir;
 uniform float sDawn, sSunK;
+float p8(float x) { x *= x; x *= x; return x * x; }
 vec3 skyCol(vec3 d) {
   float y = d.y, yy = max(y, 0.0);
   vec2 h = normalize(d.xz + vec2(1e-6));
-  vec3 c = mix(sHor, sZen, pow(clamp(yy * 1.7, 0.0, 1.0), 0.55));
+  float g0 = clamp(yy * 1.7, 0.0, 1.0);
+  vec3 c = mix(sHor, sZen, sqrt(g0) * (1.1 - 0.1 * g0));
   // light pollution of the city ahead (-z): a low sodium dome
-  float city = pow(max(-h.y, 0.0), 8.0);
-  c += sCity * (city * exp(-yy * 16.0) + 0.15 * pow(max(-h.y, 0.0), 2.0) * exp(-yy * 5.0));
-  // dawn: a warm band low on the horizon toward the sun, the whole sky lifting
-  vec2 sa2 = normalize(sSunDir.xz + vec2(1e-6));
-  float sa = max(dot(h, sa2), 0.0);
-  c += sDawnLo * (pow(sa, 2.5) * exp(-yy * 7.0) + 0.35 * exp(-yy * 4.0) * (0.15 + 0.85 * sa * sa)) * sDawn;
-  c += sDawnHi * pow(sa, 1.5) * exp(-yy * 2.2) * sDawn;
-  float g = max(dot(d, sSunDir), 0.0);
-  c += sSunCol * sSunK * (smoothstep(0.99975, 0.99985, g) * 40.0 + pow(g, 900.0) * 6.0 + pow(g, 90.0) * 0.6 + pow(g, 12.0) * 0.12);
+  float fz = max(-h.y, 0.0);
+  c += sCity * (p8(fz) * exp(-yy * 16.0) + 0.15 * fz * fz * exp(-yy * 5.0));
+  if (sDawn > 0.0) {
+    // dawn: a warm band low on the horizon toward the sun, the whole sky lifting
+    vec2 sa2 = normalize(sSunDir.xz + vec2(1e-6));
+    float sa = max(dot(h, sa2), 0.0);
+    float e4 = exp(-yy * 4.0);
+    c += sDawnLo * (sa * sa * sqrt(sa) * exp(-yy * 7.0) + 0.35 * e4 * (0.15 + 0.85 * sa * sa)) * sDawn;
+    c += sDawnHi * sa * sqrt(sa) * exp(-yy * 2.2) * sDawn;
+  }
+  if (sSunK > 0.0) {
+    float g = max(dot(d, sSunDir), 0.0);
+    float g12 = p8(g) * g * g * g * g;
+    c += sSunCol * sSunK * (smoothstep(0.99975, 0.99985, g) * 40.0 + pow(g, 900.0) * 6.0 + pow(g, 90.0) * 0.6 + g12 * 0.12);
+  }
   // below the horizon: dark land haze
   c = mix(c, sHor * 0.5, smoothstep(0.0, -0.08, y));
   return c;
@@ -64,7 +72,7 @@ export class Sky extends THREE.Group {
       fragmentShader: SKY_GLSL + /* glsl */ `varying vec3 vDir; void main(){ gl_FragColor = vec4(skyCol(normalize(vDir)), 1.0); }`,
     });
     this.dome = new THREE.Mesh(new THREE.SphereGeometry(4600, 48, 24), dome);
-    this.dome.renderOrder = -10;
+    this.dome.renderOrder = 20; // last of the opaques: only the visible sky is shaded
     this.dome.frustumCulled = false;
 
     // stars: magnitude-distributed, a faint milky band, hidden by the clouds drawn after them
@@ -93,7 +101,7 @@ export class Sky extends THREE.Group {
 
     // the cloud deck: a plane-projected tiling texture, its underside lit by the city's sodium glow
     this.cu = {
-      ...this.u, tex: { value: cloudTex }, off: { value: new THREE.Vector2() }, cover: { value: 0.55 },
+      ...this.u, tex: { value: cloudTex }, off: { value: new THREE.Vector2() }, cover: { value: 0.78 },
       litCity: { value: new THREE.Color() }, litAmb: { value: new THREE.Color() }, litSun: { value: new THREE.Color() },
     };
     const cm = new THREE.ShaderMaterial({
@@ -105,10 +113,10 @@ export class Sky extends THREE.Group {
         void main() {
           vec3 d = normalize(vDir);
           if (d.y < 0.004) discard;
-          vec2 p = d.xz / (d.y + 0.045) * 0.11 + off;
+          vec2 p = d.xz / (d.y + 0.045) * 0.16 + off;
           vec4 a = texture2D(tex, p);
-          vec4 b = texture2D(tex, p * 2.7 + 0.31);
-          float dens = smoothstep(1.0 - cover, 1.0 - cover + 0.45, a.r * 0.75 + b.r * 0.35);
+          vec4 b = texture2D(tex, p * 2.3 + 0.31);
+          float dens = smoothstep(1.0 - cover, 1.0 - cover + 0.8, a.g * 0.8 + b.r * 0.25) * (0.75 + 0.25 * b.g);
           float fade = smoothstep(0.004, 0.09, d.y);
           vec2 h = normalize(d.xz + vec2(1e-6));
           float city = pow(max(-h.y, 0.0), 2.0);
@@ -117,9 +125,10 @@ export class Sky extends THREE.Group {
           float sun = pow(max(dot(h, sa2), 0.0), 3.0);
           // thicker cloud reads darker on top, brighter rims where thin
           float thin = 1.0 - smoothstep(0.3, 1.0, a.g);
-          vec3 col = litAmb * (0.6 + 0.4 * b.b) + litCity * (city * 1.4 + 0.25) * low * (0.6 + 0.6 * a.g) + litSun * (sun * 1.6 + 0.2) * (0.4 + 0.9 * thin) * low;
+          // the cloud base glows with the sodium light of the city and the highway below it
+          vec3 col = litAmb * (0.6 + 0.4 * b.b) + litCity * (city * 1.4 * low + 0.35) * (0.5 + 0.7 * a.g) * (0.7 + 0.6 * b.b) + litSun * (sun * 1.6 + 0.2) * (0.4 + 0.9 * thin) * low;
           float al = dens * fade;
-          gl_FragColor = vec4(col * al, al * 0.92);
+          gl_FragColor = vec4(col * al, al * 0.85);
         }`,
     });
     cm.blending = THREE.CustomBlending;
@@ -137,7 +146,7 @@ export class Sky extends THREE.Group {
     this.position.copy(camPos);
     const u = this.u;
     const d = dawn, d2 = Math.min(1, d * 1.6);
-    u.sZen.value.copy(lerpC(C('#03050f', 0.6), C('#1f3a78', 0.75), Math.pow(d, 1.5)));
+    u.sZen.value.copy(lerpC(C('#060b22', 0.6), C('#1f3a78', 0.75), Math.pow(d, 1.5)));
     u.sHor.value.copy(lerpC(C('#13204a', 0.6), C('#8ea3c8', 0.6), Math.pow(d, 1.3)));
     u.sCity.value.copy(C('#ff8a3a', 0.016 * (1 - 0.6 * d)));
     u.sDawnLo.value.copy(C('#ffa23a', 2.0));
@@ -148,7 +157,7 @@ export class Sky extends THREE.Group {
     u.sSunK.value = sunK;
     // clouds
     this.cu.off!.value.set(cloudDrift * 0.004 + 0.13, cloudDrift * 0.0015 + 0.71);
-    this.cu.litCity!.value.copy(C('#ff8a4a', 0.07 * (1 - 0.5 * d)));
+    this.cu.litCity!.value.copy(C('#b98a7a', 0.065 * (1 - 0.6 * d)));
     this.cu.litAmb!.value.copy(lerpC(C('#2a3460', 0.05), C('#5a6890', 0.45), d));
     this.cu.litSun!.value.copy(C('#ff9d5c', 1.4 * d2));
     // haze & ambient (shared with every lit material)
@@ -162,14 +171,14 @@ export class Sky extends THREE.Group {
     const pa = (t - 17) * 0.012;
     const px = -900 + 1800 * pa, pz = -300 - 400 * pa, py = 1500;
     const strobe = (Math.floor(t * 60) % 72) < 4 ? 1 : 0;
-    this.plane.set(0, px - 18, py, pz, C('#ff2a1a'), 2.2, 30);
-    this.plane.set(1, px + 18, py, pz + 4, C('#38ff7a'), 2.0, 30);
-    this.plane.set(2, px, py - 1, pz - 10, C('#ffffff'), 6 * strobe, 34);
-    this.plane.set(3, px, py + 2, pz + 12, C('#ff3a2a'), 3 * ((Math.floor(t * 60) % 60) < 8 ? 1 : 0), 24);
+    this.plane.set(0, px - 18, py, pz, C('#ff2a1a'), 1.6, 7);
+    this.plane.set(1, px + 18, py, pz + 4, C('#38ff7a'), 1.4, 7);
+    this.plane.set(2, px, py - 1, pz - 10, C('#ffffff'), 5 * strobe, 9);
+    this.plane.set(3, px, py + 2, pz + 12, C('#ff3a2a'), 2.5 * ((Math.floor(t * 60) % 60) < 8 ? 1 : 0), 6);
     this.plane.commit();
     HU.uSunDir.value.copy(sunDir);
     HU.uFogD.value = 0.0042 - 0.0019 * d;
-    HU.uSunCol.value.copy(C('#ffb060', 1.6 * Math.max(0, sunK - 0.1) * smoothK(sunDir.y)));
+    HU.uSunCol.value.copy(C('#ffb878', 0.75 * Math.min(1.2, Math.max(0, sunK - 0.1)) * smoothK(sunDir.y)));
     void t;
   }
 }
@@ -406,35 +415,40 @@ function treeAtlas() {
   c.clearRect(0, 0, cv.width, cv.height);
   const r = mulberry32(808);
   for (let v = 0; v < 4; v++) {
-    const ox = v * cw + cw / 2;
-    c.fillStyle = '#fff'; c.strokeStyle = '#fff'; c.lineCap = 'round';
-    const tips: { x: number; y: number }[] = [];
+    const conifer = v === 3;
+    // grow the tree in its own units first, then fit it into the cell with a margin
+    const segs: { x0: number; y0: number; x1: number; y1: number; w: number }[] = [];
+    const tips: { x: number; y: number; r: number }[] = [];
     const branch = (x: number, y: number, a: number, len: number, w: number, depth: number) => {
       const x2 = x + Math.cos(a) * len, y2 = y + Math.sin(a) * len;
-      c.lineWidth = w; c.beginPath(); c.moveTo(x, y); c.lineTo(x2, y2); c.stroke();
-      if (depth <= 0 || len < 12) { tips.push({ x: x2, y: y2 }); return; }
+      segs.push({ x0: x, y0: y, x1: x2, y1: y2, w });
+      if (depth <= 0 || len < 10) { for (let i = 0; i < 7; i++) tips.push({ x: x2 + (r() - 0.5) * 50, y: y2 + (r() - 0.5) * 40, r: 14 + r() * 26 }); return; }
       const n = 2 + (r() < 0.4 ? 1 : 0);
-      for (let i = 0; i < n; i++) branch(x2, y2, a + (r() - 0.5) * (v === 3 ? 0.7 : 1.3), len * (0.62 + r() * 0.2), w * 0.66, depth - 1);
+      for (let i = 0; i < n; i++) branch(x2, y2, a + (r() - 0.5) * 1.25, len * (0.6 + r() * 0.2), w * 0.66, depth - 1);
     };
-    const conifer = v === 3;
-    branch(ox, ch - 10, -Math.PI / 2 + (r() - 0.5) * 0.08, conifer ? 240 : 300, conifer ? 22 : 30, conifer ? 5 : 6);
-    // leaf clumps around every tip (and a dense crown), soft-edged discs
-    const crown = conifer ? 0.0 : 1.0;
-    for (const t of tips) {
-      const k = 6 + Math.floor(r() * 6);
-      for (let i = 0; i < k; i++) {
-        const rad = (conifer ? 10 : 16) + r() * (conifer ? 18 : 30);
-        c.beginPath(); c.arc(t.x + (r() - 0.5) * 60, t.y + (r() - 0.5) * 50, rad, 0, Math.PI * 2); c.fill();
-      }
-    }
     if (conifer) {
-      // a spire of drooping tiers
-      for (let y = 140; y < ch - 120; y += 18) {
-        const w = (y - 100) * 0.34 * (0.8 + 0.4 * r());
-        c.beginPath(); c.moveTo(ox, y - 30); c.lineTo(ox - w, y + 24); c.lineTo(ox + w, y + 24); c.closePath(); c.fill();
+      segs.push({ x0: 0, y0: 0, x1: 0, y1: -900, w: 16 });
+      for (let y = -880; y < -60; y += 16) {
+        const w = (y + 900) * 0.3 * (0.8 + 0.4 * r());
+        tips.push({ x: -w * 0.5, y: y + 20, r: w * 0.32 }); tips.push({ x: w * 0.5, y: y + 20, r: w * 0.32 });
       }
+    } else branch(0, 0, -Math.PI / 2 + (r() - 0.5) * 0.08, 260, 28, 6);
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const t of tips) { x0 = Math.min(x0, t.x - t.r); x1 = Math.max(x1, t.x + t.r); y0 = Math.min(y0, t.y - t.r); y1 = Math.max(y1, t.y + t.r); }
+    for (const sg of segs) { x0 = Math.min(x0, sg.x1); x1 = Math.max(x1, sg.x1); y0 = Math.min(y0, sg.y1); }
+    y1 = Math.max(y1, 0);
+    const sc = Math.min((cw - 24) / (x1 - x0), (ch - 24) / (y1 - y0));
+    c.save();
+    c.beginPath(); c.rect(v * cw, 0, cw, ch); c.clip();
+    c.translate(v * cw + cw / 2 - ((x0 + x1) / 2) * sc, ch - 4 - y1 * sc);
+    c.scale(sc, sc);
+    c.fillStyle = '#fff'; c.strokeStyle = '#fff'; c.lineCap = 'round';
+    for (const sg of segs) { c.lineWidth = sg.w; c.beginPath(); c.moveTo(sg.x0, sg.y0); c.lineTo(sg.x1, sg.y1); c.stroke(); }
+    for (const t of tips) {
+      if (conifer) { c.beginPath(); c.moveTo(t.x - t.r * 1.6, t.y + t.r * 0.5); c.lineTo(t.x, t.y - t.r * 1.2); c.lineTo(t.x + t.r * 1.6, t.y + t.r * 0.5); c.closePath(); c.fill(); }
+      else { c.beginPath(); c.arc(t.x, t.y, t.r, 0, Math.PI * 2); c.fill(); }
     }
-    void crown;
+    c.restore();
   }
   const t = new THREE.CanvasTexture(cv);
   t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.anisotropy = 4;

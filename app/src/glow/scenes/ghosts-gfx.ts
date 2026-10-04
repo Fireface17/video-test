@@ -404,11 +404,13 @@ export class Shafts extends THREE.Mesh {
         ${GLSL_WORLD}
         varying vec2 vUV; varying float vK; varying vec3 vWP;
         void main() {
-          float a = 1.0 - vUV.x * vUV.x; a *= a;
-          float along = smoothstep(0.0, 0.05, vUV.y) * pow(max(1.0 - vUV.y, 0.0), 1.2);
-          float dust = 0.72 + 0.28 * sin(vWP.y * 2.6 + vWP.x * 1.3 - uTime * 0.45) * sin(vWP.z * 1.7 + uTime * 0.3 + vWP.y);
+          // one wide shaft: the window's own shape (panes and bars) projected back along the moonlight
+          float m = moonAt(vWP);
+          float along = smoothstep(0.0, 0.04, vUV.y) * (1.0 - smoothstep(0.75, 1.0, vUV.y)) * (1.0 - 0.55 * vUV.y);
+          float dust = 0.75 + 0.25 * sin(vWP.y * 2.6 + vWP.x * 1.3 - uTime * 0.45) * sin(vWP.z * 1.7 + uTime * 0.3 + vWP.y);
           float near = smoothstep(0.8, 3.2, length(vWP - cameraPosition));
-          gl_FragColor = vec4(uMoonCol * uMoonK * (vK * a * along * dust * near) * fogK(vWP), 1.0);
+          float side = 1.0 - smoothstep(0.75, 1.0, abs(vUV.x));
+          gl_FragColor = vec4(uMoonCol * uMoonK * (vK * m * along * dust * near * side) * fogK(vWP), 1.0);
         }`,
     });
     super(g, mat);

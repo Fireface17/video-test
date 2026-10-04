@@ -104,12 +104,14 @@ export function bakeTextures(renderer: THREE.WebGLRenderer): HwTextures {
       float hd = texelFetch(H, (p + ivec2(0, -1)) & 2047, 0).g, hu = texelFetch(H, (p + ivec2(0, 1)) & 2047, 0).g;
       float h = texelFetch(H, p, 0).g;
       vec3 n = normalize(vec3((hl - hr) * 3.2, (hd - hu) * 3.2, 1.0));
-      // cavity: lower than the neighbourhood average
+      // cavity: lower than the neighbourhood average (water collects there: smoother, darker)
       float avg = 0.0;
       for (int i = -3; i <= 3; i += 2) for (int j = -3; j <= 3; j += 2) avg += texelFetch(H, (p + ivec2(i, j) * 2) & 2047, 0).g;
       avg /= 16.0;
       float cav = clamp(0.5 + (h - avg) * 2.5, 0.0, 1.0);
-      fragColor = vec4(n * 0.5 + 0.5, cav);
+      vec4 a = texelFetch(H, p, 0);
+      // packed: albedo, roughness (cavities wetter), normal xy
+      fragColor = vec4(a.r, mix(a.b * 0.8, a.b, cav), n.x * 0.5 + 0.5, n.y * 0.5 + 0.5);
     }`, { H: { value: A.texture } });
 
   // ---- macro (32 m across x in [-16, 16], 128 m along the road)

@@ -259,7 +259,7 @@ export class CalendarBoard extends THREE.Group {
         }`,
     });
     const faceM = new THREE.Mesh(new THREE.PlaneGeometry(BOARD_W, BOARD_H), face);
-    const yC = 8.2;
+    const yC = 6.3;
     faceM.position.set(0, yC, 0.12);
     // frame, back, legs, catwalk, flood arms
     const steel = litMat({ color: C('#6d747e', 0.45), rough: 0.5, metal: 0.6, spec: 0.7, grime: 0.6 });
@@ -267,8 +267,8 @@ export class CalendarBoard extends THREE.Group {
     parts.push(boxAt(BOARD_W + 0.4, BOARD_H + 0.4, 0.2, 0, yC, 0));
     for (const x of [-BOARD_W * 0.28, BOARD_W * 0.28]) parts.push(boxAt(0.55, yC, 0.55, x, yC / 2, -0.5));
     parts.push(boxAt(BOARD_W + 0.6, 0.08, 1.2, 0, yC - BOARD_H / 2 - 0.35, 0.65));
-    for (let i = 0; i <= 12; i++) parts.push(boxAt(0.04, 0.9, 0.04, -BOARD_W / 2 + (BOARD_W * i) / 12, yC - BOARD_H / 2 + 0.1, 1.2));
-    parts.push(boxAt(BOARD_W + 0.6, 0.05, 0.05, 0, yC - BOARD_H / 2 + 0.55, 1.2));
+    for (let i = 0; i <= 12; i++) parts.push(boxAt(0.035, 0.45, 0.035, -BOARD_W / 2 + (BOARD_W * i) / 12, yC - BOARD_H / 2 - 0.12, 1.2));
+    parts.push(boxAt(BOARD_W + 0.6, 0.04, 0.04, 0, yC - BOARD_H / 2 + 0.1, 1.2));
     const lampPos: THREE.Vector3[] = [];
     for (let i = 0; i < 3; i++) {
       const x = -BOARD_W / 2 + BOARD_W * (0.17 + 0.33 * i);

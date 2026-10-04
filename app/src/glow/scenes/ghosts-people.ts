@@ -127,22 +127,127 @@ export function poseLinked(f: RealFigure, raise = 0) {
 
 export interface Baked { pos: Float32Array; nor: Float32Array }
 
-/** The posed body as plain vertex arrays in the figure's floor coordinates (place the figure at (0, hip, 0)). */
-export function bakeWorld(fig: RealFigure): Baked {
+/**
+ * A lighter version of a body for the crowd: per mesh, vertices clustered on a grid in bind space (`cell` m on a
+ * body of standard height); each cluster keeps its centroid, its averaged normal and one member's skinning.
+ */
+export interface Decimated { meshes: { pos: Float32Array; nor: Float32Array; rep: Int32Array; index: Uint32Array }[]; count: number }
+
+export function decimate(fig: RealFigure, cell = 0.016, hair = 1): Decimated {
+  const out: Decimated = { meshes: [], count: 0 };
+  // bind-space units per metre: from the figure's scale and the meshes' bind transforms
   fig.updateMatrixWorld(true);
-  let total = 0;
-  for (const m of fig.meshes) total += m.geometry.attributes.position!.count;
-  const P = new Float32Array(total * 3), N = new Float32Array(total * 3);
+  for (const m of fig.meshes) {
+    const g = m.geometry, pos = g.attributes.position as THREE.BufferAttribute, nor = g.attributes.normal as THREE.BufferAttribute;
+    const toW = new THREE.Matrix4().multiplyMatrices(m.matrixWorld, m.bindMatrixInverse).multiply(m.bindMatrix);
+    const sc = new THREE.Vector3().setFromMatrixScale(toW).x || 1;
+    const c = cell / sc;
+    const key = new Map<string, number>();
+    const cl: number[] = [];
+    const sums: number[][] = [];
+    for (let i = 0; i < pos.count; i++) {
+      const k = `${Math.floor(pos.getX(i) / c)},${Math.floor(pos.getY(i) / c)},${Math.floor(pos.getZ(i) / c)}`;
+      let id = key.get(k);
+      if (id === undefined) { id = sums.length; key.set(k, id); sums.push([0, 0, 0, 0, 0, 0, 0, i]); }
+      const S = sums[id]!;
+      S[0]! += pos.getX(i); S[1]! += pos.getY(i); S[2]! += pos.getZ(i);
+      S[3]! += nor.getX(i); S[4]! += nor.getY(i); S[5]! += nor.getZ(i); S[6]! += 1;
+      cl.push(id);
+    }
+    const n = sums.length;
+    const P = new Float32Array(n * 3), N = new Float32Array(n * 3), R = new Int32Array(n);
+    sums.forEach((S, j) => {
+      P.set([S[0]! / S[6]!, S[1]! / S[6]!, S[2]! / S[6]!], j * 3);
+      const l = Math.hypot(S[3]!, S[4]!, S[5]!) || 1;
+      N.set([S[3]! / l, S[4]! / l, S[5]! / l], j * 3);
+      R[j] = S[7]!;
+    });
+    const idx: number[] = [];
+    const src = g.index;
+    const tri = src ? src.count : pos.count;
+    const seen = new Set<string>();
+    for (let t = 0; t < tri; t += 3) {
+      const a = cl[src ? src.getX(t) : t]!, b = cl[src ? src.getX(t + 1) : t + 1]!, d = cl[src ? src.getX(t + 2) : t + 2]!;
+      if (a === b || b === d || a === d) continue;
+      const k = [a, b, d].sort((x, y) => x - y).join(',');
+      if (seen.has(k)) continue;
+      seen.add(k);
+      idx.push(a, b, d);
+    }
+    if (hair < 1) shrinkHair(m, P, R, sc, hair);
+    out.meshes.push({ pos: P, nor: N, rep: R, index: new Uint32Array(idx) });
+    out.count += n;
+  }
+  return out;
+}
+
+/**
+ * Give a live figure lighter skinned meshes (new geometries, the shared model is untouched): each mesh and its
+ * depth-prepass twin get the clustered vertices with their representative's skinning.
+ */
+export function lighten(fig: RealFigure, cell = 0.011, hair = 1) {
+  const dec = decimate(fig, cell, hair);
+  fig.meshes.forEach((m, mi) => {
+    const D = dec.meshes[mi]!, src = m.geometry;
+    const si = src.attributes.skinIndex as THREE.BufferAttribute, sw = src.attributes.skinWeight as THREE.BufferAttribute;
+    const SI = new Uint16Array(D.rep.length * 4), SW = new Float32Array(D.rep.length * 4);
+    D.rep.forEach((i, j) => { for (let k = 0; k < 4; k++) { SI[j * 4 + k] = si.getComponent(i, k); SW[j * 4 + k] = sw.getComponent(i, k); } });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(D.pos, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(D.nor, 3));
+    g.setAttribute('skinIndex', new THREE.BufferAttribute(SI, 4));
+    g.setAttribute('skinWeight', new THREE.BufferAttribute(SW, 4));
+    g.setIndex(new THREE.BufferAttribute(D.index, 1));
+    for (const o of m.parent!.children) if ((o as THREE.SkinnedMesh).geometry === src) (o as THREE.SkinnedMesh).geometry = g;
+  });
+  return dec.count;
+}
+
+/**
+ * Pull whatever the head carries far out of the skull (Michelle's big double buns) back toward it, so she reads as
+ * a person with her hair up rather than a cartoon: bind-space positions of head-skinned clusters beyond `r0`.
+ */
+function shrinkHair(m: THREE.SkinnedMesh, P: Float32Array, R: Int32Array, sc: number, k: number) {
+  const names = m.skeleton.bones.map((b) => b.name.replace(/^mixamorig:?/, ''));
+  const hi = names.indexOf('Head'), ti = names.indexOf('HeadTop_End');
+  if (hi < 0 || ti < 0) return;
+  const si = m.geometry.attributes.skinIndex as THREE.BufferAttribute, sw = m.geometry.attributes.skinWeight as THREE.BufferAttribute;
+  const headW = (i: number) => { let w = 0; for (let q = 0; q < 4; q++) { const b = si.getComponent(i, q); if (b === hi || b === ti) w += sw.getComponent(i, q); } return w; };
+  // the skull: centred between the head's extremes in x and z, about 13 cm above its lowest point (the chin)
+  const mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
+  for (let j = 0; j < R.length; j++) {
+    if (headW(R[j]!) < 0.9) continue;
+    for (let q = 0; q < 3; q++) { mn[q] = Math.min(mn[q]!, P[j * 3 + q]!); mx[q] = Math.max(mx[q]!, P[j * 3 + q]!); }
+  }
+  if (mn[0]! > mx[0]!) return;
+  const c = new THREE.Vector3((mn[0]! + mx[0]!) / 2, mn[1]! + 0.13 / sc, (mn[2]! + mx[2]!) / 2);
+  const r0 = 0.125 / sc, v = new THREE.Vector3();
+  for (let j = 0; j < R.length; j++) {
+    if (headW(R[j]!) < 0.6) continue;
+    v.fromArray(P, j * 3).sub(c);
+    const d = v.length();
+    if (d <= r0) continue;
+    const nd = r0 + (d - r0) * k;
+    v.multiplyScalar(nd / d).add(c);
+    P[j * 3] = v.x; P[j * 3 + 1] = v.y; P[j * 3 + 2] = v.z;
+  }
+}
+
+/** The posed body as plain vertex arrays in the figure's floor coordinates (place the figure at (0, hip, 0)). */
+export function bakeWorld(fig: RealFigure, dec: Decimated): Baked {
+  fig.updateMatrixWorld(true);
+  const P = new Float32Array(dec.count * 3), N = new Float32Array(dec.count * 3);
   const M = new THREE.Matrix4(), K = new THREE.Matrix4(), v = new THREE.Vector3(), n = new THREE.Vector3(), nm = new THREE.Matrix3();
   let o = 0;
-  for (const m of fig.meshes) {
+  fig.meshes.forEach((m, mi) => {
+    const D = dec.meshes[mi]!;
     const src = m.geometry;
-    const pos = src.attributes.position as THREE.BufferAttribute, nor = src.attributes.normal as THREE.BufferAttribute;
     const si = src.attributes.skinIndex as THREE.BufferAttribute, sw = src.attributes.skinWeight as THREE.BufferAttribute;
     m.skeleton.update();
     const bm = m.skeleton.boneMatrices!;
     const toW = new THREE.Matrix4().multiplyMatrices(m.matrixWorld, m.bindMatrixInverse);
-    for (let i = 0; i < pos.count; i++) {
+    for (let j = 0; j < D.rep.length; j++) {
+      const i = D.rep[j]!;
       K.elements.fill(0);
       for (let k = 0; k < 4; k++) {
         const w = sw.getComponent(i, k);
@@ -151,28 +256,27 @@ export function bakeWorld(fig: RealFigure): Baked {
         for (let e = 0; e < 16; e++) K.elements[e]! += w * M.elements[e]!;
       }
       K.multiply(m.bindMatrix).premultiply(toW);
-      v.fromBufferAttribute(pos, i).applyMatrix4(K);
-      n.fromBufferAttribute(nor, i).applyMatrix3(nm.getNormalMatrix(K)).normalize();
+      v.fromArray(D.pos, j * 3).applyMatrix4(K);
+      n.fromArray(D.nor, j * 3).applyMatrix3(nm.getNormalMatrix(K)).normalize();
       P[o * 3] = v.x; P[o * 3 + 1] = v.y; P[o * 3 + 2] = v.z;
       N[o * 3] = n.x; N[o * 3 + 1] = n.y; N[o * 3 + 2] = n.z;
       o++;
     }
-  }
+  });
   return { pos: P, nor: N };
 }
 
 /** Per vertex: how much it follows the left arm (+x) and the right arm (-x), from the skin weights. */
-export function armWeights(fig: RealFigure): Float32Array {
-  let total = 0;
-  for (const m of fig.meshes) total += m.geometry.attributes.position!.count;
-  const A = new Float32Array(total * 2);
+export function armWeights(fig: RealFigure, dec: Decimated): Float32Array {
+  const A = new Float32Array(dec.count * 2);
   let o = 0;
-  for (const m of fig.meshes) {
+  for (const [mi, m] of fig.meshes.entries()) {
+    const reps = dec.meshes[mi]!.rep;
     const names = m.skeleton.bones.map((b) => b.name.replace(/^mixamorig:?/, ''));
     const side = names.map((nm) => (/^Left(Shoulder|Arm|ForeArm|Hand)/.test(nm) ? 1 : /^Right(Shoulder|Arm|ForeArm|Hand)/.test(nm) ? 2 : 0));
     const shoulder = names.map((nm) => /Shoulder$/.test(nm));
     const si = m.geometry.attributes.skinIndex as THREE.BufferAttribute, sw = m.geometry.attributes.skinWeight as THREE.BufferAttribute;
-    for (let i = 0; i < si.count; i++) {
+    for (const i of reps) {
       let l = 0, r = 0;
       for (let k = 0; k < 4; k++) {
         const b = si.getComponent(i, k), w = sw.getComponent(i, k) * (shoulder[b] ? 0.6 : 1);
@@ -185,14 +289,12 @@ export function armWeights(fig: RealFigure): Float32Array {
   return A;
 }
 
-export function mergedIndex(fig: RealFigure): THREE.BufferAttribute {
+export function mergedIndex(dec: Decimated): THREE.BufferAttribute {
   const idx: number[] = [];
   let ov = 0;
-  for (const m of fig.meshes) {
-    const g = m.geometry, c = g.attributes.position!.count;
-    if (g.index) for (let k = 0; k < g.index.count; k++) idx.push(g.index.getX(k) + ov);
-    else for (let k = 0; k < c; k++) idx.push(k + ov);
-    ov += c;
+  for (const D of dec.meshes) {
+    for (const k of D.index) idx.push(k + ov);
+    ov += D.rep.length;
   }
   return new THREE.BufferAttribute(new Uint32Array(idx), 1);
 }
@@ -208,24 +310,25 @@ export interface BodyBake {
 }
 
 /** Bake a body in every pose the crowd uses (the figure is only a poser; it is not added to the scene). */
-export function bakeBody(fig: RealFigure, hat: boolean, variant = 0.5): BodyBake {
+export function bakeBody(fig: RealFigure, hat: boolean, variant = 0.5, cell = 0.016, hair = 1): BodyBake {
+  const dec = decimate(fig, cell, hair);
   fig.position.set(0, fig.hipHeight, 0);
   fig.rotation.set(0, 0, 0);
   const at = (b: Baked) => ({ pos: new THREE.BufferAttribute(b.pos, 3), nor: new THREE.BufferAttribute(b.nor, 3) });
   const reset = () => { for (const i of [0, 1]) { fig.setFoot(i, 0); fig.setHand(i, 0.3); } fig.setSpine(0, 0, 0, 0); };
   reset();
   poseLinked(fig, 0);
-  const B = at(bakeWorld(fig));
+  const B = at(bakeWorld(fig, dec));
   reset();
   poseLinked(fig, 1);
-  const C = at(bakeWorld(fig));
+  const C = at(bakeWorld(fig, dec));
   const A = new Map<Lonely, { pos: THREE.BufferAttribute; nor: THREE.BufferAttribute; phone: { p: THREE.Vector3; n: THREE.Vector3 } | null }>();
   for (const k of LONELY) {
     reset();
     const { phone } = poseLonely(fig, k, variant);
-    A.set(k, { ...at(bakeWorld(fig)), phone });
+    A.set(k, { ...at(bakeWorld(fig, dec)), phone });
   }
-  return { kind: fig.kind, hat, index: mergedIndex(fig), arm: new THREE.BufferAttribute(armWeights(fig), 2), B, C, A };
+  return { kind: fig.kind, hat, index: mergedIndex(dec), arm: new THREE.BufferAttribute(armWeights(fig, dec), 2), B, C, A };
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -254,13 +357,13 @@ vec3 personShade(vec3 N, vec3 V, vec3 wp, float tint, float lightK, float band, 
   float f = clamp(abs(dot(N, V)), 0.0, 1.0), rim = 1.0 - f;
   float r2 = rim * rim, r4 = r2 * r2;
   float h = wp.y;
-  float mist = 0.55 + 0.75 * vn3(wp * vec3(3.2, 2.2, 3.2) + vec3(0.0, -uTime * 0.5, seed * 13.0));
+  float nz = vn3(wp * vec3(3.0, 2.2, 3.0) + vec3(0.0, -uTime * mix(0.5, 1.1, lightK), seed * 13.0));
+  float mist = 0.55 + 0.75 * nz;
   float feet = 0.3 + 0.7 * smoothstep(0.0, 0.95, h);
   vec3 gc = mix(uCold, warmC * 0.7, tint);
   vec3 ghost = gc * (0.03 + 0.42 * pow(rim, 1.6) + 0.95 * r4) * mist * feet;
   float lum = max(warmC.r, max(warmC.g, warmC.b));
-  float flow = vn3(vec3(wp.x * 3.0, wp.y * 2.2 - uTime * 1.1, wp.z * 3.0 + seed));
-  float bands = smoothstep(0.55, 0.9, flow);
+  float bands = smoothstep(0.55, 0.9, nz);
   float glint = step(0.991, h13(floor(wp * 210.0) + floor(uTime * 8.0))) * f;
   vec3 lightC = warmC * (0.07 + 0.35 * bands + 0.9 * r2 + 2.2 * r4 * r2) + mix(warmC, vec3(lum), 0.6) * 1.6 * r4 * r4
     + vec3(lum) * (0.12 * f * f * f * f * f * f * f * f + 1.5 * glint);

@@ -21,8 +21,8 @@ import { City, Landscape, Sky } from './highway-env';
 import { Furniture, Gantry, NWORDS, Reflection, RoadSurface, Streetlights, Traffic, wordAtlas } from './highway-road';
 import { Gauge } from './highway-gauge';
 import { BOARD_W, CalendarBoard } from './highway-boards';
-import { Interior, SunArc } from './highway-props';
-import { Station } from './highway-station';
+import { Hood, Interior, SunArc } from './highway-props';
+import { Station, VmsGantry } from './highway-station';
 import { makeRT } from '../../engine/gl';
 import { LensFlare } from './highway-flare';
 
@@ -54,8 +54,11 @@ export default class Highway extends Scene {
   boards: { b: CalendarBoard; u: number; x: number; side: number; focus: [number, number] }[] = [];
   station!: Station;
   stationU = 0;
+  vms!: VmsGantry;
+  vmsU = 0;
   arc!: SunArc;
   interior!: Interior;
+  hood!: Hood;
   mirrorRT = makeRT(768, 205);
   flare = new LensFlare();
 
@@ -104,7 +107,7 @@ export default class Highway extends Scene {
     this.furn = new Furniture(this.tex);
     this.lamps = new Streetlights();
     this.traffic = new Traffic();
-    const steel = litMat({ color: C('#8a929c', 0.5), rough: 0.45, metal: 0.7, spec: 0.9, grime: 0.5 });
+    const steel = litMat({ color: C('#7d858f', 0.32), rough: 0.55, metal: 0.6, spec: 0.7, grime: 0.6 });
     this.gantries = [
       new Gantry([{ text: 'City Centre', sub: 'Harbour', arrow: 'up' }, { text: 'Airport', sub: 'Exit 24', arrow: 'right', exit: '24' }], steel),
       new Gantry([{ text: 'Riverside', sub: 'Old Town', arrow: 'up' }, { text: 'East', sub: 'Exit 25', arrow: 'right', exit: '25' }], steel),
@@ -113,14 +116,14 @@ export default class Highway extends Scene {
     this.scene.add(this.sky, this.city, this.road, this.furn, this.lamps, this.traffic, this.land, ...this.gantries);
     this.scene.add(this.cam);
     // dark verticals smear into ghostly figures in the blurred reflection: keep them out of it
-    this.noRefl = [this.lamps.poles, this.furn.posts, ...this.gantries.map((g) => g.children[0]!)];
+    this.noRefl = [this.lamps.poles, this.lamps.halos, this.furn.posts, ...this.gantries.map((g) => g.children[0]!)];
     HU.uLampCol.value.copy(C('#ff9a3c', 115));
 
     // ---- travel (the car), then everything placed along it
     this.buildTravel();
     this.buildRows(atlas.slots);
     // one gantry over the drone's run, one seen ahead through the windscreen at dawn
-    this.gantryU = [this.sAt(this.W0 + 0.6) + 95, this.sAt(T.l3) + 160];
+    this.gantryU = [this.sAt(T.gauge - 0.28), this.sAt(T.l3) + 160];
 
     this.gauge = new Gauge();
 
@@ -129,7 +132,7 @@ export default class Highway extends Scene {
     const specs = [
       { day: 'MONDAY', date: '13', words: [[0], [1]], smile: w1[1]!, side: 1, focus: [T.l1, nearestBeat(w1[2]!.start)] as [number, number], D: 40 },
       { day: 'TUESDAY', date: '14', words: [[2, 3], [4, 5]], smile: w1[4]!, side: -1, focus: [nearestBeat(w1[2]!.start), nearestBeat(w1[6]!.start)] as [number, number], D: 33 },
-      { day: 'WEDNESDAY', date: '15', words: [[6, 7]], smile: w1[7]!, side: 1, focus: [nearestBeat(w1[6]!.start), T.l2 + 0.3] as [number, number], D: 36 },
+      { day: 'WEDNESDAY', date: '15', words: [[6, 7]], smile: w1[7]!, side: 1, focus: [nearestBeat(w1[6]!.start), T.l2 + 0.3] as [number, number], D: 44 },
     ];
     specs.forEach((s, i) => {
       const lines = s.words.map((row) => row.map((wi) => ({ text: w1[wi]!.w, t0: w1[wi]!.start, t1: Math.min(w1[wi]!.end, w1[wi]!.start + 0.55) })));
@@ -138,7 +141,7 @@ export default class Highway extends Scene {
       const u = this.sAt(first) + s.D;
       const x = s.side > 0 ? 21 : -18.5;
       b.position.set(x, 0, -u);
-      b.rotation.y = s.side > 0 ? 0.5 : -0.5;
+      b.rotation.y = s.side > 0 ? -0.45 : 0.45;
       this.scene.add(b);
       this.boards.push({ b, u, x, side: s.side, focus: s.focus });
       this.land.exclude.push({ x, u, r: 26 });
@@ -151,11 +154,18 @@ export default class Highway extends Scene {
     this.station.rotation.y = 0.35;
     this.scene.add(this.station);
     this.land.exclude.push({ x: 40, u: this.stationU + 20, r: 50 });
+    // the overhead message sign that spells the first half of the line on the approach
+    this.vms = new VmsGantry('AND I’D PAY', steel);
+    this.vmsU = this.sAt(L3.words[0]!.start) + 46;
+    this.vms.position.z = -this.vmsU;
+    this.scene.add(this.vms);
 
     // the sun's words and the car interior (camera space)
     this.arc = new SunArc(L2);
     await this.arc.build();
     this.scene.add(this.arc);
+    this.hood = new Hood(this.sky.u);
+    this.scene.add(this.hood);
     this.interior = new Interior(this.mirrorRT.texture);
     this.cam.add(this.interior);
     this.backCam.layers.enableAll();
@@ -229,6 +239,8 @@ export default class Highway extends Scene {
         x += w + gap;
       });
     }
+    const bx = this.road.u.wBox!.value as THREE.Vector4;
+    bx.set(Math.min(...this.slots.map((q) => q.rect.x)), Math.min(...this.slots.map((q) => q.rect.y)), Math.max(...this.slots.map((q) => q.rect.z)), Math.max(...this.slots.map((q) => q.rect.w)));
     this.slots.forEach((s, i) => {
       if (i >= NWORDS) return;
       (this.road.u.wRect!.value as THREE.Vector4[])[i]!.copy(s.rect);
@@ -277,7 +289,7 @@ export default class Highway extends Scene {
         const aimAt = (b: (typeof this.boards)[number]) => {
           const dz = Math.max(4, b.u - s), dx = b.x - pos.x;
           const yw = clamp(Math.atan2(dx, dz), -1.1, 1.1);
-          const pt = clamp(Math.atan2(8.2 - pos.y, Math.hypot(dx, dz)), 0, 0.5);
+          const pt = clamp(Math.atan2(6.3 - pos.y, Math.hypot(dx, dz)), 0, 0.45);
           return [yw, pt] as const;
         };
         const ws = this.boards.map((b) => prog(t, b.focus[0] - 0.13, b.focus[0] + 0.13, ease.inOutCubic) * (1 - prog(t, b.focus[1] - 0.13, b.focus[1] + 0.13, ease.inOutCubic)));
@@ -302,14 +314,16 @@ export default class Highway extends Scene {
         const pos = new THREE.Vector3(ROAD.laneX(1) - 0.35 + 0.3 * w, lerp(1.18, 1.65, w), -s);
         const settle = (1 - w) * 0 + springStep(t - T.whip - 0.34, 2.2, 0.5) - 1;
         const yaw = 0.06 * (1 - w) + w * (Math.PI - 0.12) + 0.04 * settle * (t > T.whip + 0.34 ? 1 : 0);
-        return { pos, yaw, pitch: lerp(0.035, 0.07, w), roll: 0.12 * Math.sin(w * Math.PI) + 0.006 * sway(0.5, 12), fov: lerp(33, 50, w) };
+        return { pos, yaw, pitch: lerp(0.035, 0.13, w), roll: 0.12 * Math.sin(w * Math.PI) + 0.006 * sway(0.5, 12), fov: lerp(33, 54, w) };
       }
       case 'station': {
-        const pos = new THREE.Vector3(ROAD.laneX(2) - 0.4, 1.15 + 0.01 * sway(2, 13), -s);
-        const dz = Math.max(6, this.stationU - s), dx = 18.2 - pos.x;
-        const yaw = clamp(Math.atan2(dx, dz) * 0.6, 0, 0.5);
-        const pitch = clamp(Math.atan2(this.station.panelY - pos.y, Math.hypot(dx, dz)) * 0.65, 0.02, 0.3);
-        return { pos, yaw, pitch, roll: 0.01 * sway(0.5, 14), fov: 44 };
+        // braking toward the services: a long lens on the message sign ahead, the station beyond it
+        const p = prog(t, T.l3, T.pylon, ease.inOutQuad);
+        const pos = new THREE.Vector3(ROAD.laneX(2) - 0.4 - 0.6 * p, 1.2 + 0.01 * sway(2, 13), -s);
+        const dz = Math.max(8, this.vmsU - s);
+        const yaw = Math.atan2(6.4 - pos.x, dz) * 0.8 + 0.03 * sway(0.5, 16);
+        const pitch = clamp(Math.atan2(6.6 - pos.y, dz) * 0.85, 0.02, 0.3);
+        return { pos, yaw, pitch, roll: -0.01 + 0.008 * sway(0.5, 14), fov: lerp(30, 27, p) - 1.2 * pulse(t, this.L[3]!.words[2]!.start, 0.1) };
       }
       case 'pylon': {
         // low by the shoulder, a long lens on the price windows; a slow push and a punch on each landing
@@ -395,12 +409,18 @@ export default class Highway extends Scene {
     HU.uHeadOn.value = pov ? 1 - dawn * 0.6 : 0;
     HU.uHeadPos.value.set(pos.x + 0.35, 0.65, -s - 1.2);
     HU.uLampCol.value.copy(C('#ff9a3c', 115 * (1 - 0.55 * dawn)));
-    // the streetlights switch off at dawn, a wave running toward the city
-    HU.uLampOffU.value = -1e5;
+    // at dawn the streetlights behind us switch off, one more on every beat once the sun is up
+    let offU = -1e5;
+    const tOff = L2.words[5]!.start;
+    if (t > tOff) {
+      const nb = Math.floor(audio.beatAt(t) - audio.beatAt(tOff)) + 1;
+      offU = this.sAt(tOff) - 230 + ROAD.lampP * nb;
+    }
+    HU.uLampOffU.value = offU;
     this.road.follow(pos);
     this.furn.update(Math.max(s, -pos.z), pos.x, t, HU.uHeadOn.value, 1);
     const camU = -pos.z;
-    this.lamps.update(camU, HU.uLampCol.value, -1e5, 1 - 0.7 * dawn);
+    this.lamps.update(camU, HU.uLampCol.value, offU, 1 - 0.7 * dawn);
     this.traffic.update(t, camU, shot === 'dive' ? this.vDrone : v, shot === 'pylon' || shot === 'reveal' ? 0.5 : 1);
     this.land.update(camU, t);
     this.gantries.forEach((g, i) => (g.position.z = -this.gantryU[i]!));
@@ -428,9 +448,25 @@ export default class Highway extends Scene {
       this.station.pool(1);
     } else HU.uPoolCol.value.setRGB(0, 0, 0);
 
+    // ---- the message sign
+    this.vms.visible = shot === 'station' || shot === 'pylon';
+    if (this.vms.visible) {
+      const w = this.L[3]!.words;
+      const starts = [0, 4, 8];
+      Array.from('AND I’D PAY').forEach((_, i) => {
+        const wi = i < 3 ? 0 : i < 7 ? 1 : 2;
+        const ci = i - starts[wi]!;
+        this.vms.row.on[i] = i === 3 || i === 7 ? 0 : t >= w[wi]!.start + ci * 0.03 ? 1 : 0;
+      });
+      this.vms.flash(((audio.beatAt(t) % 1) + 1) % 1, 1);
+    }
+
     // ---- sun words
     this.arc.visible = shot === 'sun' || shot === 'mirror';
-    const arcCenter = (from: THREE.Vector3) => from.clone().add(new THREE.Vector3(sunDir.x, 0, sunDir.z).normalize().multiplyScalar(900));
+    const arcCenter = (from: THREE.Vector3) => from.clone().add(new THREE.Vector3(sunDir.x, 0, sunDir.z).normalize().multiplyScalar(900)).add(new THREE.Vector3(0, 35, 0));
+    // ---- our bonnet in the approach POV (fixed to the car, not the camera)
+    this.hood.visible = shot === 'mirror' || (shot === 'sun' && t < T.whip + 0.1);
+    if (this.hood.visible) { this.hood.position.set(ROAD.laneX(1), 1.18, -s); this.hood.rotation.set(0, 0, 0); }
     // ---- interior
     this.interior.visible = shot === 'mirror' || (shot === 'sun' && t < T.whip + 0.1);
 
@@ -442,9 +478,11 @@ export default class Highway extends Scene {
       this.backCam.rotation.set(0.05, Math.PI, 0, 'YXZ');
       this.backCam.updateMatrixWorld(true);
       this.backCam.updateProjectionMatrix();
-      this.arc.update(t, arcCenter(this.backCam.position).add(new THREE.Vector3(0, 30, 0)), this.backCam, 1, true, 0.42);
+      this.arc.update(t, arcCenter(this.backCam.position).add(new THREE.Vector3(0, 22, 0)), this.backCam, 1, true, 0.5, true);
       const iv = this.interior.visible;
       this.interior.visible = false;
+      this.hood.visible = false;
+      for (const g of this.gantries) g.visible = false;
       this.road.u.reflK!.value = 0.8;
       this.refl.render(renderer, this.hideFor(() => this.scene), this.backCam);
       this.unhide();
@@ -453,16 +491,20 @@ export default class Highway extends Scene {
       renderer.clear(true, true, true);
       renderer.render(this.scene, this.backCam);
       this.interior.visible = iv;
+      this.hood.visible = iv;
+      for (const g of this.gantries) g.visible = true;
       this.interior.glassU.sweep!.value = ((s / ROAD.lampP) % 1 + 1) % 1;
     }
     this.arc.update(t, arcCenter(pos), this.cam, 1, false);
     this.road.u.reflK!.value = 1;
-    const iv2 = this.interior.visible;
+    const iv2 = this.interior.visible, hv = this.hood.visible;
     this.interior.visible = false;
+    this.hood.visible = false;
     if (!DBG().norefl) this.refl.render(renderer, this.hideFor(() => this.scene), this.cam); else this.hideFor(() => this.scene);
     this.unhide();
     this.sky.stars.visible = hideStars;
     this.interior.visible = iv2;
+    this.hood.visible = hv;
     renderer.setRenderTarget(out);
     renderer.setClearColor(0x000000, 1);
     renderer.clear(true, true, true);
