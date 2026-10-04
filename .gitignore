@@ -18,3 +18,6 @@ analysis/glow/.venv/
 analysis/glow/work/
 analysis/glow/qa/
 analysis/glow/__pycache__/
+
+# motion-capture candidates while choosing (the chosen clips get committed)
+app/public/mocap/*.bvh

@@ -148,6 +148,10 @@ export class RealFigure extends THREE.Group {
   private point = [0, 0];
   private dirty = true;
   private applying = false;
+  /** Motion capture (lib/motion.ts): local rotations of the mapped bones and the pelvis offset, applied before the procedural pose. */
+  private mocap: { q: Map<THREE.Bone, THREE.Quaternion>; hips: THREE.Vector3 | null } | null = null;
+  private over = { arms: [false, false], legs: [false, false], spine: false };
+  private hipsRest = new THREE.Vector3();
 
   /**
    * `material` replaces the self-lit default (e.g. ghostBodyMaterial); `prepass` first lays down the body's depth
@@ -179,6 +183,7 @@ export class RealFigure extends THREE.Group {
       }
     }
     for (const b of this.bones.values()) this.rest.push([b, b.quaternion.clone()]);
+    this.hipsRest.copy(this.bones.get('Hips')!.position);
     this.body.add(root);
     this.add(this.body);
     // face +z (toes forward) and stand `HEIGHT` tall, pelvis at the origin
@@ -194,6 +199,7 @@ export class RealFigure extends THREE.Group {
     this.body.position.copy(this.wpos('Hips')).multiplyScalar(-1);
     super.updateMatrixWorld(true);
     if (this.wpos('LeftArm').x < 0) throw new Error(`${kind}: the body's left is not at +x`);
+    this.chestRest.copy(this.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(this.bone('Spine2').getWorldQuaternion(new THREE.Quaternion())));
     this.upper = this.wpos('LeftForeArm').distanceTo(this.wpos('LeftArm'));
     this.fore = this.wpos('LeftHand').distanceTo(this.wpos('LeftForeArm')) + 0.55 * this.wpos('LeftHandMiddle1').distanceTo(this.wpos('LeftHand'));
     this.thigh = this.wpos('LeftLeg').distanceTo(this.wpos('LeftUpLeg'));
@@ -216,19 +222,37 @@ export class RealFigure extends THREE.Group {
   /** Curl the upper body toward +z (arch) and sideways toward +x (lean); nod/tilt the head. */
   setSpine(arch: number, lean: number, nod = 0, tilt = 0) {
     this.spine = [arch, lean, nod, tilt];
+    this.over.spine = true;
     this.dirty = true;
   }
+
+  /**
+   * Pose from motion capture (lib/motion.ts): `q` = local rotations of bones, `hips` = the pelvis bone's local
+   * position (null = rest). Clears the procedural spine/arms/legs, so calls to setSpine / setArm / setLeg /
+   * reach made after this one override just that part on top of the captured motion. `null` goes back to the
+   * procedural pose.
+   */
+  setMocap(m: { q: Map<THREE.Bone, THREE.Quaternion>; hips: THREE.Vector3 | null } | null) {
+    this.mocap = m;
+    this.over = { arms: [false, false], legs: [false, false], spine: false };
+    this.dirty = true;
+  }
+
+  /** The bones by name (Mixamo names without the prefix), for lib/motion.ts. */
+  get boneMap(): ReadonlyMap<string, THREE.Bone> { return this.bones; }
 
   /** Arm `i` (0 = -x, 1 = +x) along u1 (upper) and u2 (forearm), directions in the spine frame; `twist` rolls the upper arm. */
   setArm(i: number, u1: THREE.Vector3, u2: THREE.Vector3, twist = 0) {
     this.arms[i] = [u1.clone(), u2.clone()];
     this.twist[i] = twist;
+    this.over.arms[i] = true;
     this.dirty = true;
   }
 
   /** Leg `i` along u1 (thigh) and u2 (shin), directions in the figure frame. */
   setLeg(i: number, u1: THREE.Vector3, u2: THREE.Vector3) {
     this.legs[i] = [u1.clone(), u2.clone()];
+    this.over.legs[i] = true;
     this.dirty = true;
   }
 
@@ -252,8 +276,17 @@ export class RealFigure extends THREE.Group {
   /** Spine frame (world): the figure's rotation followed by the spine's arch/lean. */
   private spineQ(out: THREE.Quaternion) {
     this.getWorldQuaternion(out);
+    if (this.mocap && !this.over.spine) {
+      // the chest's turn away from its rest pose, in front of the figure's own rotation
+      const now = this.bone('Spine2').getWorldQuaternion(new THREE.Quaternion());
+      const rest = out.clone().multiply(this.chestRest);
+      return out.premultiply(now.multiply(rest.invert()));
+    }
     return out.multiply(_q2.setFromEuler(new THREE.Euler(this.spine[0]!, 0, -this.spine[1]!)));
   }
+
+  /** Spine2's rest rotation in the figure frame. */
+  private chestRest = new THREE.Quaternion();
 
   /** Rotate `bone` by the world-space rotation `q` about its own joint. */
   private rot(bone: THREE.Bone, q: THREE.Quaternion) {
@@ -272,21 +305,32 @@ export class RealFigure extends THREE.Group {
     this.applying = true;
     this.dirty = false;
     for (const [b, q] of this.rest) b.quaternion.copy(q);
+    const hips = this.bones.get('Hips')!;
+    hips.position.copy(this.hipsRest);
+    const mc = this.mocap;
+    if (mc) {
+      for (const [b, q] of mc.q) b.quaternion.copy(q);
+      if (mc.hips) hips.position.copy(mc.hips);
+    }
     super.updateMatrixWorld(true);
     const F = this.getWorldQuaternion(new THREE.Quaternion());
     const toWorld = (q: THREE.Quaternion) => F.clone().multiply(q).multiply(F.clone().invert());
     // spine: arch and lean spread over the three spine bones
     const [arch, lean, nod, tilt] = this.spine as [number, number, number, number];
-    const third = new THREE.Quaternion().slerp(toWorld(new THREE.Quaternion().setFromEuler(new THREE.Euler(arch, 0, -lean))), 1 / 3);
-    for (const n of ['Spine', 'Spine1', 'Spine2']) this.rot(this.bone(n), third);
+    if (!mc || this.over.spine) {
+      const third = new THREE.Quaternion().slerp(toWorld(new THREE.Quaternion().setFromEuler(new THREE.Euler(arch, 0, -lean))), 1 / 3);
+      for (const n of ['Spine', 'Spine1', 'Spine2']) this.rot(this.bone(n), third);
+      const S0 = this.spineQ(new THREE.Quaternion());
+      const head = S0.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(nod, 0, -tilt))).multiply(S0.clone().invert());
+      const half = new THREE.Quaternion().slerp(head, 0.5);
+      this.rot(this.bone('Neck'), half);
+      this.rot(this.bone('Head'), half);
+    }
     const S = this.spineQ(new THREE.Quaternion());
-    const head = S.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(nod, 0, -tilt))).multiply(S.clone().invert());
-    const half = new THREE.Quaternion().slerp(head, 0.5);
-    this.rot(this.bone('Neck'), half);
-    this.rot(this.bone('Head'), half);
     // arms (hanging relaxed unless set), a shrug when raised above the shoulder, fingers
     for (let i = 0; i < 2; i++) {
       const side = SIDES[i]!, sx = i === 0 ? -1 : 1;
+      if (mc && !this.over.arms[i]) { this.fingers(i, this.curl[i]!); continue; }
       const [u1, u2] = this.arms[i] ?? [new THREE.Vector3(sx * 0.12, -1, 0.02).normalize(), new THREE.Vector3(sx * 0.1, -1, 0.15).normalize()];
       const d1 = u1.clone().applyQuaternion(S), d2 = u2.clone().applyQuaternion(S);
       const lift = clamp((Math.acos(clamp(-u1.y, -1, 1)) - Math.PI / 2) / (Math.PI / 2));
@@ -299,7 +343,7 @@ export class RealFigure extends THREE.Group {
     // legs
     for (let i = 0; i < 2; i++) {
       const side = SIDES[i]!, leg = this.legs[i];
-      if (leg) {
+      if (leg && (!mc || this.over.legs[i])) {
         this.aim(this.bone(`${side}UpLeg`), this.bone(`${side}Leg`), leg[0].clone().applyQuaternion(F));
         this.aim(this.bone(`${side}Leg`), this.bone(`${side}Foot`), leg[1].clone().applyQuaternion(F));
       }
