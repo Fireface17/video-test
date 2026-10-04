@@ -208,6 +208,7 @@ export class CityWorld {
     if (!inC) { this.city.wake = 1; u.wakeR!.value = 1e9; }
     else if (t < T.wake) { this.city.wake = 0.1; u.wakeR!.value = 1e9; }
     else { this.city.wake = 1; u.wakeR!.value = R; u.wakeSoft!.value = 140; }
+    u.gain!.value = inC && t >= T.wake ? 1 + 0.7 * smoothstep(T.wake, T.town, t) + 0.25 * Math.exp(-((T.beatAt(t) % 1) * 5)) * smoothstep(T.wake, T.town, t) : 1;
     LM.forEach(([x, z], i) => { const d = Math.hypot(x - sp.x, z - sp.z); this.lmWake[i]!.value = !inC ? 1 : t < T.wake ? 0.15 : 0.15 + 0.85 * smoothstep(d - 150, d, R); });
     const ou = this.overlay.material.uniforms;
     (ou.from!.value as THREE.Vector3).set(sp.x, 0, sp.z);
@@ -226,7 +227,6 @@ export class CityWorld {
       L.colors[i * 3] = base[i * 3]! * g + tint.r * 0.4 * inW; L.colors[i * 3 + 1] = base[i * 3 + 1]! * g + tint.g * 0.4 * inW; L.colors[i * 3 + 2] = base[i * 3 + 2]! * g + tint.b * 0.4 * inW;
     }
     L.commit();
-    this.roofMat.uniforms.p!.value.copy(this.sitter.position);
 
     // ---- chorus 1's hero, both arms up, gold fading to his own blue ----
     if (this.hero) {
@@ -245,6 +245,7 @@ export class CityWorld {
 
     // ---- her ----
     this.poseSitter(t);
+    this.roofMat.uniforms.p!.value.copy(this.sitter.position);
 
     // ---- risers ----
     const lp = this.lights;
@@ -311,9 +312,9 @@ export class CityWorld {
       const glowK = t < T.wake ? 1 + 0.8 * pulse(t, T.land, 0.3) + 0.6 * smoothstep(T.raise, T.wake, t) : 0;
       spk.set(ns++, p.x, p.y, p.z, col('white', 3).lerp(tint, 0.3), glowK * 2.5, 0.5 + 0.4 * smoothstep(T.raise, T.wake, t));
       spk.set(ns++, p.x, p.y, p.z, tint, glowK * 0.9, 2.5 + 1.5 * smoothstep(T.raise, T.wake, t));
-      if (t < T.land) for (let k2 = 1; k2 < 14; k2++) { // its tail
-        const q = top.clone().lerp(hands, ease.outCubic(prog(t - k2 * 0.02, T.fall0, T.land)));
-        spk.set(ns++, q.x, q.y, q.z, tint, (1 - k2 / 14) * 1.2, 1.4 - k2 * 0.06);
+      if (t < T.land) for (let k2 = 1; k2 < 80; k2++) { // its tail: a streak along the path it came down
+        const q = this.fallPos(t - k2 * 0.0035);
+        spk.set(ns++, q.x, q.y, q.z, tint, (1 - k2 / 80) * 0.7, 1.2 - k2 * 0.011);
       }
       const bt = t - T.wake;
       if (bt > 0) {

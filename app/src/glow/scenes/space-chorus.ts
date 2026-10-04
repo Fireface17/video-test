@@ -45,7 +45,7 @@ interface Look { crowd: CrowdLook; space: SpaceLook; heart: [THREE.Color, THREE.
 const LOOKS: Record<number, () => Look> = {
   1: () => ({
     crowd: { star: col('white', 2.1).lerp(col('cyan', 2.1), 0.12), line: col('cyan', 0.42).lerp(col('blue', 0.42), 0.45), accent: col('cyan', 1.8), hero: [col('cyan', 2.2), col('pink', 2.2)] },
-    space: { neb: new THREE.Color(0.75, 0.9, 1.25), nebGain: 0.12, aurora: [col('phosphor', 1.3), col('cyan', 0.6).lerp(col('violet', 0.6), 0.5)], shell: new THREE.Color(1.0, 0.78, 0.5), air: new THREE.Color(0.12, 0.3, 1.0) },
+    space: { neb: new THREE.Color(0.75, 0.9, 1.25), nebGain: 0, aurora: [col('phosphor', 1.3), col('cyan', 0.6).lerp(col('violet', 0.6), 0.5)], shell: new THREE.Color(1.0, 0.78, 0.5), air: new THREE.Color(0.12, 0.3, 1.0) },
     heart: [col('pink', 1.3), col('cyan', 1.0).lerp(col('white', 1), 0.4), col('white', 2.6).lerp(col('pink', 2.6), 0.25)],
     city: col('cyan', 1.0).lerp(col('white', 1.0), 0.35),
   }),
@@ -124,7 +124,7 @@ export default class SpaceChorus extends Scene {
     this.heart = new GlassHeart(7 + n, hi, hr, hc, 62);
     this.heart.T = { crack0: K.every, crack1: K.shatter, shatter: K.shatter, ign0: K.becomes, ign1: K.star };
     this.heart.scale.setScalar(1.7);
-    this.shards = new GlowPoints(this.heart.pieces.length + 32, 0.14);
+    this.shards = new GlowPoints(this.heart.pieces.length + 32, 0.1);
     this.assignBirths();
     const S = this.space.st;
     S.add(this.crowd.sf, this.crowd.links, this.crowd.lights, this.streams, this.heart, this.shards);
@@ -195,6 +195,10 @@ export default class SpaceChorus extends Scene {
     const K = this.K, n = this.n, three = n === 3;
     const endD = three ? K.e : K.e;
     const stut = (t: number) => K.glos.slice(0, 3).reduce((a, g) => a + 1.6 * pulse(t, g, 0.1), 0);
+    const imp = (t: number) => {
+      const st = (x: number, k: number) => k * ease.outExpo(prog(t, x, x + 0.18));
+      return Math.max(st(K.inn, 0.25), st(K.the, 0.5), st(K.dark, 0.8)) + 0.2 * prog(t, K.dark + 0.18, K.e, ease.inCubic);
+    };
     return {
       form0: K.fly0, form1: K.pull + 0.9,
       take: K.take, my: K.my, hand: K.hand,
@@ -219,15 +223,14 @@ export default class SpaceChorus extends Scene {
       glow: (t) => {
         const e = this.ctx.audio.env('rms', t);
         let g = 0.85 + 0.25 * e + 0.35 * this.beatPulse(t) * (t > (three ? K.s : K.D) ? 1 : 0.4);
-        g += 0.6 * smoothstep(K.glowing, K.glowing + 1.5, t) + 1.2 * smoothstep(K.pullD, endD, t);
+        g += 0.5 * smoothstep(K.glowing, K.glowing + 1.5, t) + 0.6 * smoothstep(K.pullD, endD, t);
         g += 0.8 * pulse(t, K.glowA, 0.25);
-        return g;
+        return g * (1 - 0.85 * imp(t));
       },
-      implode: (t) => {
-        const st = (x: number, k: number) => k * ease.outExpo(prog(t, x, x + 0.18));
-        return Math.max(st(K.inn, 0.25), st(K.the, 0.5), st(K.dark, 0.8)) + 0.2 * prog(t, K.dark + 0.18, K.e, ease.inCubic);
-      },
-      flash: (t) => stut(t) + 1.4 * pulse(t, K.inn, 0.1) + 1.6 * pulse(t, K.the, 0.1) + 2.2 * pulse(t, K.dark, 0.12),
+      implode: imp,
+      lowHero: !three,
+      links: (t) => (three ? 1 : 1 - smoothstep(K.spaceD - 0.3, K.spaceD + 0.1, t) * (1 - smoothstep(K.glowing - 0.1, K.glowing + 0.4, t))),
+      flash: (t) => stut(t) + (0.7 * pulse(t, K.inn, 0.1) + 0.8 * pulse(t, K.the, 0.1) + 1.0 * pulse(t, K.dark, 0.12)) * (1 - 0.7 * imp(t)),
     };
   }
 
@@ -306,7 +309,7 @@ export default class SpaceChorus extends Scene {
       });
       S('rise', firstDb, 'city', (t) => {
         const k = prog(t, firstDb, K.spaceA);
-        const y = 70 + 520 * ease.inCubic(k);
+        const y = 70 + 860 * ease.inCubic(k);
         const pitch = lerp(-0.95, 1.05, ease.inOutCubic(prog(t, firstDb + 0.3, K.spaceA - 0.15)));
         const p = V(-40 + 30 * k, y, 90 - 50 * k);
         return cam(p, p.clone().add(V(0.15, Math.sin(pitch), -Math.cos(pitch))), 62, 0.12 * Math.sin(k * 3));
@@ -319,7 +322,7 @@ export default class SpaceChorus extends Scene {
       });
       S('rise', firstDb, 'city', (t) => {
         const k = prog(t, firstDb, K.spaceA);
-        const p = V(sp.x + 300 - 60 * k, 200 + 450 * ease.inCubic(k), sp.z + 150);
+        const p = V(sp.x + 300 - 60 * k, 200 + 760 * ease.inCubic(k), sp.z + 150);
         const pitch = lerp(0.15, 1.3, ease.inOutCubic(k));
         return cam(p, p.clone().add(V(-0.3, Math.sin(pitch), -Math.cos(pitch))), 62, -0.1);
       });
@@ -355,28 +358,31 @@ export default class SpaceChorus extends Scene {
     S('beautiful', K.pull, 'space', (t) => {
       const k = ease.outExpo(prog(t, K.pull, K.pull + 1.6));
       const d = prog(t, K.pull, K.C);
-      return cam(V(m * (8 + 10 * k + 8 * d), 34 - 6 * k, 50 + 70 * k + 6 * d), V(0, 3 * (1 - k), 0), 48 - 4 * k, -m * 0.08 * (1 - k));
+      return cam(V(m * (8 + 8 * k + 6 * d), 34 - 8 * k, 50 + 50 * k + 4 * d), V(0, 3 * (1 - k), 0), 48 - 4 * k, -m * 0.08 * (1 - k));
     });
     const tOrbit = a.downbeats.find((d) => d > K.pull + 1.2 && d < K.C - 0.3);
     if (tOrbit !== undefined) S('orbit', tOrbit, 'space', (t) => {
       const k = prog(t, tOrbit, K.C + 0.3);
       const ang = m * (-0.75 + 0.25 * k);
-      return cam(V(Math.sin(ang) * 112, 42 - 10 * k, Math.cos(ang) * 112), V(0, 0, 0), 42, m * 0.1);
+      return cam(V(Math.sin(ang) * 96, 40 - 10 * k, Math.cos(ang) * 96), V(0, 0, 0), 42, m * 0.1);
     });
     // C — the dive into the dark city
     const dC = this.space.dirC;
     S('dive', K.C, 'space', (t) => {
-      const k = prog(t, K.C, K.dive1 + 0.35);
-      const far = dC.clone().multiplyScalar(118).add(V(m * 12, 18, 0));
+      // a push in, then on the downbeat the plunge
+      const tDb = a.downbeats.find((d) => d > K.C + 0.2 && d < K.dive1 - 0.2) ?? K.C + 0.8;
+      const k1 = prog(t, K.C, tDb, ease.outCubic), k2 = prog(t, tDb, K.dive1 + 0.35, ease.inCubic);
+      const far = dC.clone().multiplyScalar(100).add(V(m * 12, 16, 0)), mid = dC.clone().multiplyScalar(66).add(V(m * 6, 8, 0));
       const near = dC.clone().multiplyScalar(R + 0.4);
-      const p = far.clone().lerp(near, ease.inCubic(k));
-      return cam(p, dC.clone().multiplyScalar(R * lerp(0, 0.98, ease.inQuad(k))), 42 + 26 * ease.inCubic(k), m * 0.2 * ease.inQuad(k));
+      const p = far.clone().lerp(mid, k1).lerp(near, k2);
+      return cam(p, dC.clone().multiplyScalar(R * lerp(0.2 * k1, 0.98, k2)), 42 + 24 * k2, m * (0.05 * k1 + 0.25 * k2));
     });
     S('descend', K.dive1, 'city', (t) => {
       const k = ease.outCubic(prog(t, K.dive1 - 0.25, K.land));
       const star = this.city!.fallPos(t);
-      const p = star.clone().add(V(lerp(140, m * 5, k), lerp(320, 9, k), lerp(330, 9, k)));
-      return cam(p, star.clone().lerp(this.city!.sitPos, 0.2 + 0.3 * k), 60 - 12 * k, 0.2 * (1 - k));
+      const ang = m * lerp(0.9, 0.25, k), r = lerp(260, 9, k);
+      const p = star.clone().add(V(Math.sin(ang) * r, lerp(150, 3.5, k), Math.cos(ang) * r));
+      return cam(p, star.clone().add(V(0, lerp(-60, 0.5, k), lerp(-120, -6, k))), 62 - 14 * k, m * 0.18 * (1 - k));
     }, { kind: 'zoom', dur: 0.5, centre: [0.5, 0.5], color: lin('white', 1.0) });
     S('alone', K.land, 'city', (t) => {
       const k = prog(t, K.land, K.raise, ease.inOutQuad);
@@ -408,6 +414,7 @@ export default class SpaceChorus extends Scene {
     }, { kind: 'whip', dur: 0.35, dir: [0, 1] });
     S('planet', K.spaceD, 'space', (t) => {
       const k = prog(t, K.spaceD, K.pullD);
+      if (n === 2) return cam(V(-9 + 5 * k, R + 1.6 + 1.6 * k, 16 - 3 * k), V(2, R + 5.5, -6), 60 - 4 * k, 0.08);
       const up = dC.clone();
       const side = new THREE.Vector3().crossVectors(up, V(0, 0, 1)).normalize();
       const p = up.clone().multiplyScalar(R + 2.5 + 5 * k).addScaledVector(side, m * (4 - 3 * k));
@@ -415,20 +422,26 @@ export default class SpaceChorus extends Scene {
     }, { kind: 'light', dur: 0.4, color: lin('white', 1.4) });
     // "glo-glo-glo": three jump cuts in on the rings, one per stutter
     K.glos.slice(0, 3).forEach((g, k) => {
-      const ang = [0.35, -0.5, 0.1][k]!, r0 = [16, 12, 9][k]!;
+      const off = [V(4, 2.2, 21), V(-3.2, 1.6, 13.5), V(1.2, 1.1, 8.5)][k]!;
       S(`glo${k + 1}`, g, 'space', (t) => {
-        const u = prog(t, g, g + 0.5, ease.outCubic);
-        const up = dC.clone(), side = new THREE.Vector3().crossVectors(up, V(0, 0, 1)).normalize(), fw = new THREE.Vector3().crossVectors(side, up);
-        const c = up.clone().multiplyScalar(RINGS[0]!.r + 1.5);
-        const p = c.clone().addScaledVector(side, Math.sin(ang) * (r0 - 2 * u)).addScaledVector(fw, Math.cos(ang) * (r0 - 2 * u)).addScaledVector(up, 1.5 + k);
-        return cam(p, c, 50 - 4 * k, (k - 1) * 0.12);
+        const u = prog(t, g, g + 0.45, ease.outCubic);
+        return cam(V(off.x, top + off.y, off.z - 1.2 * u), V(0, top + 0.9, 0), 48 - 2 * k, [0.08, -0.1, 0.04][k]!);
       });
     });
+    const tBuild = a.downbeats.find((d) => d > K.pullD + 0.8 && d < K.e - 0.8);
+    const awayEnd = tBuild ?? K.e + 0.5;
     S('away', K.pullD, 'space', (t) => {
-      const k = prog(t, K.pullD, K.e + 0.5, ease.inOutCubic);
+      const k = prog(t, K.pullD, awayEnd + (tBuild ? 0 : 0), ease.inOutCubic);
       const dir = this.space.dirC.clone().add(V(0, 1, 0)).normalize();
-      const p = dir.clone().multiplyScalar(lerp(R + 10, 150, k)).add(V(m * 20 * k, 0, 0));
+      const p = dir.clone().multiplyScalar(lerp(R + 10, tBuild ? 105 : 150, k)).add(V(m * 20 * k, 0, 0));
       return cam(p, V(0, 0, 0).lerp(V(0, R, 0), 1 - k), 56 - 10 * k, m * 0.12 * k);
+    });
+    // the riser: a slow orbit closing in while the rings spin up, then everything falls into one point
+    if (tBuild !== undefined) S('build', tBuild, 'space', (t) => {
+      const k = prog(t, tBuild, K.e + 0.5);
+      const ang = m * (0.9 - 0.7 * ease.inOutQuad(k));
+      const r = lerp(118, 82, ease.inCubic(k));
+      return cam(V(Math.sin(ang) * r, 48 - 18 * k, Math.cos(ang) * r), V(0, 2, 0), 44 - 6 * ease.inCubic(k), -m * (0.1 + 0.25 * ease.inCubic(k)));
     });
     return shots.sort((x, y) => x.t0 - y.t0);
   }
@@ -481,12 +494,24 @@ export default class SpaceChorus extends Scene {
       return cam(V(-8 - 10 * k - 6 * d, 34 - 8 * k, 48 + 72 * k + 4 * d), V(0, 3 * (1 - k), 0), 48 - 4 * k, 0.08 * (1 - k));
     });
     // the finale: low over the ring with the sun breaking over the limb, then pull away into the flash
+    // the finale: low over the ring with the sun about to break over the limb; it breaks on "glowing";
+    // the last bar pulls away and everything falls into one golden point
+    const tSun = a.downbeats.find((d) => d >= K.glowing - 0.2 && d < K.e - 1) ?? K.glowing;
+    const tLast = a.downbeats.find((d) => d > tSun + 0.8 && d < K.e - 0.6);
     S('finale', K.F, (t) => {
-      const k = prog(t, K.F, K.e + 0.5, ease.inOutCubic);
-      const ang = -0.35 + 0.5 * k;
-      const r = lerp(60, 135, ease.inOutCubic(prog(t, K.pullD, K.e + 0.5)));
-      return cam(V(Math.sin(ang) * r, 14 + 10 * k, Math.cos(ang) * r), V(0, 6 * (1 - k), 0), 46 - 4 * k, -0.08);
+      const k = prog(t, K.F, tSun, ease.inOutQuad);
+      return cam(V(3 - 4 * k, top + 2.2 + 0.6 * k, 15 - 2 * k), V(0, top + 4.5, -14), 52, 0.04);
     }, { kind: 'light', dur: 0.4, color: lin('gold', 1.4) });
+    S('sunrise', tSun, (t) => {
+      const k = prog(t, tSun, tLast ?? K.e + 0.5, ease.outCubic);
+      return cam(V(-2 - 16 * k, top + 3 + 20 * k, 16 + 50 * k), V(0, top + 2 - 16 * k, -6 + 6 * k), 54 - 6 * k, -0.06 * k);
+    });
+    if (tLast !== undefined) S('last', tLast, (t) => {
+      const k = prog(t, tLast, K.e + 0.5, ease.inOutCubic);
+      const ang = -0.45 + 0.35 * k;
+      const r = lerp(85, 125, k);
+      return cam(V(Math.sin(ang) * r, 30 - 8 * k, Math.cos(ang) * r), V(0, 4 * (1 - k), 0), 44, -0.1 - 0.2 * ease.inCubic(k));
+    });
     return shots.sort((x, y) => x.t0 - y.t0);
   }
 
@@ -503,7 +528,12 @@ export default class SpaceChorus extends Scene {
     sw.wave(dC, three ? Math.PI : (wA > 0 ? lerp(0.05, Math.PI, ease.outCubic(wA)) : 0), 0.35 + 1.0 * flare + (three ? 0.15 : 0), 0.25 * this.beatPulse(t) + this.crowd.T.flash(t) * 0.2, 0.18);
     sw.earth.surface.material.uniforms.cityGain!.value = 1 + 0.6 * flare;
     const gather = three ? 0 : smoothstep(K.spaceD - 0.3, K.spaceD + 0.8, t);
-    sw.aurora.material.uniforms.k!.value = three ? 0 : 0.25 + 1.2 * gather + 0.6 * flare;
+    const ak = three ? 0 : 1.4 * gather + 0.6 * flare;
+    sw.aurora.material.uniforms.k!.value = ak;
+    sw.aurora.visible = ak > 0.01;
+    // (the light shell only matters once the planet wakes; the nebula only where it is a backdrop: chorus 2, 3)
+    sw.shell.visible = three || t > K.spaceD - 0.6;
+    sw.neb.visible = this.look.space.nebGain > 0.05;
     (sw.neb.material as THREE.ShaderMaterial).uniforms.gain!.value = this.look.space.nebGain * (1 + 0.5 * flare);
     ((sw.neb.material as THREE.ShaderMaterial).uniforms.tint!.value as THREE.Color).copy(this.look.space.neb);
     if (three) {
@@ -532,7 +562,7 @@ export default class SpaceChorus extends Scene {
     this.heart.visible = t > K.B - 0.6 && t < K.fly0 + 1.5;
     if (this.heart.visible) {
       this.poseHeart(t);
-      this.heart.pose(t, this.ctx.audio.beatAt(t), 1);
+      this.heart.pose(t, this.ctx.audio.beatAt(t), this.n === 1 ? 0.75 : 0.6);
     }
     // the people of stars
     const camDist = st.cam.position.distanceTo(V(0, R + 4, 0));
@@ -556,16 +586,21 @@ export default class SpaceChorus extends Scene {
     }
     // the falling star (C): leaves the ring and drops toward the city
     if (!three && t > K.C - 0.2 && t < K.dive1 + 0.6) {
-      const k = ease.inCubic(prog(t, K.C + 0.2, K.dive1 + 0.4));
-      const from = dC.clone().multiplyScalar(RINGS[0]!.r + 1), to = dC.clone().multiplyScalar(R + 0.2);
-      const p = from.lerp(to, k);
-      this.shards.set(ns++, p.x, p.y, p.z, col('white', 3), 1.5, 3.4);
-      this.shards.set(ns++, p.x, p.y, p.z, this.look.crowd.accent, 0.6, 11);
+      // it leaves the inner ring where it passes nearest the city, and falls in an arc
+      const from = dC.clone().setZ(0).normalize().multiplyScalar(RINGS[0]!.r + 0.5), to = dC.clone().multiplyScalar(R + 0.2);
+      const at = (x: number) => {
+        const k = ease.inOutCubic(prog(x, K.C + 0.1, K.dive1 + 0.35));
+        return from.clone().lerp(to, k).addScaledVector(dC, Math.sin(k * Math.PI) * 4);
+      };
+      const p = at(t);
+      this.shards.set(ns++, p.x, p.y, p.z, col('white', 3), 1.6, 9);
+      this.shards.set(ns++, p.x, p.y, p.z, this.look.crowd.accent, 0.7, 26);
+      for (let j = 1; j < 24; j++) { const q = at(t - j * 0.02); this.shards.set(ns++, q.x, q.y, q.z, this.look.crowd.accent, (1 - j / 24) * 0.9, 4 - j * 0.12); }
     }
     // the implosion's point
     if (imp > 0) {
-      this.shards.set(ns++, ip.x, ip.y, ip.z, col('white', 3), imp * 3, 4 + 40 * imp);
-      this.shards.set(ns++, ip.x, ip.y, ip.z, this.look.crowd.accent, imp * 2, 60 * imp);
+      this.shards.set(ns++, ip.x, ip.y, ip.z, col('white', 3), imp * 3, 6 + 56 * imp);
+      this.shards.set(ns++, ip.x, ip.y, ip.z, this.look.crowd.accent, imp * 2, 84 * imp);
     }
     this.shards.commit(ns);
     this.poseStreams(t);
@@ -574,7 +609,7 @@ export default class SpaceChorus extends Scene {
   /** Lights rising off the planet: as the formation gathers (A) and from every city in D. */
   private poseStreams(t: number) {
     const K = this.K, three = this.n === 3, s = this.streams;
-    const winA: [number, number] = [K.spaceA - 1.5, K.hand], winD: [number, number] = three ? [K.F, K.e] : [K.spaceD - 1.0, K.e];
+    const winA: [number, number] = [K.spaceA - 1.5, K.glowA], winD: [number, number] = three ? [K.F, K.e] : [K.spaceD - 1.0, K.e];
     const dC = this.space.dirC, up = V(0, 1, 0);
     const c = this.look.crowd.star, imp = this.crowd.T.implode(t);
     let n = 0;
@@ -644,15 +679,15 @@ export default class SpaceChorus extends Scene {
     const wake = n === 3 ? 0 : pulse(t, K.wake, 0.15);
     const stut = K.glos.slice(0, 3).reduce((s, g) => s + pulse(t, g, 0.09), 0);
     const fin = this.crowd.T.flash(t) - K.glos.slice(0, 3).reduce((s, g) => s + 1.6 * pulse(t, g, 0.1), 0);
-    const inFlash = t < K.s + 0.5 ? (n === 3 ? 0 : Math.pow(0.5, Math.max(0, t - K.s) / 0.1) * 0.7 * smoothstep(f.win[0], K.s, t)) : 0;
+    const inFlash = t < K.s + 0.4 ? (n === 3 ? 0 : Math.pow(0.5, Math.max(0, t - K.s) / 0.05) * 0.5 * smoothstep(f.win[0], K.s, t)) : 0;
     const endFlash = smoothstep(K.e - 0.3, K.e, t);
     const sh = 7 * shatter + 9 * wake + 6 * stut + 4 * bp * (t > K.D ? 1 : 0.3) + 3 * fin;
-    const z = 1 + 0.018 * bp + 0.05 * stut + K.glos.slice(0, 3).reduce((s, g, k) => s + (t > g ? 0.035 * (k + 1) * (1 - smoothstep(K.glos[3]!, K.glos[3]! + 0.4, t)) : 0), 0);
+    const z = 1 + 0.018 * bp + 0.05 * stut + K.glos.slice(0, 3).reduce((s, g, k) => s + (t > g ? 0.02 * (k + 1) * (1 - smoothstep(K.glos[3]!, K.glos[3]! + 0.4, t)) : 0), 0);
     const city = cur.w === 'city';
     return {
-      bloom: 0.95 + 0.25 * shatter + 0.3 * endFlash, bloomThreshold: city ? 0.8 : 0.72, bloomRadius: 0.85, halation: 0.12, vignette: 0.45, grain: 0.05,
+      bloom: 0.95 + 0.35 * shatter + 0.25 * stut + 0.3 * endFlash, bloomThreshold: city ? 0.8 : 0.72, bloomRadius: 0.85, halation: 0.12, vignette: 0.45, grain: 0.05,
       ca: 0.7 + 2.5 * shatter + 2 * stut + 1.5 * endFlash,
-      flash: Math.max(inFlash, 0.12 * shatter, 0.3 * wake, 0.06 * stut, 0.05 * fin, endFlash * endFlash * 1.1),
+      flash: Math.max(inFlash, 0.1 * wake, endFlash * endFlash * 1.1),
       shake: [noise1(t * 47, 1) * sh, noise1(t * 47, 2) * sh] as [number, number],
       zoom: z,
     };

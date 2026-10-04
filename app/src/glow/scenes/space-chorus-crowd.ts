@@ -44,6 +44,10 @@ export interface CrowdTimes {
   implode: (t: number) => number;
   /** Stutter hits: extra brightness (0..). */
   flash: (t: number) => number;
+  /** The second hero starts low and dim (choruses 1, 2) or dances from the start (3). */
+  lowHero: boolean;
+  /** How much the joined hands show (they let go to dance). */
+  links: (t: number) => number;
 }
 
 const _F: Frame3 = { p: new THREE.Vector3(), x: new THREE.Vector3(), y: new THREE.Vector3(), z: new THREE.Vector3(), s: 1 };
@@ -158,12 +162,23 @@ export class Crowd {
         h.setHand(0, 0.2); h.setHand(1, 0.15 - 0.1 * rk);
       } else {
         // she stands low (head down, arms hanging), then looks up and reaches back with her right hand (-x)
-        const low = 1 - rk;
-        h.setSpine(0.35 * low - 0.08 * after, -0.06 * rk, lerp(0.75, -0.15 - 0.2 * after, ease.outCubic(prog(t, T.my - 0.3, T.hand))), 0.1 * low - 0.12 * rk);
-        arm(0, 0.08 + 0.2 * rk, 0.3, 0.35);
-        arm(1, lerp(0.08, 1.3 + 0.9 * up, free), lerp(0.3 - 0.1 * rk, 0.15, free), lerp(0.35, 0.15, free));
-        legs(0.06, 0.12 * low, 0.3 * low);
-        h.setHand(0, 0.45 - 0.35 * rk); h.setHand(1, lerp(0.45, 0.1, free));
+        if (!T.lowHero) {
+          // (final chorus: she dances too, mirroring him, until she reaches back)
+          const sw = Math.sin(beat * Math.PI * 0.5 + 1);
+          h.setSpine(-0.05 - 0.08 * after, -0.12 * sw * (1 - rk) - 0.1 * rk, -0.2 - 0.2 * after, -0.1 * sw * (1 - rk) + 0.12 * rk);
+          arm(0, lerp(2.5 - 0.35 * sw, 1.0, rk), 0.15, 0.4);
+          arm(1, lerp(2.5 + 0.35 * sw, 1.3 + 0.9 * up, free), 0.15, lerp(0.4, 0.15, free));
+          legs(0.08, 0.1, 0.2);
+          h.setHand(0, 0.15); h.setHand(1, 0.15);
+        }
+        const low = T.lowHero ? 1 - rk : 0;
+        if (T.lowHero) {
+          h.setSpine(0.35 * low - 0.08 * after, -0.06 * rk, lerp(0.75, -0.15 - 0.2 * after, ease.outCubic(prog(t, T.my - 0.3, T.hand))), 0.1 * low - 0.12 * rk);
+          arm(0, 0.08 + 0.2 * rk, 0.3, 0.35);
+          arm(1, lerp(0.08, 1.3 + 0.9 * up, free), lerp(0.3 - 0.1 * rk, 0.15, free), lerp(0.35, 0.15, free));
+          legs(0.06, 0.12 * low, 0.3 * low);
+          h.setHand(0, 0.45 - 0.35 * rk); h.setHand(1, lerp(0.45, 0.1, free));
+        }
       }
       // the reaching hand (his left = 1, her right = 0) goes for the meeting point; after the touch, both lift it
       const i = who === 0 ? 1 : 0;
@@ -228,7 +243,7 @@ export class Crowd {
       line.copy(L.line).lerp(L.accent, f.hue * 0.3);
       let k = glow * (1 + 1.6 * hot) + fl;
       if (f.hero === 1) {
-        const lit = smoothstep(T.hand - 0.05, T.hand + 0.2, t);
+        const lit = T.lowHero ? smoothstep(T.hand - 0.05, T.hand + 0.2, t) : 1;
         star.lerp(new THREE.Color(0.35, 0.4, 0.55), 0.6 * (1 - lit)).lerp(L.hero[1], lit * 0.5);
         k *= lerp(0.45, 1, lit) * (1 + 1.5 * pulse(t, T.hand, 0.25));
       } else if (f.hero === 0) {
@@ -240,7 +255,8 @@ export class Crowd {
     // joined hands: the heroes on "hand", then the chain runs out along the rows; everyone else when they are born
     const ringFigs = RINGS.map((_, r) => this.figs.filter((f) => f.ring === r));
     const lc = new THREE.Color();
-    ringFigs.forEach((rf, r) => {
+    const lk = T.links(t);
+    if (lk > 0.01) ringFigs.forEach((rf, r) => {
       const n = rf.length;
       for (let i = 0; i < n; i++) {
         const a = rf[i]!, b = rf[(i + 1) % n]!;
@@ -251,11 +267,15 @@ export class Crowd {
         const pa = a.j[LHAND]!, pb = b.j[RHAND]!;
         if (pa.distanceTo(pb) > FIG_S * 2.2 * (1 - T.implode(t) * 0.8)) continue; // (rows not yet in their rings)
         const hit = pulse(t, tl, 0.18);
-        lc.copy(L.accent).lerp(L.star, 0.5);
-        this.links.set(nl++, pa, pa.clone().lerp(pb, u), lc, (glow + fl) * (0.9 + 2.5 * hit));
+        // the light runs on round the ring, hand to hand: one bright packet per ring, a lap every two bars
+        const mid = Math.atan2(pa.x + pb.x, pa.y + pb.y);
+        const lap = ((this.beatAt(t) / 8 + r * 0.33) % 1) * Math.PI * 2 * (r === 1 ? -1 : 1);
+        const dA = Math.atan2(Math.sin(mid - lap), Math.cos(mid - lap));
+        const run = Math.exp(-dA * dA * 40) * smoothstep(T.form1 - 0.5, T.form1 + 0.5, t);
+        lc.copy(L.accent).lerp(L.star, 0.5 + 0.5 * run);
+        this.links.set(nl++, pa, pa.clone().lerp(pb, u), lc, (glow + fl) * (0.9 + 2.5 * hit + 2.2 * run) * lk);
         if (hit > 0.02) sf.star(pa.clone().lerp(pb, 0.5), L.star, hit * 2.5 * glow, 2.2);
       }
-      void r;
     });
     // the heroes' touch
     const touch = pulse(t, T.hand, 0.3);
