@@ -10,6 +10,8 @@
 //   --scale N (all modes): render at N× the 1920x1080 layout (--scale 2 = true 3840x2160); stills are then saved
 //            full-res from the pixel buffer, videos are encoded at the physical size.
 // Uses the Vite dev server at --url (default http://localhost:5173); starts a private one if unreachable.
+// CHROME_PATH=/path/to/chromium (e.g. Playwright's Chromium on a GPU-less Linux box) launches that binary instead of
+// the installed Chrome, with software WebGL (SwiftShader): same frames, much slower.
 import { chromium, type Page } from 'playwright-core';
 import { mkdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
@@ -44,10 +46,11 @@ async function ensureServer(): Promise<{ url: string; stop: () => void }> {
 }
 
 async function openPage(url: string) {
+  const chromePath = process.env.CHROME_PATH;
   const browser = await chromium.launch({
-    channel: 'chrome',
+    ...(chromePath ? { executablePath: chromePath } : { channel: 'chrome' }),
     headless: !flag('headed'),
-    args: ['--use-angle=metal', '--enable-gpu-rasterization', '--ignore-gpu-blocklist', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'],
+    args: [...(chromePath ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : ['--use-angle=metal']), '--enable-gpu-rasterization', '--ignore-gpu-blocklist', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'],
   });
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
   const logs: string[] = [];
