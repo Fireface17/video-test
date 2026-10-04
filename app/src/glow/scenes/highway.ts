@@ -123,7 +123,7 @@ export default class Highway extends Scene {
     this.buildTravel();
     this.buildRows(atlas.slots);
     // one gantry over the drone's run, one seen ahead through the windscreen at dawn
-    this.gantryU = [this.sAt(T.gauge - 0.28), this.sAt(T.l3) + 160];
+    this.gantryU = [this.sAt(T.gauge) + 30, this.sAt(T.l3) + 160];
 
     this.gauge = new Gauge();
 
