@@ -1,5 +1,5 @@
 // Lab (not in the edit; render with `--lab lab-motion`): motion-capture clips on our bodies, to choose them.
-// t in [10k, 10k + 10): clip k of CLIPS at clip time t - 10k, on a person of light (left) and a person of stardust
+// t in [6k, 6k + 6): clip k of CLIPS at clip time 1.5 · (t - 6k), on a person of light (left) and a person of stardust
 // (right, mirrored).
 import * as THREE from 'three';
 import { Scene, type Frame } from '../../engine/scene';
@@ -10,7 +10,7 @@ import { starJoints } from '../lib/stars';
 import { Stardust, StardustBody } from '../lib/stardust';
 import { loadMotion, type Motion } from '../lib/motion';
 
-export const CLIPS = ['05_02', '05_12', '49_09', '49_12', '55_01', '55_02', '60_02', '61_02', '111_05', '113_04', '141_12', '120_05', '22_08', '23_08', '79_71', '142_15', '140_06', '77_02', '111_28', '141_16', '90_30', '94_01'];
+export const CLIPS = ['05_02', '05_12', '49_09', '49_12', '55_01', '55_02', '60_02', '61_02', '111_05', '113_04', '141_12', '120_05', '22_08', '23_08', '79_71', '142_15', '140_06', '77_02', '111_28', '141_16', '94_01', '02_01', '35_01', '09_01', '16_35', '13_04', '13_05', '75_19', '79_69', '80_43', '79_74', '13_11', '40_07', '01_07', '82_12'];
 
 export default class LabMotion extends Scene {
   st = new Stage(38, 0.05, 200);
@@ -36,8 +36,8 @@ export default class LabMotion extends Scene {
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget) {
-    const k = Math.max(0, Math.min(this.ms.length - 1, Math.floor(f.t / 10)));
-    const t = f.t - k * 10, m = this.ms[k]!;
+    const k = Math.max(0, Math.min(this.ms.length - 1, Math.floor(f.t / 6)));
+    const t = (f.t - k * 6) * 1.5, m = this.ms[k]!;
     this.a.position.set(-0.7, this.a.hipHeight, 0);
     m.apply(this.a, t, { loop: true });
     this.a.time = f.t;
