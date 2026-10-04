@@ -223,6 +223,7 @@ export class Stardust extends THREE.Group {
   private camPos = new THREE.Vector3();
   private proj = 1;
   private hv = new THREE.Vector3();
+  private ws = new THREE.Vector3();
 
   /** `size`: star size in world units for a person of normal height; `gain`: brightness per star; `caps`: figures per level. */
   constructor(public bodies: StardustBody[], caps: number | [number, number, number], opts: { size?: number; gain?: number; extras?: number } = {}) {
@@ -275,7 +276,7 @@ export class Stardust extends THREE.Group {
     const bi = body % this.bodies.length, B = this.bodies[bi]!;
     let level = 0;
     if (this.cam) {
-      const s0 = j[1]!.distanceTo(j[8]!) / B.torso;
+      const s0 = (j[1]!.distanceTo(j[8]!) / B.torso) * this.ws.setFromMatrixScale(this.matrixWorld).x;
       const d = this.hv.copy(j[8]!).applyMatrix4(this.matrixWorld).distanceTo(this.camPos);
       const need = (s0 * 1.75 * this.proj * 540) / Math.max(d, 1e-3) / 520 * (1 + (look.shatter ?? 0) * 2);
       while (level < LEVELS.length - 1 && LEVELS[level + 1]! >= need) level++;
@@ -330,10 +331,12 @@ function dustMaterial(tex: THREE.DataTexture, size: number, gain: number, frac: 
         int f = gl_InstanceID, s = int(aP.x + 0.5);
         vec4 C = texelFetch(tFig, ivec2(30, f), 0), D = texelFetch(tFig, ivec2(31, f), 0);
         vec4 E = texelFetch(tFig, ivec2(32, f), 0), H = texelFetch(tFig, ivec2(33, f), 0);
+        // (sc is in this object's units; ws is how big those are in the world, e.g. inside a scaled group)
+        float ws = length(modelMatrix[0].xyz);
         float sc = D.x, seed = D.y, br = H.w;
         // fewer, brighter stars for small figures on screen (this level holds the first frac of the stars)
         vec4 hv = modelViewMatrix * vec4(H.xyz, 1.0);
-        float figPx = sc * 1.75 * projectionMatrix[1][1] * pxScale / max(-hv.z, 1e-3);
+        float figPx = sc * ws * 1.75 * projectionMatrix[1][1] * pxScale / max(-hv.z, 1e-3);
         float eff = min(clamp(figPx / 520.0 * (1.0 + 2.0 * br), 0.004, 1.0), frac);
         float reveal = smoothstep(aP.y * 0.8, aP.y * 0.8 + 0.2, C.a);
         if (aP.y * frac > eff || reveal <= 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vC = vec3(0.0); return; }
@@ -366,7 +369,7 @@ function dustMaterial(tex: THREE.DataTexture, size: number, gain: number, frac: 
         vec3 nw = vec3(dot(r0.xyz, normal), dot(r1.xyz, normal), dot(r2.xyz, normal));
         vec3 nv = normalize(mat3(modelViewMatrix) * nw + 1e-6);
         float fres = mix(1.0 - abs(dot(nv, normalize(-mv.xyz))), 0.7, smoothstep(0.0, 0.3, br));
-        float ps = size * pow(sc, 0.6) * D.z * (0.55 + 0.9 * aP.z) * (1.0 + 1.6 * big) * (1.0 + 3.5 * haze);
+        float ps = size * pow(sc * ws, 0.6) * D.z * (0.55 + 0.9 * aP.z) * (1.0 + 1.6 * big) * (1.0 + 3.5 * haze);
         float px = ps * projectionMatrix[1][1] * pxScale / max(d, 1e-3);
         float m = clamp(px, 1.5, 96.0 * pxScale / 540.0);
         float tw = mix(1.0, 0.35 + 0.65 * (0.5 + 0.5 * sin(time * (2.5 + 5.0 * aP.z) + aP.w * 40.0)), step(0.55, aP.w));

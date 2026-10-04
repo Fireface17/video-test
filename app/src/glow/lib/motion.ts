@@ -163,9 +163,12 @@ export class Motion {
   }
 }
 
-/** Clip skeleton → one body kind: the body's bones put into the clip's T-pose, and how they chain. */
+/**
+ * Clip skeleton → one body kind: the body's bones put into the clip's T-pose, and how they chain. Bones are
+ * kept by name (any figure of the kind can be posed with it).
+ */
 export class Rig {
-  bones: { b: THREE.Bone; src: number; srcM: number; aligned: THREE.Quaternion; up: number; chain: THREE.Quaternion }[] = [];
+  bones: { name: string; src: number; srcM: number; aligned: THREE.Quaternion; up: number; chain: THREE.Quaternion }[] = [];
   hipsParent = new THREE.Quaternion();
   hipsParentInv = new THREE.Matrix4();
   hipsRest = new THREE.Vector3();
@@ -210,7 +213,7 @@ export class Rig {
         chain.premultiply(p.quaternion);
       }
       mapped.set(b, this.bones.length);
-      this.bones.push({ b, src, srcM, aligned: b.getWorldQuaternion(new THREE.Quaternion()), up, chain });
+      this.bones.push({ name: bb, src, srcM, aligned: b.getWorldQuaternion(new THREE.Quaternion()), up, chain });
     }
     // back to the figure's own pose
     fig.position.copy(save.p); fig.quaternion.copy(save.q); fig.scale.copy(save.s);
@@ -255,7 +258,7 @@ export function applyLayers(fig: RealFigure, layers: Layer[]) {
   const q = new Map<THREE.Bone, THREE.Quaternion>();
   rig0.bones.forEach((e, i) => {
     const parent = e.up >= 0 ? Wb[e.up]!.clone().multiply(e.chain) : rig0.hipsParent.clone().multiply(e.chain);
-    q.set(e.b, parent.invert().multiply(Wb[i]!));
+    q.set(fig.boneMap.get(e.name)!, parent.invert().multiply(Wb[i]!));
   });
   const hips = root.applyMatrix4(new THREE.Matrix4().copy(rig0.hipsParentInv).setPosition(0, 0, 0)).add(rig0.hipsRest);
   fig.setMocap({ q, hips });
