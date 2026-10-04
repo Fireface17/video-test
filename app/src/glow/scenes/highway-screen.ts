@@ -45,7 +45,7 @@ void main() {
   vec2 p = vec2((vUv.x - 0.5) * ${ASPECT.toFixed(4)}, vUv.y);
   // brush strokes: long horizontal dabs that bend the gradient a little
   float stroke = fb(vec2(p.x * 2.2, p.y * 34.0)) - 0.5;
-  float stroke2 = fb(vec2(p.x * 7.0 + 3.0, p.y * 90.0)) - 0.5;
+  float stroke2 = vn(vec2(p.x * 7.0 + 3.0, p.y * 90.0)) - 0.5;
   float y = p.y + stroke * 0.035 + stroke2 * 0.01;
   vec3 c = band(y);
   // the night version (before the dawn): the same sky, cold and dim
@@ -55,8 +55,8 @@ void main() {
   vec2 sc = vec2(0.0, ${HOR.toFixed(3)} + uSunY);
   vec2 d = p - sc; float r = length(d);
   float a = atan(d.y, d.x + 1e-5);
-  float rays = pow(abs(cos(a * 7.0 + fb(vec2(a * 3.0, 1.0)) * 1.5)), 10.0) * exp(-r / 0.35) * smoothstep(0.1, 0.16, r);
-  float disc = smoothstep(0.112, 0.104, r + (fb(vec2(a * 5.0, r * 30.0)) - 0.5) * 0.006);
+  float rays = pow(abs(cos(a * 7.0 + sin(a * 3.0) * 0.8 + sin(a * 11.0) * 0.4)), 10.0) * exp(-r / 0.35) * smoothstep(0.1, 0.16, r);
+  float disc = smoothstep(0.112, 0.104, r + sin(a * 9.0 + r * 40.0) * 0.002);
   vec3 sunC = vec3(2.3, 1.85, 1.15);
   vec3 glow = vec3(1.7, 0.85, 0.32) * (exp(-r / 0.09) * 0.8 + exp(-r / 0.32) * 0.35);
   float above = smoothstep(${HOR.toFixed(3)} - 0.004, ${HOR.toFixed(3)} + 0.004, p.y);
@@ -66,6 +66,7 @@ void main() {
   for (int i = 0; i < 4; i++) {
     float fi = float(i);
     float cy = 0.34 + 0.13 * fi + 0.02 * sin(fi * 3.1);
+    if (abs(p.y - cy) > 0.09) continue;
     float cl = fb(vec2(p.x * (1.2 + 0.3 * fi) + fi * 9.0, (p.y - cy) * 24.0));
     float body = smoothstep(0.58, 0.72, cl) * exp(-pow((p.y - cy) / 0.03, 2.0)) * smoothstep(1.15, 0.4, abs(p.x + 0.3 * sin(fi * 2.0)));
     float rim = smoothstep(0.0, -0.025, p.y - cy) * body;
@@ -282,9 +283,11 @@ export class GiantScreen extends THREE.Group {
           float diode = smoothstep(0.5, 0.28, length(fract(lp) - 0.5));
           c *= mix(0.78 + 0.4 * diode, 1.0, sub);
           // ---- stuck pixels after the death
-          float sp = step(0.9975, h2(floor(lp) + 0.3));
-          vec3 spc = mix(vec3(1.0, 0.1, 0.05), vec3(0.1, 1.0, 0.3), step(0.5, h2(floor(lp) + 1.7)));
-          c += spc * sp * uStuck * 2.0 * (1.0 - sub * 0.7);
+          if (uStuck > 0.0) {
+            float sp = step(0.9975, h2(floor(lp) + 0.3));
+            vec3 spc = mix(vec3(1.0, 0.1, 0.05), vec3(0.1, 1.0, 0.3), step(0.5, h2(floor(lp) + 1.7)));
+            c += spc * sp * uStuck * 2.0 * (1.0 - sub * 0.7);
+          }
           // module seams
           vec2 mf = fract(vUv * vec2(28.0, 12.0));
           vec2 mfw = fwidth(vUv * vec2(28.0, 12.0));

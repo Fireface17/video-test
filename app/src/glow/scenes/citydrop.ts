@@ -130,21 +130,14 @@ export default class CityDrop extends Scene {
     // their kitchen window behind them, warm (a lit room seen through the glass: a soft glow on our side of it)
     const win = this.city.anchors({ x: cpos.x, z: cpos.z, r: 4, kinds: ['window'], minY: cpos.y - 0.2, maxY: cpos.y + 1.6 }).sort((a, b) => a.pos.distanceToSquared(cpos) - b.pos.distanceToSquared(cpos))[0];
     if (win) {
-      const [ww, wh] = win.size;
-      const m = new THREE.ShaderMaterial({
-        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-        uniforms: { c: { value: col('#ffb36b', 0.55) } },
-        vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-        fragmentShader: 'uniform vec3 c; varying vec2 vUv; void main(){ vec2 d = abs(vUv - 0.5) * 2.0; float k = (1.0 - smoothstep(0.82, 1.0, max(d.x, d.y))) * (0.75 + 0.35 * vUv.y); gl_FragColor = vec4(c * k, 1.0); }',
-      });
-      const q = new THREE.Mesh(new THREE.PlaneGeometry(ww, wh), m);
-      q.position.copy(win.pos).addScaledVector(win.facing, 0.03).add(V(0, wh / 2, 0));
-      q.lookAt(q.position.clone().add(win.facing));
-      this.world.add(q);
+      // the window cut open: their kitchen behind them, its warm light on their backs
+      this.city.openWindow(0, win, { light: col('#ffb36b', 1.2), depth: 3.6 });
       const halo = new GlowPoints(1, 2.2);
-      halo.set(0, q.position.x + win.facing.x * 0.3, q.position.y, q.position.z + win.facing.z * 0.3, col('#ffb36b', 0.18), 1, 1);
+      const hp = win.pos.clone().addScaledVector(win.facing, 0.4).add(V(0, win.size[1] / 2, 0));
+      halo.set(0, hp.x, hp.y, hp.z, col('#ffb36b', 0.12), 1, 1);
       halo.commit();
       this.world.add(halo);
+      this.P.kitchen = hp;
     }
     // kids on a low roof (7194), under string lights
     const kr = roofOf(7194) ?? { x: -546.3, z: 543.9, w: 7.2, d: 18.8, y: 13.3 };
@@ -204,7 +197,7 @@ export default class CityDrop extends Scene {
 
     // ---- everyone's light lifts off them (the last "Glo-o-owing") ----
     const sources: LiftSource[] = this.dancers.map((d, i) => ({
-      pos: d.chest, t0: this.T.lift + 0.1 + Math.pow(hash(i, 71), 1.3) * 1.0, dur: 1.6, color: d.p.color.clone().lerp(col('white', 1.2), 0.12).multiplyScalar(1.1), n: d.p.look === 'light' ? 16 : 7,
+      pos: d.chest, t0: this.T.lift + 0.05 + Math.pow(hash(i, 71), 1.5) * 0.9, dur: 2.0, color: d.p.color.clone().lerp(col('white', 1.2), 0.12).multiplyScalar(d.p.look === 'light' ? 1.4 : 1.1), n: d.p.look === 'light' ? 26 : 8,
     }));
     this.lifts = new Lifts(sources);
     this.lifts.axis.set((AXW + AXE) / 2 + 20, 165, SZ - 20);
@@ -253,7 +246,8 @@ export default class CityDrop extends Scene {
     this.spiral.update(t, smoothstep(this.T.lift + 1.6, this.T.lift + 3.6, t) * 0.3, this.lifts.spin);
     this.crowd.update(t, S.cam);
     // the people light the walls around them (the nearest)
-    const gl = this.dancers.map((d) => ({ d: d.chest.distanceToSquared(S.cam.position), pos: d.chest, color: d.p.color.clone().multiplyScalar(0.09), radius: 3 })).sort((a, b) => a.d - b.d).slice(0, 12);
+    const gl = this.dancers.map((d) => ({ d: d.chest.distanceToSquared(S.cam.position), pos: d.chest, color: d.p.color.clone().multiplyScalar(0.09), radius: 3 })).sort((a, b) => a.d - b.d).slice(0, 11);
+    if (this.P.kitchen) gl.push({ d: 0, pos: this.P.kitchen, color: col('#ffb36b', 0.35), radius: 3.5 });
     this.city.setGlows(gl);
     this.city.update(t, S.cam.position);
     shiftRender(this.ctx.renderer, S.scene, S.cam, this.world, this.city, out, S.bg);
@@ -319,9 +313,10 @@ export default class CityDrop extends Scene {
       case 6: {
         // rising with the lights above the roofs, looking up
         const k = ease.inOutQuad(u);
-        pos = V(-432, 10 + 22 * k, 526);
-        tgt = V(-458, 16 + 50 * k, 506);
-        fov = 62;
+        // (close to the fire escapes: the lights lift off the people on them and stream up past us)
+        pos = V(-437, 8.5 + 20 * k, 515 + 4 * k);
+        tgt = V(-447, 10.5 + 40 * k, 505.5).lerp(V(-460, 80, 505), k * 0.4);
+        fov = 60;
         roll = 0.08 * k;
         break;
       }

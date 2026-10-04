@@ -163,8 +163,8 @@ export class Rail extends THREE.Group {
       const segs = (list: KInst[], geo: THREE.BufferGeometry, mat: THREE.Material, r = 10) => {
         // in 300 m pieces along z (for culling)
         const by = new Map<number, KInst[]>();
-        for (const q of list) { const k = Math.floor(q.z / 300); if (!by.has(k)) by.set(k, []); by.get(k)!.push(q); }
-        for (const [k, l] of by) this.add(kitBatch(geo, l, mat, new THREE.Vector3(X, 0, (k + 0.5) * 300), r));
+        for (const q of list) { const k = Math.floor(q.z / 900); if (!by.has(k)) by.set(k, []); by.get(k)!.push(q); }
+        for (const [k, l] of by) this.add(kitBatch(geo, l, mat, new THREE.Vector3(X, 0, (k + 0.5) * 900), r));
       };
       segs(cols, unitBox(STEEL), kit);
       segs(beams, unitBox(STEEL), kit);
@@ -223,13 +223,17 @@ export class Rail extends THREE.Group {
       }
       const segs = (list: KInst[], geo: THREE.BufferGeometry, mat: THREE.Material, r = 10) => {
         const by = new Map<number, KInst[]>();
-        for (const q of list) { const k = Math.floor(q.z / 300); if (!by.has(k)) by.set(k, []); by.get(k)!.push(q); }
-        for (const [k, l] of by) this.add(kitBatch(geo, l, mat, new THREE.Vector3(X, 0, (k + 0.5) * 300), r));
+        for (const q of list) { const k = Math.floor(q.z / 900); if (!by.has(k)) by.set(k, []); by.get(k)!.push(q); }
+        for (const [k, l] of by) this.add(kitBatch(geo, l, mat, new THREE.Vector3(X, 0, (k + 0.5) * 900), r));
       };
       segs(cols, unitBox(CONC), kit);
-      for (const q of beams) this.add(kitBatch(unitBox(CONC), [q], kit, new THREE.Vector3(q.x, 0, q.z), Math.max(q.sz, 30)));
-      for (const q of bar) { const m = kitBatch(unitBox([0.36, 0.35, 0.34, M.ALB]), [q], kit, new THREE.Vector3(q.x, 0, q.z), q.sz); m.frustumCulled = false; this.add(m); }
-      for (const q of rails) { const m = kitBatch(unitBox([0.08, 0.1, 0.09, M.BARS]), [q], kit2, new THREE.Vector3(q.x, 0, q.z), q.sz); m.frustumCulled = false; this.add(m); }
+      const crossB = beams.filter((q) => q.sz < 100), longB = beams.filter((q) => q.sz >= 100);
+      segs(crossB, unitBox(CONC), kit, 12);
+      // the long girders, barriers and railings run the whole length: one draw each
+      const whole = (list: KInst[], geo: THREE.BufferGeometry, mat: THREE.Material) => { if (!list.length) return; const m = kitBatch(geo, list, mat, new THREE.Vector3(X, 0, 0), 10); m.frustumCulled = false; this.add(m); };
+      whole(longB, unitBox(CONC), kit);
+      whole(bar, unitBox([0.36, 0.35, 0.34, M.ALB]), kit);
+      whole(rails, unitBox([0.08, 0.1, 0.09, M.BARS]), kit2);
       const lamp = new KitBuilder().cyl(0, 5, 0, 0.1, 0.15, 10, 6, [0.25, 0.25, 0.26, M.ALB], true).box(-1, 9.9, 0, 2.2, 0.12, 0.12, [0.25, 0.25, 0.26, M.ALB]).box(-1.9, 9.8, 0, 0.8, 0.22, 0.4, [0.15, 0.15, 0.16, M.ALB]).quad(-1.9, 9.68, 0, 0.6, 0.3, [1, 0.8, 0.55, M.LAMP], 0, Math.PI / 2).geometry();
       segs(lampP, lamp, kit, 12);
     }

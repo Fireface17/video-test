@@ -114,10 +114,12 @@ export class Mist extends THREE.Group {
           float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
           float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
             return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), f.x), f.y); }
-          float fbm(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * vn(p); p = p * 2.03 + 7.1; a *= 0.5; } return s; }
+          float fbm(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a * vn(p); p = p * 2.03 + 7.1; a *= 0.5; } return s; }
           void main() {
             vec2 q = vW.xz / 260.0 + vec2(t * 0.012, t * 0.004) + seed;
-            float d = fbm(q + 0.6 * vec2(fbm(q * 0.7 + 3.1), fbm(q * 0.7 - 1.7)));
+            // (one cheap warp: a single low-octave lookup bends the sheet)
+            float wv = vn(q * 0.6 + 3.1);
+            float d = fbm(q + 0.8 * vec2(wv, 1.0 - wv));
             float a = smoothstep(0.42, 0.85, d);
             float dist = length(vW - cameraPosition);
             // near the camera the sheet thins away; far off it fades into the haze

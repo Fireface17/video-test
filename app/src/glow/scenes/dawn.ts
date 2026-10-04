@@ -176,7 +176,7 @@ export default class Dawn extends Scene {
       }
       case 2: { // C: in front of them (east, over the street), the night still in the western sky behind
         const u = k(cuts[2]!, cuts[3]!);
-        pos.copy(m).add(V(4.6 - 0.6 * u, 0.55 + 0.2 * u, -1.6 + 1.0 * u));
+        pos.copy(m).add(V(4.4 - 0.6 * u, 0.7 + 0.2 * u, 0.9 + 0.5 * u));
         tgt.copy(m).add(V(0, 1.15, 0.1));
         fov = 40;
         roll = 0.02;
@@ -191,9 +191,9 @@ export default class Dawn extends Scene {
       }
       case 4: { // E: over the street, along the roof edges across it: the wave of hands runs away from us, person by person
         const u = k(cuts[4]!, cuts[5]!);
-        pos.set(lerp(5, 11, u), lerp(31.5, 32.5, u), lerp(5, 4, u));
-        tgt.set(lerp(42, 50, u), 22, -10.5);
-        fov = 46;
+        pos.set(lerp(5.5, 9.5, u), lerp(26.6, 27.0, u), lerp(-6.2, -6.6, u));
+        tgt.set(lerp(30, 36, u), 24.2, -10.6);
+        fov = 44;
         roll = -0.03;
         break;
       }
@@ -267,8 +267,9 @@ export default class Dawn extends Scene {
     flock(this.birds, t, T.okay - 0.15, V(9, this.roof + 0.5, -16), V(1, 0.15, -0.2).normalize(), 3, 8);
     flock(this.birds2, t, T.glowing - 0.3, V(45, 32, 8), V(1, 0.05, 0.15).normalize(), 7, 30);
     this.steam.update(t, 0.35, new THREE.Color(0.32, 0.2, 0.11));
-    this.mist.visible = true;
-    this.mist.update(t, 0.5 + 0.3 * crane, this.sun, new THREE.Color(1.0, 0.66, 0.46).multiplyScalar(0.95 + 0.3 * crane), sunC.clone().multiplyScalar(1.6));
+    // (the mist only matters once we rise toward it)
+    this.mist.visible = shot === 7 && t > this.T.beautiful - 0.2;
+    if (this.mist.visible) this.mist.update(t, 0.5 + 0.3 * crane, this.sun, new THREE.Color(1.0, 0.66, 0.46).multiplyScalar(0.95 + 0.3 * crane), sunC.clone().multiplyScalar(1.6));
 
     // ---- light: their glow on the walls, the flash of "hand", the sun's glare, the flare into the drop ----
     this.flares.begin();

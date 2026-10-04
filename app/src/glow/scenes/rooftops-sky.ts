@@ -152,7 +152,7 @@ export class SkyShards extends THREE.Group {
       const refl = nrm.clone().reflect(view).multiplyScalar(-1);
       const glint = Math.pow(Math.max(0, refl.dot(moonDir)), 30) * 1.5 + 0.04 * Math.pow(1 - Math.abs(nrm.dot(view)), 3);
       const glass = (0.02 + glint) * loose * (1 - k);
-      const starC = warm.clone().lerp(white, 0.1).multiplyScalar(k * (0.5 + 0.2 * Math.sin(t * 3 + s.seed)) * (1 - clamp((rise - 1.2) / 1.5)));
+      const starC = warm.clone().lerp(white, 0.1).multiplyScalar(k * (0.5 + 0.2 * Math.sin(t * 3 + s.seed)) * (1 - clamp((rise - 1.6) / 0.6)));
       const edgeK = cr * (1 - loose * 0.7) * (1 - k);
       for (let i = 0; i < RIM; i++) {
         const a = s.poly[i]!.clone().lerp(s.star[i]!, k).multiplyScalar(shrink), b = s.poly[(i + 1) % RIM]!.clone().lerp(s.star[(i + 1) % RIM]!, k).multiplyScalar(shrink);
@@ -174,7 +174,7 @@ export class SkyShards extends THREE.Group {
         const fresh = 1 + 3 * Math.exp(-(t - front) * 8);
         this.cracks.set(ne++, ea.clone().addScaledVector(s.n, -2.5 * loose), eb.clone().addScaledVector(s.n, -2.5 * loose), white, edgeK * 0.55 * fresh * gain);
       }
-      if (k > 0.05) this.glints.set(ng++, centre.x, centre.y, centre.z, warm, k * 0.5 * gain * (1 - clamp((rise - 1.2) / 1.5)), 5 * shrink + 4 * clamp(rise / 3));
+      if (k > 0.05) this.glints.set(ng++, centre.x, centre.y, centre.z, warm, k * 0.5 * gain * (1 - clamp((rise - 1.6) / 0.6)), 5 * shrink + 4 * clamp(rise / 3));
       else if (glint * loose > 0.2) this.glints.set(ng++, centre.x, centre.y, centre.z, white, glint * loose * 0.5 * gain, 3);
     }
     const g = this.mesh.geometry;

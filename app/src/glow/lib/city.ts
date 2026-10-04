@@ -278,7 +278,7 @@ export class City extends THREE.Group {
     this.facM = [[0, 1, 2].map((l) => facadeMaterial(U, l, false)), [0, 1, 2].map((l) => facadeMaterial(U, l, true))];
     this.roofM = roofMaterial(U);
     const plantM = plantMaterial(U);
-    const fd: [number, number] = [190 * lod, 700 * lod];
+    const fd: [number, number] = [190 * lod, 380 * lod];
     for (const t of fac.values()) {
       if (t.m.length) this.add(buildingMeshes(t.m, t.o, this.facM[0]!, fd));
       if (t.g.length) this.add(buildingMeshes(t.g, t.o, this.facM[1]!, fd));
@@ -305,7 +305,7 @@ export class City extends THREE.Group {
       if (!g) return null;
       return kitBatch(g, list as KInst[], kind === 'fe' || kind === 'bal' ? kitMat2 : kitMat, origin, rad[kind] ?? 4);
     };
-    mid.build(this, 1500 * lod, make, this.lods);
+    mid.build(this, 950 * lod, make, this.lods);
     near.build(this, 430 * lod, make, this.lods);
     this.midTiles = mid; this.nearTiles = near;
 
@@ -358,7 +358,7 @@ export class City extends THREE.Group {
     // ---- traffic, signals, shops, signs, trees, props, steam; the el, the overpass ----
     this.life = new CityLife(this, o);
     this.add(this.life, this.rail);
-    mirrorHide.push(...this.life.mirrorHide, ...this.rail.mirrorHide);
+    mirrorHide.push(...this.life.mirrorHide, this.rail);
 
     // ---- lamps: glow sprites at the heads (+ soft halos in the haze) ----
     const lampPos = plan.lamps.map((l) => (l.kind === 1 || l.kind === 2 ? [l.x, l.h, l.z] : [l.x + l.ax * 1.95, l.h * 0.955, l.z + l.az * 1.95]));

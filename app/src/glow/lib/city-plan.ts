@@ -526,9 +526,11 @@ export class CityPlan {
     }
     this.buildings.push(b);
     // ---- a sidewalk shed in front of some (scaffolding for facade work: green, lit underneath) ----
-    if ((front === F.N || front === F.S) && st !== ST.GLASS && r() < 0.05 * this.o.detail) {
+    // (its own random stream: the main one must not shift, scenes are composed against this layout)
+    const rShed = mulberry32(id * 7919 + this.o.seed * 31 + 17);
+    if ((front === F.N || front === F.S) && st !== ST.GLASS && rShed() < 0.05 * this.o.detail) {
       const [nx, nz] = faceNormal(front), t0 = tiers[0]!;
-      this.sheds.push({ x: t0.cx, z: t0.cz + nz * t0.d / 2, nx, nz, w: t0.w, seed: r() });
+      this.sheds.push({ x: t0.cx, z: t0.cz + nz * t0.d / 2, nx, nz, w: t0.w, seed: rShed() });
     }
     // ---- shops ----
     if (b.shopFaces) {

@@ -345,7 +345,7 @@ export function ringMaterial(U: CityUniforms) {
         vec3 N = normal;
         vP = power(w.xz);
         // lit per vertex: sky, moon (a rim on the top edge), the street from below, the sun, glowing people
-        vL = ambient(N) * 1.4 + streetLight(w.xz + N.xz * 2.0, w.y, vP) * (0.6 + 0.8 * max(-N.y, 0.0)) + sunLight(w.xyz, N) + peopleGlow(w.xyz, N)
+        vL = ambient(N) * 1.4 + streetLight(w.xz + N.xz * 2.0, w.y, vP) * (0.6 + 0.8 * max(-N.y, 0.0)) + sunLow(w.xyz, N) + peopleGlow(w.xyz, N)
            + uMoonCol * 1.2 * step(0.92, aY) * (1.0 - uDawn);
         vW = w.xyz; vCol = iCol; vY = aY; vFk = fogK(w.xyz);
         vU = vec2(abs(normal.x) > 0.5 ? p.z : p.x, p.y);
@@ -513,7 +513,7 @@ export function kitMaterial(U: CityUniforms, o: { side?: THREE.Side; streetK?: n
         vec4 w = modelMatrix * vec4(rp + ip.xyz, 1.0);
         vW = w.xyz; vN = n; vV = aV; vCol = icol; vL = aL * isc; vX = iX;
         vP = power(w.xz);
-        vLight = ambient(n) * 1.3 + streetLight(w.xz, w.y, vP) * ${(o.streetK ?? 1).toFixed(2)} + sunLight(w.xyz, n) + peopleGlow(w.xyz, n);
+        vLight = ambient(n) * 1.3 + streetLight(w.xz, w.y, vP) * ${(o.streetK ?? 1).toFixed(2)} + sunLow(w.xyz, n) + peopleGlow(w.xyz, n);
         // powered lamps: each switches on at its own threshold, flickering, warming from red
         float th = 0.1 + 0.5 * fract(icol.a * 7.31), d = vP - th;
         vOn = step(0.0, d) * mix(step(0.5, h12(vec2(icol.a * 99.0, floor(uTime * 15.0)))), 1.0, smoothstep(0.03, 0.1, d)) * (1.0 - 0.9 * uDawn) * (0.25 + 0.75 * smoothstep(0.0, 0.3, d));

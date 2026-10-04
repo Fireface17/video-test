@@ -1,6 +1,7 @@
-// Highway scene, environment: the night sky (gradient, stars, city-lit clouds, the dawn and the sun), the
-// distant city (instanced towers with thousands of lit windows, aviation lights), the hills, and generic
-// helpers (soft light streaks). The road, its furniture and the traffic are in highway-road.ts.
+// Highway scene, environment: the night sky (gradient, stars, city-lit clouds, the glow the giant screen throws
+// into the haze while it plays, aircraft), the far cities (instanced towers with lit windows, a carpet of street
+// lights, aviation lights, a blackout that runs through them block by block, floor by floor), the hills, the
+// land beside the road (trees, house lights that die with the blackout), and soft light streaks.
 import * as THREE from 'three';
 import { GlowPoints } from '../lib/points';
 import { mulberry32 } from '../../engine/util';
@@ -29,9 +30,9 @@ vec3 skyCol(vec3 d) {
   // the giant screen's light scattered in the haze around it (it dies with the screen)
   if (sScrCol.r + sScrCol.g > 0.0) {
     vec2 hs = normalize(sScrDir.xz + vec2(1e-6));
-    float daz = acos(clamp(dot(h, hs), -1.0, 1.0));
+    float daz2 = 2.0 * max(0.0, 1.0 - dot(h, hs)); // (~ the azimuth difference squared)
     float del = y - sScrDir.y;
-    c += sScrCol * (exp(-daz * daz / 0.03 - del * del / 0.012) * 0.8 + exp(-daz * daz / 0.25) * exp(-yy * 7.0) * 0.25);
+    c += sScrCol * (exp(-daz2 / 0.03 - del * del / 0.012) * 0.8 + exp(-daz2 / 0.25) * exp(-yy * 7.0) * 0.25);
   }
   if (sDawn > 0.0) {
     // dawn: a warm band low on the horizon toward the sun, the whole sky lifting

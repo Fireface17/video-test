@@ -419,11 +419,13 @@ export default class Highway extends Scene {
         let yaw = 0, pitch = 0;
         const aimAt = (b: (typeof this.boards)[number]) => {
           const dz = Math.max(6, b.u - s), dx = b.x - pos.x;
-          const yw = clamp(Math.atan2(dx, dz), -1.0, 1.0);
-          const pt = clamp(Math.atan2(6.3 - pos.y, Math.hypot(dx, dz)), 0, 0.42);
+          // (soft limits: the aim never stops dead against a clamp)
+          const yw = 1.1 * Math.tanh(Math.atan2(dx, dz) / 1.1);
+          const pt = 0.42 * Math.tanh(Math.max(0, Math.atan2(6.3 - pos.y, Math.hypot(dx, dz))) / 0.42);
           return [yw, pt] as const;
         };
-        const ws = this.boards.map((b, i) => (i === 0 ? 1 : prog(t, b.focus[0] - 0.3, b.focus[0] + 0.32, ease.inOutCubic)) * (i === this.boards.length - 1 ? 1 : 1 - prog(t, b.focus[1] - 0.3, b.focus[1] + 0.32, ease.inOutCubic)));
+        // (each pan lands on the board just as its first word is sung)
+        const ws = this.boards.map((b, i) => (i === 0 ? 1 : prog(t, b.focus[0] - 0.36, b.focus[0] + 0.04, ease.inOutCubic)) * (i === this.boards.length - 1 ? 1 : 1 - prog(t, b.focus[1] - 0.36, b.focus[1] + 0.04, ease.inOutCubic)));
         const sum = ws.reduce((a, b) => a + b, 0) || 1;
         this.boards.forEach((b, i) => { const [yw, pt] = aimAt(b); yaw += yw * ws[i]! / sum; pitch += pt * ws[i]! / sum; });
         const near = this.boards.reduce((a, b, i) => a + ws[i]! / sum * clamp((b.u - s) / 40), 0);
@@ -639,7 +641,7 @@ export default class Highway extends Scene {
     if (shot === 'boards') for (const b of this.boards) if (Math.abs(b.u - camU) < 160) for (const p of b.b.floodSpots()) moth.push({ p, n: 6, r: 0.7, k: 2.2 });
     if ((shot === 'pylon' || shot === 'station' || shot === 'dark') && this.station.visible) {
       const sp = this.station.mothSpots();
-      moth.push({ p: sp[0]!, n: 14, r: 1.1, k: 1.6 * flickOut(T.out + 0.05, 0.09, 13) }, { p: sp[1]!, n: 10, r: 0.9, k: 1.4 * stPow }, { p: sp[2]!, n: 8, r: 0.9, k: 1.4 * stPow });
+      moth.push({ p: sp[0]!, n: 18, r: 2.1, k: 2.6 * flickOut(T.out + 0.05, 0.09, 13) }, { p: sp[1]!, n: 10, r: 1.0, k: 1.8 * stPow }, { p: sp[2]!, n: 8, r: 1.0, k: 1.8 * stPow });
     }
     this.moths.update(t, moth);
 

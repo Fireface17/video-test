@@ -50,7 +50,7 @@ export class Lifts extends THREE.Group {
         this.sparks.push({ s: si, tb: s.t0 + (i / s.n) * s.dur + r() * 0.05, sp: 0.92 + r() * 0.16, size: 0.7 + r() * r() * 1.3, jx: (r() - 0.5) * 0.25, jz: (r() - 0.5) * 0.25 });
       }
     });
-    this.heads = new GlowPoints(this.sparks.length * Lifts.TAIL, 0.32);
+    this.heads = new GlowPoints(this.sparks.length * Lifts.TAIL, 0.45);
     this.add(this.heads);
   }
 

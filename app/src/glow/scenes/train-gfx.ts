@@ -6,12 +6,13 @@ import * as THREE from 'three';
 
 /** World height of the car floor (the car's local origin is on the floor, x along the car, z across). */
 export const FLOOR_Y = 9.1;
-export const MAXL = 12;
+export const MAXL = 10;
 
 export function lightUniforms() {
   return {
     uPts: { value: Array.from({ length: MAXL }, () => new THREE.Vector4(0, -1e4, 0, 1)) },
     uPtC: { value: Array.from({ length: MAXL }, () => new THREE.Vector3()) },
+    uN: { value: 0 },
     uCarX: { value: 0 },
     uCarY: { value: FLOOR_Y },
     uFix: { value: new Array(10).fill(1) as number[] },
@@ -27,7 +28,7 @@ export function lightUniforms() {
 export type LightU = ReturnType<typeof lightUniforms>;
 
 export const GLSL_LIGHT = /* glsl */ `
-  uniform vec4 uPts[${MAXL}]; uniform vec3 uPtC[${MAXL}];
+  uniform vec4 uPts[${MAXL}]; uniform vec3 uPtC[${MAXL}]; uniform int uN;
   uniform float uCarX, uCarY; uniform float uFix[10]; uniform vec3 uCeilC;
   uniform vec3 uMoonD, uMoonC, uAmb, uFogC; uniform float uFogD, uTime;
   // diffuse light at p (world) with normal n; spec adds a highlight toward the viewer v
@@ -52,6 +53,7 @@ export const GLSL_LIGHT = /* glsl */ `
       }
     }
     for (int i = 0; i < ${MAXL}; i++) {
+      if (i >= uN) break;
       vec4 P = uPts[i];
       vec3 d = P.xyz - p;
       float dd = dot(d, d), r2 = P.w * P.w;

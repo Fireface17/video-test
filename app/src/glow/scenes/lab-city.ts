@@ -11,6 +11,7 @@ import { Stage, aim } from '../lib/stage';
 import { GlowPoints } from '../lib/points';
 import { City, type Anchor } from '../lib/city';
 import { Landmarks } from '../lib/landmarks';
+import { CityLOD } from '../lib/city-build';
 
 interface Shot { a: number; b: number; pos: (k: number) => THREE.Vector3; at: (k: number) => THREE.Vector3; fov?: number; setup?: (t: number, k: number) => void }
 
@@ -36,9 +37,11 @@ export default class LabCity extends Scene {
     put(this.lm.esb, -250, -1150, 0); put(this.lm.chrysler, 375 + 125, -1480, 0); put(this.lm.wtc, 760, -2050, 0);
     S.add(this.lm);
     (window as unknown as { __labCity: LabCity; __THREE: unknown }).__labCity = this;
-    (window as unknown as { __THREE: unknown }).__THREE = THREE;
+    (window as unknown as { __THREE: unknown; __CityLOD: unknown }).__THREE = THREE;
+    (window as unknown as { __CityLOD: unknown }).__CityLOD = CityLOD;
     (window as unknown as { __labCity: LabCity; __THREE: unknown }).__labCity = this;
-    (window as unknown as { __THREE: unknown }).__THREE = THREE;
+    (window as unknown as { __THREE: unknown; __CityLOD: unknown }).__THREE = THREE;
+    (window as unknown as { __CityLOD: unknown }).__CityLOD = CityLOD;
     // stats: instanced vertices per kind of mesh
     const st: Record<string, [number, number, number]> = {};
     this.city.traverse((o) => {

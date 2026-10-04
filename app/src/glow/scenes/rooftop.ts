@@ -101,7 +101,7 @@ export default class Rooftop extends Scene {
     this.S0.copy(set.heSpot).add(V(0, 8.5, -2.6));
 
     // ---- the people ----
-    await this.crowd.init(['13_04', '77_02', '111_28', '142_15', '79_69', '79_71', '141_16', '80_43']);
+    await this.crowd.init(['13_04', '77_02', '111_28', '79_74', '79_69', '79_71', '141_16', '80_43']);
     S.add(this.crowd);
     this.castNear();
     this.far = farPeople(w, this.crowd, {
@@ -109,7 +109,7 @@ export default class Rooftop extends Scene {
       k: (t, lit, i) => this.farK(t, lit, i), upAt: (i) => 32.6 + (i % 9) * 0.21, spacing: 11,
     });
     // a few behind him too (seen from the aerial shots)
-    this.far.push(...farPeople(w, this.crowd, { c: V(0, 0, 30), r0: 30, r1: 420, n: 50, seed: 9, litFrom: 32.6, litSpan: 1.2, front: V(0, 0, 1), clips: ['142_15', '79_69'], k: (t, lit, i) => this.farK(t, lit, i + 300), spacing: 12 }));
+    this.far.push(...farPeople(w, this.crowd, { c: V(0, 0, 30), r0: 30, r1: 420, n: 50, seed: 9, litFrom: 32.6, litSpan: 1.2, front: V(0, 0, 1), clips: ['79_74', '79_69'], k: (t, lit, i) => this.farK(t, lit, i + 300), spacing: 12 }));
 
     // ---- "Put your hands up / if you've ever felt low", written in the air over the street by the light from his palms ----
     const put = this.L.put!;
@@ -187,7 +187,7 @@ export default class Rooftop extends Scene {
     });
     add('coupleB', {
       pos: V(xC + 0.48, yC, zC), yaw: -0.35, body: 1, color: tint(5, 0.95), lit: tIf + 0.45, k: 0.85, offset: 4.2, mirror: true,
-      clips: [{ clip: '142_15', from: 0 }],
+      clips: [{ clip: '79_74', from: 0 }],
       pose: (fig, t) => raiseHand(fig, 0, ease2(t, tEver + 0.2, 1.1), joint(t), 0.5),
     });
     // the courier by his bike in the street: both arms straight up (a happy burst)
@@ -213,14 +213,14 @@ export default class Rooftop extends Scene {
       const pos = a.pos.clone().setY(a.pos.y - H.sill * H.fH + 0.02).addScaledVector(a.facing, -0.5);
       add(i ? 'window2' : 'window1', {
         pos, yaw: 0, body: (1 - i) as 0 | 1, color: tint(i ? 0 : 5, 1.0), lit: (i ? tFelt : tEver) - 0.1, k: 0.85, offset: 2 + i * 3, mirror: i === 1,
-        clips: [{ clip: i ? '79_71' : '142_15', from: 0 }],
+        clips: [{ clip: i ? '79_71' : '79_74', from: 0 }],
         pose: (fig, t) => raiseHand(fig, i, ease2(t, (i ? tFelt + 0.1 : tEver + 0.15), 1.0), overShoulder(fig, i, 0.55, 0.15, 0.2)),
       });
     });
     const fe = this.w.anchors(18, -9, 3, ['fireEscape'], { seed: 1, minY: 9, maxY: 13.5 })[0];
     add('landing', {
       pos: fe ? fe.pos.clone() : V(18, 12.4, -8.9), yaw: -0.4, body: 1, color: tint(6, 0.95), lit: tEver - 0.1, k: 0.85, offset: 8, mirror: true,
-      clips: [{ clip: '142_15', from: 0 }],
+      clips: [{ clip: '79_74', from: 0 }],
       pose: (fig, t) => { const k = ease2(t, tFelt - 0.2, 1.0); raiseHand(fig, 0, k, overShoulder(fig, 0, 0.6, 0.25)); raiseHand(fig, 1, k * 0.9, overShoulder(fig, 1, 0.6, 0.25)); },
     });
   }
@@ -287,10 +287,11 @@ export default class Rooftop extends Scene {
     let shot = 'A';
     if (t < cB) {
       // A: over his shoulder, from his palms up to the line being written over the street
-      const k = ease.inOutCubic(prog(t, 30.75, 31.5));
+      const k = ease.inOutCubic(prog(t, 30.8, 31.85));
       // beside him at shoulder height: his palms, then the light leaving them for the street
-      pos.copy(H).add(V(lerp(0.95, 1.35, k), lerp(1.5, 2.0, k), lerp(0.35, 1.15, k) + 0.25 * prog(t, 30.6, cB)));
-      tgt.copy(H).add(V(0.0, 1.0, -0.45)).lerp(this.TXT.clone().add(V(-0.8, -0.9, 0)), k);
+      // over his right shoulder, looking down at his glowing palms; then up with the light to the street
+      pos.copy(H).add(V(lerp(0.78, 1.35, k), lerp(1.8, 2.05, k), lerp(-0.1, 1.15, k) + 0.25 * prog(t, 30.6, cB)));
+      tgt.copy(H).add(V(-0.05, 1.12, -0.38)).lerp(this.TXT.clone().add(V(-0.8, -0.9, 0)), k);
       fov = lerp(38, 58, k);
     } else if (t < cC) {
       shot = 'B';
@@ -464,19 +465,22 @@ export default class Rooftop extends Scene {
         if (k > 0) { p.lerp(star, k); bright *= 1 + k; }
       } else {
         // a light from far away: up, then gliding into its place in the word as it is sung
-        const k1 = ease.outCubic(prog(t, l.launch, l.at[0]!));
+        // (each word stays a loose cloud of lights until it is sung, then snaps into its letters)
+        const snap = (at: number) => ease.outCubic(prog(t, at - 0.1, at + 0.16));
+        const k1 = ease.outCubic(prog(t, l.launch, l.at[0]! - 0.05));
         const rise = s0.clone().add(V(0, 18 * Math.min(1, age * 1.4), 0));
-        p = rise.clone().lerp(l.T[0]!, k1);
+        tmp.copy(l.T[0]!).addScaledVector(wob, 6 * (1 - snap(l.at[0]!)));
+        p = rise.clone().lerp(tmp, k1);
         p.y += Math.sin(k1 * Math.PI) * 25;
         // "let it all go": the words loosen and drift up; then they scatter into a cloud
         p.y += 7 * release;
         p.addScaledVector(wob, 1.5 * release + 14 * scatter);
         // regroup into the next line as it is sung
-        const k2 = ease.inOutCubic(prog(t, l.at[1]! - 0.55, l.at[1]!));
-        if (k2 > 0) { tmp.copy(l.T[1]!).addScaledVector(wob, 0.3); p.lerp(tmp, k2); p.y += Math.sin(k2 * Math.PI) * 6; }
+        const k2 = ease.inOutCubic(prog(t, l.at[1]! - 0.6, l.at[1]! - 0.05));
+        if (k2 > 0) { tmp.copy(l.T[1]!).addScaledVector(wob, 0.3 + 6 * (1 - snap(l.at[1]!))); p.lerp(tmp, k2); p.y += Math.sin(k2 * Math.PI) * 6; }
         // then HERE WE GO, closer to his roof
-        const k3 = ease.inOutCubic(prog(t, l.at[2]! - 0.9 - (i % 5) * 0.05, l.at[2]! - 0.02));
-        if (k3 > 0) { tmp.copy(l.T[2]!).addScaledVector(wob, 0.12); p.lerp(tmp, k3); }
+        const k3 = ease.inOutCubic(prog(t, l.at[2]! - 0.85 - (i % 5) * 0.04, l.at[2]! - 0.05));
+        if (k3 > 0) { tmp.copy(l.T[2]!).addScaledVector(wob, 0.12 + 3 * (1 - snap(l.at[2]!))); p.lerp(tmp, k3); }
         const k4 = toStar(l, i);
         if (k4 > 0) { p.lerp(star, k4); bright *= 1 + 1.5 * k4; }
         size = lerp(2.4, 1.1, k3) * (1 - 0.5 * k4);

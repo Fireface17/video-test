@@ -108,6 +108,8 @@ export const CITY_GLSL = /* glsl */ `
     float sh = sunShadowH(W.xz);
     return sunLit(N, max(step(0.5, N.y), smoothstep(sh - 8.0, sh + 8.0, W.y)));
   }
+  // (small things near the ground: in the shadow below ~25 m)
+  vec3 sunLow(vec3 W, vec3 N) { return sunLit(N, smoothstep(15.0, 35.0, W.y)); }
   // light from the glowing people near a point
   vec3 peopleGlow(vec3 W, vec3 N) {
     vec3 L = vec3(0.0);
@@ -225,6 +227,63 @@ export const FACADE_GLSL = /* glsl */ `
   }
   #endif
 
+
+  #if FAC_LOD == 2
+  // far away: the window grid, each window lit or dark (one hash), and beyond a pixel the average; no rooms
+  vec3 facade(vec3 W, vec3 N, vec3 V, vec4 F0, vec4 F1, vec4 F2, vec4 F3) {
+    float seed = F0.x, style = F0.y, fH = F0.z, gH = F0.w;
+    float winW = F1.y, winH = F1.z, sill = F1.w;
+    float density = F2.a, topY = F3.y, crown = mod(F3.z, 4.0), pairs = floor(F3.z * 0.25 + 0.001);
+    float hasWin = vFace.y, faceId = vFace.w, pier = vGrid.x, nb = vGrid.y, bw = vGrid.z, nFl = vGrid.w;
+    float tierY = vUVP.y, tierTop = vUVP.z, p = vPG.x, gl = vPG.y, v = W.y;
+    vec2 q = vec2((vUVP.x - pier) / bw, (v - gH) / fH);
+    vec2 cell = floor(q), f = fract(q), fw = fwidth(q) + 1e-4;
+    float px = max(fw.x, fw.y);
+    #if FAC_GLASS
+      float ww = 1.0;
+    #else
+      float sub = pairs > 1.5 ? 2.0 : 1.0;
+      float ww = min(winW * sub, 0.96);
+      f.x = fract(f.x * sub); fw.x *= sub;
+    #endif
+    // the opening (antialiased), then its coverage when windows are smaller than a pixel
+    vec2 d = abs(f - vec2(0.5, sill + winH * 0.5)) - vec2(ww, winH) * 0.5;
+    float inW = clamp(0.5 - max(d.x / fw.x, d.y / fw.y), 0.0, 1.0);
+    inW = mix(inW, ww * winH, smoothstep(0.6, 1.6, px));
+    inW *= hasWin * step(0.0, q.y) * step(v, tierTop - 0.6) * step(0.0, q.x) * step(q.x, nb);
+    // lit or not: occupied, powered (lower floors first), lights going out at dawn
+    float h = h13(vec3(seed * 0.37 + faceId * 3.1, cell.y * 1.37 + 0.11, floor(cell.x / (FAC_GLASS > 0 ? 14.0 : 2.0)) * 0.71 + 0.3));
+    float floorK = clamp((cell.y + 1.0) / (nFl + 1.0), 0.0, 1.0);
+    float on = step(h, density) * step(0.04 + 0.5 * floorK + 0.4 * fract(h * 13.7), p) * step(uDawn * 0.85, fract(h * 23.0));
+    on = mix(on, density * smoothstep(0.0, 0.3, p - 0.04 - 0.5 * floorK) * (1.0 - 0.85 * uDawn), smoothstep(1.2, 3.0, px));
+    on = max(on, step(fract(h * 5.3 + uFlash.y * 1.618), uFlash.x));
+    float k = fract(h * 3.1);
+    vec3 Lc = FAC_GLASS > 0 ? vec3(0.82, 0.92, 0.9) * 0.6 : mix(vec3(1.0, 0.6, 0.3) * (0.55 + 0.6 * fract(h * 4.1)), vec3(0.85, 0.86, 0.9) * 0.55, step(0.62, k));
+    Lc = mix(Lc, vec3(1.0, 0.7, 0.25), gl * 0.85);
+    vec3 win = Lc * on * gain * 0.42;
+    // the wall: sky light, moon, the street's glow low down, floodlit crowns
+    vec3 Lw = ambient(N) + streetLight(W.xz + N.xz * 2.0, v, p) * 0.55 + sunLit(N, smoothstep(vPG.z - 8.0, vPG.z + 8.0, v));
+    float crownK = step(0.5, crown) * step(crown, 1.5) * step(topY * 0.55, tierY + 0.1) * step(0.1, h11(seed * 3.7));
+    Lw += mix(vec3(1.0, 0.86, 0.66), vec3(1.0, 0.7, 0.25), gl) * crownK * p * (0.3 + 1.6 * exp(-(v - tierY) / 9.0));
+    vec3 alb = F2.rgb;
+    #if FAC_GLASS == 0
+      // stone bands over the ground floor and under the top floors, a stone base on the older styles
+      float older = step(style, 1.1) + step(abs(style - 6.0), 0.1) + step(abs(style - 3.0), 0.1);
+      float band = older * step(abs(v - gH - 0.12), 0.2) + step(abs(style - 1.0), 0.1) * step(abs(v - (topY - 3.0 * fH) - 0.12), 0.18);
+      alb = mix(alb, mix(vec3(0.42, 0.38, 0.32), F2.rgb * 1.3, 0.3) * 1.1, max(band, (step(abs(style - 1.0), 0.1) + step(abs(style - 3.0), 0.1)) * step(v, gH + fH)));
+      // a TV's blue in some of the dark windows
+      win += vec3(0.05, 0.08, 0.2) * step(0.93, fract(h * 11.0)) * (1.0 - on) * step(0.3, p) * inW;
+    #endif
+    vec3 wall = alb * Lw;
+    #if FAC_GLASS
+      vec3 Rf = reflect(V, N);
+      wall = F2.rgb * 0.6 + mix(skyHor, skyTop, clamp(Rf.y * 1.8, 0.0, 1.0)) * 0.3 + F2.rgb * Lw * 0.5;
+      wall += vec3(0.6, 0.85, 1.0) * step(2.5, crown) * step(topY - 3.0 * fH, v) * step(fract(f.y * 2.0), 0.15) * p * 1.2;
+      win += mix(skyHor, skyTop, clamp(Rf.y * 1.8, 0.0, 1.0)) * 0.3;
+    #endif
+    return mix(wall, win, inW);
+  }
+  #else
   vec3 facade(vec3 W, vec3 N, vec3 V, vec4 F0, vec4 F1, vec4 F2, vec4 F3) {
     float seed = F0.x, style = F0.y, fH = F0.z, gH = F0.w;
     float bayW = F1.x, winW = F1.y, winH = F1.z, sill = F1.w;
@@ -425,6 +484,7 @@ export const FACADE_GLSL = /* glsl */ `
     #endif
     return c;
   }
+  #endif
 
 `;
 

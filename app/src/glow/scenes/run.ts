@@ -167,7 +167,7 @@ export default class Run extends Scene {
       he: {
         s: [[T.C, sV - 0.4], [tv0, sV + 1.2, ease.linear], [tv1, sV + 4.6, ease.linear], [tv1 + 0.4, sV + 5.9, ease.outCubic], [off, sV + 6.0], [off + 0.6, sV + 6.0 + PACE * 0.32, ease.inQuad], [T.E, sV + 6.0 + PACE * 0.32 + PACE * (T.E - off - 0.6), ease.linear]],
         turn: [[tv1 + 0.05, 0], [tv1 + 0.5, 1], [off - 0.15, 1], [off + 0.3, 0]],
-        lift: [[tv0, 0], [(tv0 + tv1) / 2, 1.2, ease.outQuad], [tv1, 0.15, ease.inQuad]],
+        lift: [[tv0, 0], [(tv0 + tv1) / 2, 0.8, ease.outQuad], [tv1, 0.15, ease.inQuad]],
         jumpK: [[tv0 - 0.16, 0], [tv0 - 0.02, 1], [tv1, 1], [tv1 + 0.16, 0]],
         jumpT: [tv0 - 0.24, tv1 + 0.18],
       },
@@ -404,7 +404,7 @@ export default class Run extends Scene {
     if (leg.id === 'I' || leg.id === 'J' || leg.id === 'K' || leg.id === 'L') {
       const a = Math.max(0, t - T.wake);
       const r = t < T.wake ? 0 : 25 * (1 - Math.exp(-a * 6)) + 110 * a + 45 * a * a;
-      this.city.power.level = 0.4;
+      this.city.power.level = 0.1;
       const wp = this.legs[this.legs.findIndex((l) => l.id === 'I')]!;
       const w0 = wp.route.at(wp.s0 + PACE * (T.wake - wp.t0));
       this.city.power.wave(0, { x: w0.x, z: w0.z, r: Math.max(1, r), soft: 45, to: 1 });
@@ -435,8 +435,8 @@ export default class Run extends Scene {
     shiftRender(this.ctx.renderer, S.scene, S.cam, this.world, this.city, out, S.bg);
     // ---- post ----
     let flash = 0;
-    for (const [a] of this.freezes) flash = Math.max(flash, t >= a ? Math.exp(-(t - a) * 15) * 0.75 : 0);
-    flash = Math.max(flash, t >= T.release ? Math.exp(-(t - T.release) * 5) * 0.5 : 0);
+    for (const [a] of this.freezes) flash = Math.max(flash, t >= a ? Math.exp(-(t - a) * 28) * 0.7 : 0);
+    flash = Math.max(flash, t >= T.release ? Math.exp(-(t - T.release) * 8) * 0.35 : 0);
     void cam;
     return { bloom: 0.95, bloomThreshold: 0.75, bloomRadius: 0.85, halation: 0.14, vignette: 0.42, grain: 0.05, ca: 0.8, flash, shake: [0, 0] as [number, number] };
   }
@@ -474,9 +474,10 @@ export default class Run extends Scene {
       case 'A': {
         // ahead of them, low in the parking lane under the el; they come down the stairs and run at us
         // (on the pavement ahead, looking back up the station's stairs: they come down at us with the crowd)
-        pos = V(390.0, 2.3, 71 + 6 * ease.inOutQuad(u));
-        tgt = mid.clone().add(V(0, 1.0, 0)).lerp(V(388.5, 3.5, 58), 0.2 * (1 - u));
-        fov = 46;
+        // (at the foot of the stairs, looking up: they come down at us, the crowd behind them)
+        pos = V(387.2, 1.35, 68.5 + 3.5 * ease.inOutQuad(u));
+        tgt = mid.clone().add(V(0, 1.1, 0)).lerp(V(388.6, 5.5, 52), 0.25 * (1 - u));
+        fov = 42;
         roll = 0.03 * Math.sin(t * 1.3);
         break;
       }
@@ -500,7 +501,7 @@ export default class Run extends Scene {
         // low on the pavement past the smashed window: they run at us, the shards rise into the frame
         const tilt = smoothstep(T.star - 0.2, leg.t1, t);
         pos = V(442 - 1.5 * u, 0.6 + 0.8 * tilt, 125.7);
-        tgt = V(433.0, 1.0 + 3.5 * tilt * tilt, 128.6).lerp(V(437, 6, 129), tilt * 0.5);
+        tgt = V(433.0, 1.0 + 3.5 * tilt * tilt, 128.6).lerp(V(436, 7, 124.5), tilt * 0.6);
         fov = 50;
         break;
       }
@@ -532,8 +533,10 @@ export default class Run extends Scene {
       }
       case 'I': {
         // low behind them, down the long street to the river; the windows wake in a wave ahead of them
-        pos = at(mid, -8, -5.5, 6.5 + 1.0 * u);
-        tgt = at(mid, 45, -3.5, 3 + 6 * smoothstep(T.wake, T.wake + 1.8, t));
+        // (low in the parking lane behind them, under the trees; after "wake" the camera lifts to the facades)
+        const wk = smoothstep(T.wake - 0.2, T.wake + 1.6, t);
+        pos = at(mid, -4.5, 0.8, 1.6 + 0.6 * wk);
+        tgt = at(mid, 30, -2.5, 1.9 + 5 * wk);
         fov = 60;
         roll = 0.02 * Math.sin(t * 2.1);
         break;
@@ -542,10 +545,10 @@ export default class Run extends Scene {
         // from the deck, by the railing: they climb the stairs and come up onto the overpass, the city behind
         // (on the walkway past the top of the stairs: they come up toward us and run by, the city behind them)
         const oy = this.R3.at(9999).y;
-        pos = V(1126.8, 7.0 + 1.5 * u, 157 + 2 * u);
-        tgt = mid.clone().add(V(0, 1.0, 0));
-        fov = 50;
-        void oy;
+        // (at the top of the stairs, looking down them: they climb at us, the crowd pouring up behind, the city below)
+        pos = V(1134.6, oy + 1.7 + 0.3 * u, 151.2 + 0.8 * u);
+        tgt = mid.clone().add(V(0, 0.9, 0)).lerp(V(1133.6, 2, 136), 0.3 * (1 - u));
+        fov = 48;
         break;
       }
       case 'K': {

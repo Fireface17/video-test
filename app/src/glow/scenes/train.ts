@@ -107,6 +107,7 @@ export default class Train extends Scene {
   bars: number[] = [];
 
   override async init() {
+    (globalThis as { __train?: Train }).__train = this; // TEMP profiling
     const { lyrics, audio } = this.ctx;
     const S = this.st.scene, U = this.U;
     this.st.bg.copy(col('night'));
@@ -582,7 +583,7 @@ export default class Train extends Scene {
     U.uMoonC.value.setRGB(0.3, 0.33, 0.45).multiplyScalar(0.12 * moonLight);
     // the full city only where the street is the picture (the crane over the avenue, the run); elsewhere the stand-in
     const street = shot.id === 'H' || shot.id === 'I';
-    this.out.city.mirrorOn = shot.id === 'I';
+    this.out.city.mirrorOn = false;
     this.out.update(t, cam, moonK, street);
 
     // ---- people
@@ -665,6 +666,7 @@ export default class Train extends Scene {
   private applyLights(ls: Train['lights'], camPos: THREE.Vector3) {
     const scored = ls.filter((l) => l.k > 0.005).map((l) => ({ l, s: l.k * Math.abs(l.r) / (1 + l.p.distanceToSquared(camPos) / 60) })).sort((a, b) => b.s - a.s).slice(0, MAXL);
     const P = this.U.uPts.value, C = this.U.uPtC.value;
+    this.U.uN.value = scored.length;
     for (let i = 0; i < MAXL; i++) {
       const e = scored[i];
       if (!e) { P[i]!.set(0, -1e4, 0, 0.01); C[i]!.set(0, 0, 0); continue; }

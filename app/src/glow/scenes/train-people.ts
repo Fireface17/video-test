@@ -47,11 +47,6 @@ export function passengerMaterial(ghost: THREE.Color, glow: THREE.Color) {
       uniform vec3 color, glow, phoneC, fill; uniform float lit, level, time; uniform vec4 phone;
       varying vec3 vN; varying vec3 vV; varying vec3 vW; varying vec3 vWN;
       float h3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
-      float n3(vec3 p) {
-        vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-        return mix(mix(mix(h3(i), h3(i + vec3(1, 0, 0)), f.x), mix(h3(i + vec3(0, 1, 0)), h3(i + vec3(1, 1, 0)), f.x), f.y),
-                   mix(mix(h3(i + vec3(0, 0, 1)), h3(i + vec3(1, 0, 1)), f.x), mix(h3(i + vec3(0, 1, 1)), h3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
-      }
       void main() {
         float ln = length(vN), lv = length(vV);
         vec3 n = ln > 1e-5 ? vN / ln : vec3(0.0, 0.0, 1.0), v = lv > 1e-5 ? vV / lv : vec3(0.0, 0.0, 1.0);
@@ -69,7 +64,8 @@ export function passengerMaterial(ghost: THREE.Color, glow: THREE.Color) {
         if (lit > 0.001) {
           // the person of light
           float lum = max(glow.r, max(glow.g, glow.b));
-          float flow = n3(vec3(vW.x * 3.0, vW.y * 2.2 - time * 1.1, vW.z * 3.0));
+          // light rising through the body in soft bands (cheap: crossed waves instead of 3D noise)
+          float flow = 0.5 + 0.25 * sin(vW.y * 7.0 - time * 3.3 + sin(vW.x * 5.0) * 1.5) + 0.25 * sin(vW.y * 3.1 - time * 2.1 + vW.z * 4.0);
           float bands = smoothstep(0.55, 0.9, flow);
           float glint = step(0.985, h3(floor(vW * 90.0) + floor(time * 8.0))) * f;
           float r2 = rim * rim, r4 = r2 * r2;

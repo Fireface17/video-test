@@ -75,15 +75,13 @@ export class Outside extends THREE.Group {
   constructor(U: LightU, ride: Ride, moonDir: THREE.Vector3) {
     super();
     this.moonDir = moonDir.clone().normalize();
-    // the city (lib/city.ts): the line runs over one of its wide cross streets (local z = 40, along x); on the moon
-    // side (+z) a stretch of empty blocks so the moon can be seen low over the far roofs. Its own sky and elevated
-    // line are left out (the moon here is swallowed on cue).
+    // the city (lib/city.ts), for the street shots at the end: the line runs over one of its wide cross streets
+    // (local z = 40, along x). Its own sky and elevated line are left out.
     const OFF = new THREE.Vector3(-50, 0, -44);
-    const clear: [number, number, number][] = [];
-    for (let x = -230; x <= 300; x += 55) for (let z = 45; z <= 330; z += 55) clear.push([x - OFF.x, z - OFF.z, 48]);
     this.city = new City({
-      seed: 29, bounds: [-700 - OFF.x, -650 - OFF.z, 650 - OFF.x, 1250 - OFF.z], centre: [-420 - OFF.x, 1000 - OFF.z], downtownR: 520, clear, fog: 0.00105,
-      el: null, sky: false, park: null, river: null, detail: 0.5, traffic: 0.35, lod: 0.6,
+      // (seen only from the street at the station: the avenue toward -x and the blocks around it)
+      seed: 29, bounds: [-560 - OFF.x, -260 - OFF.z, 260 - OFF.x, 240 - OFF.z], centre: [-420 - OFF.x, 1000 - OFF.z], downtownR: 520, fog: 0.00105,
+      el: null, sky: false, park: null, river: null, detail: 0.35, traffic: 0.25, lod: 0.4,
     });
     this.city.position.copy(OFF);
     this.add(this.city);

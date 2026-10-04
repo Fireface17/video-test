@@ -237,8 +237,14 @@ export function carGeometry(type: number) {
   // wheels: tyres and hubs
   const wz = type === 3 ? 1.75 : 1.42, wr = type === 1 ? 0.37 : 0.33;
   for (const zz of [wz, -wz]) for (const sx of [-1, 1]) {
-    k.cyl(sx * (W / 2 - 0.12), wr, zz, wr, wr, 0.24, 6, [0.015, 0.015, 0.016, M.ALB], true, 0, Math.PI / 2);
-    k.quad(sx * (W / 2 + 0.005), wr, zz, wr * 1.1, wr * 1.1, [0.22, 0.22, 0.23, M.ALB], Math.PI / 2);
+    // a tyre: a dark octagon on the outside, the hub's lighter centre
+    const ox = sx * (W / 2 + 0.004), oc = [0.015, 0.015, 0.016, M.ALB];
+    for (let a = 0; a < 8; a += 2) {
+      const p0 = (a * Math.PI) / 4, p1 = ((a + 1) * Math.PI) / 4, p2 = ((a + 2) * Math.PI) / 4;
+      const P = (ph: number) => [ox, wr + Math.sin(ph) * wr, zz + Math.cos(ph) * wr];
+      if (sx > 0) k.poly4([ox, wr, zz], P(p0), P(p1), P(p2), oc); else k.poly4([ox, wr, zz], P(p2), P(p1), P(p0), oc);
+    }
+    k.quad(sx * (W / 2 + 0.008), wr, zz, wr * 0.9, wr * 0.9, [0.2, 0.2, 0.21, M.ALB], sx * Math.PI / 2);
   }
   // lights (the instance's k lights them; parked cars 0), the grille, the plates
   const fz = prof[0]![0] + 0.035, bz = prof[prof.length - 1]![0] - 0.035;
@@ -348,110 +354,99 @@ function stackGeometry() {
 
 // ---------------------------------------------------------------- traffic
 
-/** GLSL: where a car is at uTime (avenues: the green wave; streets: queues at the lights), its heading, its brakes. */
-const TRAFFIC_GLSL = /* glsl */ `
-  uniform float uZ0, uLoop, uPitch;
-  const float SIG_P = ${SIG.P.toFixed(1)}, V_WAVE = ${SIG.V_WAVE.toFixed(1)};
-  // L = (type 0 avenue / 1 street, lane coordinate, direction, s0 | queue x), S = (slot k, copy c, offset here, offset next)
-  vec3 carPose(vec4 L, vec4 S, out vec2 dir, out float brake, out float vis) {
-    brake = 0.0; vis = 1.0;
-    if (L.x > 1.5) {
-      // the highway: S = (speed, deck height, z0, length)
-      float s = mod(L.w + S.x * uTime, S.w);
-      dir = vec2(0.0, L.z);
-      return vec3(L.y, S.y, L.z > 0.0 ? S.z + s : S.z + S.w - s);
-    }
-    if (L.x < 0.5) {
-      float s = mod(L.w + V_WAVE * uTime, uLoop);
-      dir = vec2(0.0, L.z);
-      return vec3(L.y, 0.0, L.z > 0.0 ? uZ0 + s : uZ0 + uLoop - s);
-    }
-    float k = S.x, g0 = S.z + 21.0 + k * 1.6;
-    float n = floor((uTime - g0) / SIG_P) - S.y;
-    float td = g0 + n * SIG_P, tau = uTime - td;
-    float v = 10.0, Ta = 3.5, Tb = 4.0, D = uPitch;
-    float T = D / v + 0.5 * (Ta + Tb);
-    float s = tau < Ta ? 0.5 * v * tau * tau / Ta : tau < T - Tb ? v * (tau - 0.5 * Ta) : tau < T ? D - 0.5 * v * (T - tau) * (T - tau) / Tb : D;
-    float gn = S.w + 21.0 + k * 1.6;
-    float tnext = gn + ceil((td + T - gn) / SIG_P) * SIG_P;
-    vis = step(uTime, tnext);
-    brake = max(step(T - Tb, tau), 1.0 - smoothstep(0.0, 0.6, tau));
-    dir = vec2(L.z, 0.0);
-    return vec3(L.w + L.z * s, 0.0, L.y);
-  }
-`;
+/** A moving car: L = (kind 0 avenue / 1 street / 2 highway, lane coordinate, direction, s0 | queue x), S = (slot k, copy, offsets | highway params). */
+export interface MovingCar { L: number[]; S: number[]; col: number[]; type: number }
 
-function carMaterial(U: CityUniforms, tu: Record<string, THREE.IUniform>) {
+/** Where a car is at time t (avenues: the green wave; streets: queues at the lights; the highway), its heading, brakes. */
+export function carPose(c: MovingCar, t: number, z0: number, loop: number, pitch: number, out: { x: number; y: number; z: number; dx: number; dz: number; brake: number; vis: boolean }) {
+  const L = c.L, S = c.S;
+  out.brake = 0; out.vis = true; out.y = 0;
+  const mod = (a: number, m: number) => ((a % m) + m) % m;
+  if (L[0]! > 1.5) {
+    const s = mod(L[3]! + S[0]! * t, S[3]!);
+    out.dx = 0; out.dz = L[2]!; out.x = L[1]!; out.y = S[1]!; out.z = L[2]! > 0 ? S[2]! + s : S[2]! + S[3]! - s;
+    return out;
+  }
+  if (L[0]! < 0.5) {
+    const s = mod(L[3]! + SIG.V_WAVE * t, loop);
+    out.dx = 0; out.dz = L[2]!; out.x = L[1]!; out.z = L[2]! > 0 ? z0 + s : z0 + loop - s;
+    return out;
+  }
+  const P = SIG.P, k = S[0]!, g0 = S[2]! + 21 + k * 1.6;
+  const n = Math.floor((t - g0) / P) - S[1]!;
+  const td = g0 + n * P, tau = t - td;
+  const v = 10, Ta = 3.5, Tb = 4, D = pitch, T = D / v + 0.5 * (Ta + Tb);
+  const s = tau < Ta ? (0.5 * v * tau * tau) / Ta : tau < T - Tb ? v * (tau - 0.5 * Ta) : tau < T ? D - (0.5 * v * (T - tau) * (T - tau)) / Tb : D;
+  const gn = S[3]! + 21 + k * 1.6;
+  const tnext = gn + Math.ceil((td + T - gn) / P) * P;
+  out.vis = t <= tnext;
+  const sm = Math.min(1, Math.max(0, tau / 0.6));
+  out.brake = Math.max(tau >= T - Tb ? 1 : 0, 1 - sm * sm * (3 - 2 * sm));
+  out.dx = L[2]!; out.dz = 0; out.x = L[3]! + L[2]! * s; out.z = L[1]!;
+  return out;
+}
+
+function carMaterial(U: CityUniforms) {
   return new THREE.ShaderMaterial({
+    uniforms: U as unknown as Record<string, THREE.IUniform>,
     side: THREE.DoubleSide,
-    uniforms: { ...(U as unknown as Record<string, THREE.IUniform>), ...tu },
     vertexShader: /* glsl */ `
       attribute vec4 aV; attribute vec3 aL;
-      attribute vec4 iLane; attribute vec4 iSeg; attribute vec4 iCol;
-      varying vec3 vW, vN, vLight; varying vec4 vV, vCol; varying vec2 vFk; varying float vP, vBrake;
+      attribute vec4 iPos; attribute vec4 iCol; // x, y, z, heading; rgb, brake
+      varying vec3 vW, vN, vLight; varying vec4 vV, vCol; varying vec2 vFk; varying float vP;
       ${CITY_GLSL}
-      ${TRAFFIC_GLSL}
       void main() {
-        vec2 dir; float brake, vis;
-        vec3 o = carPose(iLane, iSeg, dir, brake, vis);
+        vec2 dir = vec2(sin(iPos.w), cos(iPos.w));
         vec3 lp = position;
         vec3 rp = vec3(dir.y * lp.x + dir.x * lp.z, lp.y, -dir.x * lp.x + dir.y * lp.z);
         vec3 n = vec3(dir.y * normal.x + dir.x * normal.z, normal.y, -dir.x * normal.x + dir.y * normal.z);
-        vec4 w = modelMatrix * vec4(rp + o, 1.0);
-        vW = w.xyz; vN = n; vV = aV; vCol = iCol; vBrake = brake;
+        vec4 w = modelMatrix * vec4(rp + iPos.xyz, 1.0);
+        vW = w.xyz; vN = n; vV = aV; vCol = iCol;
         vP = power(w.xz);
-        vLight = ambient(n) * 1.3 + streetLight(w.xz, w.y, vP) + sunLight(w.xyz, n) + peopleGlow(w.xyz, n);
+        vLight = ambient(n) * 1.3 + streetLight(w.xz, w.y, vP) + sunLow(w.xyz, n) + peopleGlow(w.xyz, n);
         vFk = fogK(w.xyz);
-        float far = step(900.0, length(w.xyz - cameraPosition));
         gl_Position = projectionMatrix * viewMatrix * w;
-        if (vis < 0.5 || far > 0.5) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
       }`,
     fragmentShader: /* glsl */ `
-      varying vec3 vW, vN, vLight; varying vec4 vV, vCol; varying vec2 vFk; varying float vP, vBrake;
+      varying vec3 vW, vN, vLight; varying vec4 vV, vCol; varying vec2 vFk; varying float vP;
       ${CITY_GLSL}
       void main() {
         float mode = vV.a;
         vec3 N = normalize(vN), V = normalize(vW - cameraPosition);
         vec3 alb = mode < 0.5 ? vCol.rgb : vV.rgb;
         vec3 c = alb * vLight;
-        // paint: a highlight of the street light, the sky in it
+        // paint: the sky and the street light in it; glass; head- and taillights (brighter on the brakes)
         float fres = pow(1.0 - clamp(abs(dot(V, N)), 0.0, 1.0), 3.0);
         c += (skyRefl(reflect(V, N)) * 0.25 + vLight * 0.15) * fres * step(mode, 0.5);
         if (mode > 2.5 && mode < 3.5) c = alb * vLight * 0.4 + skyRefl(reflect(V, N)) * (0.15 + 0.6 * fres);
-        // lights: headlights always on; tail lights brighter on the brakes
         float tail = step(vV.g, 0.2) * step(0.5, vV.r);
-        if (mode > 3.5 && mode < 4.5) c = vV.rgb * (tail > 0.5 ? 1.2 + 2.5 * vBrake : 3.0);
+        if (mode > 3.5 && mode < 4.5) c = vV.rgb * (tail > 0.5 ? 1.2 + 2.5 * vCol.a : 3.0);
         gl_FragColor = vec4(applyFog(c, vFk, vP), 1.0);
       }`,
   });
 }
 
-/** Head- and taillights as glowing points (they bloom and reflect in the wet streets). */
-function carLightMaterial(U: CityUniforms, tu: Record<string, THREE.IUniform>) {
+/** Head- and taillights as glowing points (they bloom and reflect in the wet streets). Positions from the CPU. */
+function carLightMaterial(U: CityUniforms) {
   return new THREE.ShaderMaterial({
-    uniforms: { ...(U as unknown as Record<string, THREE.IUniform>), ...tu, pxScale: { value: (1080 * SCALE) / 2 } },
+    uniforms: { ...(U as unknown as Record<string, THREE.IUniform>), pxScale: { value: (1080 * SCALE) / 2 } },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     vertexShader: /* glsl */ `
-      attribute vec4 iLane; attribute vec4 iSeg; attribute vec4 aOff;
+      attribute vec4 aL; // heading x, heading z, head (1) / tail (0), brake
       uniform float pxScale;
       varying vec3 vC;
       ${CITY_GLSL}
-      ${TRAFFIC_GLSL}
       void main() {
-        vec2 dir; float brake, vis;
-        vec3 o = carPose(iLane, iSeg, dir, brake, vis);
-        vec3 lp = aOff.xyz;
-        vec3 rp = vec3(dir.y * lp.x + dir.x * lp.z, lp.y, -dir.x * lp.x + dir.y * lp.z);
-        vec4 w = modelMatrix * vec4(rp + o, 1.0);
+        vec4 w = modelMatrix * vec4(position, 1.0);
         vec4 mv = viewMatrix * w;
         float d = -mv.z;
-        vec3 fwd = vec3(dir.x, 0.0, dir.y);
+        vec3 fwd = vec3(aL.x, 0.0, aL.y);
         vec3 toCam = normalize(cameraPosition - w.xyz);
         // a headlight shines forward, a taillight back: brightest seen from in front / behind
-        float facing = aOff.w > 0.5 ? dot(fwd, toCam) : -dot(fwd, toCam);
-        float k = aOff.w > 0.5 ? 1.6 : 0.5 + 1.4 * brake;
-        vec3 c = aOff.w > 0.5 ? vec3(1.0, 0.9, 0.75) : vec3(1.0, 0.05, 0.02);
-        vC = c * k * (0.25 + 0.75 * smoothstep(-0.2, 0.6, facing)) * vis;
+        float facing = aL.z > 0.5 ? dot(fwd, toCam) : -dot(fwd, toCam);
+        float k = aL.z > 0.5 ? 1.6 : 0.5 + 1.4 * aL.w;
+        vec3 c = aL.z > 0.5 ? vec3(1.0, 0.9, 0.75) : vec3(1.0, 0.05, 0.02);
+        vC = c * k * (0.25 + 0.75 * smoothstep(-0.2, 0.6, facing));
         vec2 fk = fogK(w.xyz);
         vC *= fk.y * (1.0 - 0.7 * fk.x);
         float px = 0.35 * projectionMatrix[1][1] * pxScale / max(d, 1e-3);
@@ -460,7 +455,6 @@ function carLightMaterial(U: CityUniforms, tu: Record<string, THREE.IUniform>) {
         vC *= max(min(1.0, (px * px) / (m * m)), 0.3) * smoothstep(0.5, 2.0, d);
         gl_PointSize = m;
         gl_Position = projectionMatrix * mv;
-        if (vis < 0.5) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
       }`,
     fragmentShader: /* glsl */ `
       varying vec3 vC;
@@ -552,7 +546,15 @@ export class CityLife extends THREE.Group {
   mirrorHide: THREE.Object3D[] = [];
   atlas: SignAtlas;
   lods: THREE.Object3D[] = [];
-  private tu: Record<string, THREE.IUniform>;
+  /** moving cars (see carPose), drawn as meshes within `carDist` of the camera, their lights everywhere */
+  cars: MovingCar[] = [];
+  carDist = 520;
+  private carMeshes: { type: number; list: MovingCar[]; mesh: THREE.Mesh; iPos: THREE.InstancedBufferAttribute; iCol: THREE.InstancedBufferAttribute }[] = [];
+  private lights!: THREE.Points;
+  private lightPos!: THREE.BufferAttribute;
+  private lightL!: THREE.BufferAttribute;
+  private traffic = { z0: 0, loop: 1, pitch: 250 };
+  private pose = { x: 0, y: 0, z: 0, dx: 0, dz: 1, brake: 0, vis: true };
 
   constructor(private city: City, o: CityOpts) {
     super();
@@ -643,7 +645,7 @@ export class CityLife extends THREE.Group {
         vertexShader: `varying vec3 vC; varying vec2 vFk; varying float vP;
           ${CITY_GLSL}
           void main() { vec4 w = modelMatrix * vec4(position, 1.0); vP = power(w.xz);
-            vC = vec3(0.012) + streetLight(w.xz, w.y, vP) * 0.08 + uMoonCol * 0.3 + sunLight(w.xyz, vec3(0.0, 1.0, 0.0)) * 0.1; vFk = fogK(w.xyz);
+            vC = vec3(0.012) + streetLight(w.xz, w.y, vP) * 0.08 + uMoonCol * 0.3 + sunLit(vec3(0.0, 1.0, 0.0), 1.0) * 0.1; vFk = fogK(w.xyz);
             gl_Position = projectionMatrix * viewMatrix * w; }`,
         fragmentShader: `varying vec3 vC; varying vec2 vFk; varying float vP;
           ${CITY_GLSL}
@@ -711,9 +713,8 @@ export class CityLife extends THREE.Group {
     // ---- moving traffic ----
     const [X0, Z0, X1, Z1] = plan.o.bounds;
     const zLoop = Z1 - Z0 + 1200, z0 = Z0 - 600;
-    this.tu = { uZ0: { value: z0 }, uLoop: { value: zLoop }, uPitch: { value: g.s.avPitch } };
     const traffic = o.traffic ?? 1;
-    const cars: { L: number[]; S: number[]; col: number[]; type: number }[] = [];
+    const cars: MovingCar[] = [];
     const riverX = plan.o.river ?? Infinity;
     const P = SIG.P, V = SIG.V_WAVE;
     for (let i = plan.iRange[0]; i <= plan.iRange[1]; i++) {
@@ -753,7 +754,8 @@ export class CityLife extends THREE.Group {
       }
     }
     if (city.overpass) for (const c of overpassCars(city.overpass, r)) cars.push({ L: c.L, S: c.S, col: CAR_COLORS[Math.floor(r() * 16)]!, type: c.type });
-    const carM = carMaterial(U, this.tu);
+    this.cars = cars;
+    const carM = carMaterial(U);
     for (const type of [0, 1, 2, 3]) {
       const list = cars.filter((c) => c.type === type);
       if (!list.length) continue;
@@ -761,31 +763,27 @@ export class CityLife extends THREE.Group {
       const geo = new THREE.InstancedBufferGeometry();
       geo.index = base.index;
       for (const k of ['position', 'normal', 'aV', 'aL']) geo.setAttribute(k, base.attributes[k]!);
-      geo.setAttribute('iLane', new THREE.InstancedBufferAttribute(new Float32Array(list.flatMap((c) => c.L)), 4));
-      geo.setAttribute('iSeg', new THREE.InstancedBufferAttribute(new Float32Array(list.flatMap((c) => c.S)), 4));
-      geo.setAttribute('iCol', new THREE.InstancedBufferAttribute(new Float32Array(list.flatMap((c) => [...c.col, 1])), 4));
-      geo.instanceCount = list.length;
+      const iPos = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 4), 4).setUsage(THREE.DynamicDrawUsage);
+      const iCol = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 4), 4).setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute('iPos', iPos); geo.setAttribute('iCol', iCol);
+      geo.instanceCount = 0;
       const m = new THREE.Mesh(geo, carM);
       m.frustumCulled = false;
       this.add(m);
       this.mirrorHide.push(m);
+      this.carMeshes.push({ type, list, mesh: m, iPos, iCol });
     }
-    // their lights
+    // their lights: 4 points a car, written every frame
+    const nl = cars.length * 4;
     const lg = new THREE.BufferGeometry();
-    const LP: number[] = [], LL: number[] = [], LS: number[] = [], LO: number[] = [];
-    for (const c of cars) {
-      const Lz = c.type === 3 ? 2.65 : 2.36, W = c.type === 3 ? 0.7 : 0.62;
-      for (const [x, y, z, head] of [[-W, 0.72, Lz, 1], [W, 0.72, Lz, 1], [-W, 0.8, -Lz, 0], [W, 0.8, -Lz, 0]] as const) {
-        LP.push(0, 0, 0); LL.push(...c.L); LS.push(...c.S); LO.push(x, y, z + (head ? 0.05 : -0.05), head);
-      }
-    }
-    lg.setAttribute('position', new THREE.Float32BufferAttribute(LP, 3));
-    lg.setAttribute('iLane', new THREE.Float32BufferAttribute(LL, 4));
-    lg.setAttribute('iSeg', new THREE.Float32BufferAttribute(LS, 4));
-    lg.setAttribute('aOff', new THREE.Float32BufferAttribute(LO, 4));
-    const lights = new THREE.Points(lg, carLightMaterial(U, this.tu));
-    lights.frustumCulled = false;
-    this.add(lights);
+    this.lightPos = new THREE.BufferAttribute(new Float32Array(nl * 3), 3).setUsage(THREE.DynamicDrawUsage);
+    this.lightL = new THREE.BufferAttribute(new Float32Array(nl * 4), 4).setUsage(THREE.DynamicDrawUsage);
+    lg.setAttribute('position', this.lightPos);
+    lg.setAttribute('aL', this.lightL);
+    this.lights = new THREE.Points(lg, carLightMaterial(U));
+    this.lights.frustumCulled = false;
+    this.add(this.lights);
+    this.traffic = { z0, loop: zLoop, pitch: g.s.avPitch };
 
     // ---- signal glows: the avenue head on the arm, the street head on the pole ----
     const sp: number[] = [], sa: number[] = [];
@@ -815,7 +813,38 @@ export class CityLife extends THREE.Group {
   }
 
   flash(k: number, seed: number) { this.city.U.uFlash.value.set(k, seed); }
-  update(_t: number, _cam: THREE.Vector3) {}
+  /** Per frame: the cars' poses (meshes near the camera, lights everywhere). */
+  update(t: number, cam: THREE.Vector3) {
+    const tr = this.traffic, P = this.pose, o = this.city.U.uOrigin.value;
+    const cx = cam.x - o.x, cz = cam.z - o.z, R2 = this.carDist * this.carDist;
+    const lp = this.lightPos.array as Float32Array, ll = this.lightL.array as Float32Array;
+    let nl = 0;
+    for (const cm of this.carMeshes) {
+      const ip = cm.iPos.array as Float32Array, ic = cm.iCol.array as Float32Array;
+      let n = 0;
+      const Lz = cm.type === 3 ? 2.65 : 2.36, W = cm.type === 3 ? 0.7 : 0.62;
+      for (const c of cm.list) {
+        carPose(c, t, tr.z0, tr.loop, tr.pitch, P);
+        if (!P.vis) continue;
+        if ((P.x - cx) ** 2 + (P.z - cz) ** 2 < R2) {
+          ip[n * 4] = P.x; ip[n * 4 + 1] = P.y; ip[n * 4 + 2] = P.z; ip[n * 4 + 3] = Math.atan2(P.dx, P.dz);
+          ic[n * 4] = c.col[0]!; ic[n * 4 + 1] = c.col[1]!; ic[n * 4 + 2] = c.col[2]!; ic[n * 4 + 3] = P.brake;
+          n++;
+        }
+        // lights: (x across, z along) in the car's frame
+        for (const [lx, ly, lz, head] of [[-W, 0.72, Lz + 0.05, 1], [W, 0.72, Lz + 0.05, 1], [-W, 0.8, -Lz - 0.05, 0], [W, 0.8, -Lz - 0.05, 0]] as const) {
+          lp[nl * 3] = P.x + P.dz * lx + P.dx * lz; lp[nl * 3 + 1] = P.y + ly; lp[nl * 3 + 2] = P.z - P.dx * lx + P.dz * lz;
+          ll[nl * 4] = P.dx; ll[nl * 4 + 1] = P.dz; ll[nl * 4 + 2] = head; ll[nl * 4 + 3] = P.brake;
+          nl++;
+        }
+      }
+      (cm.mesh.geometry as THREE.InstancedBufferGeometry).instanceCount = n;
+      cm.iPos.needsUpdate = cm.iCol.needsUpdate = true;
+      cm.iPos.addUpdateRange(0, n * 4); cm.iCol.addUpdateRange(0, n * 4);
+    }
+    this.lightPos.needsUpdate = this.lightL.needsUpdate = true;
+    this.lights.geometry.setDrawRange(0, nl);
+  }
 }
 
 const fract = (x: number) => x - Math.floor(x);

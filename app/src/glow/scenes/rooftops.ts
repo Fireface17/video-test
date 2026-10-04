@@ -123,7 +123,7 @@ export default class Rooftops extends Scene {
     this.wHe = fit(vHe, this.pathHe);
 
     // ---- people ----
-    await this.crowd.init(['13_04', '77_02', '111_28', '142_15', '79_69', '79_71', '141_16', '80_43', '05_12', '94_01']);
+    await this.crowd.init(['13_04', '77_02', '111_28', '79_74', '79_69', '79_71', '141_16', '80_43', '05_12', '94_01']);
     S.add(this.crowd);
     this.castPrechorus();
     this.castBridge();
@@ -163,13 +163,13 @@ export default class Rooftops extends Scene {
     const R1 = set.blds.find((b) => b.z1 <= -9 && b.x0 >= 6)!;
     const yC = R1.gH + 2 * R1.fH, zC = R1.z1 + 0.62, xC = (R1.x0 + R1.x1) / 2;
     near(V(xC - 0.42, yC, zC), 0.3, 0, tint(1, 0.95), 1.05, [{ clip: '77_02', from: 0 }, { clip: '79_69', from: T.town + 0.1 }], 1.5);
-    near(V(xC + 0.48, yC, zC), -0.35, 1, tint(5, 0.95), 1.05, [{ clip: '142_15', from: 0 }, { clip: '05_12', from: T.okay2 - 0.3 }], 4.2, true);
+    near(V(xC + 0.48, yC, zC), -0.35, 1, tint(5, 0.95), 1.05, [{ clip: '79_74', from: 0 }, { clip: '05_12', from: T.okay2 - 0.3 }], 4.2, true);
     near(V(-6.6, 0.02, -4.1), 0.6, 0, tint(2, 1.0), 1.15, [{ clip: '79_71', from: 0 }, { clip: '79_69', from: T.wake + 0.3 }], 2);
     near(V(18.6, 0.12, -7.4), -0.25, 1, tint(4, 1.0), 1.1, [{ clip: '77_02', from: 0 }, { clip: '141_16', from: T.town }], 0.7);
     const edge = w.anchors(-26, -12, 10, ['roofEdge'], { seed: 2, from: V(0, 27, 10) })[0];
     near(edge ? edge.pos.clone().addScaledVector(edge.facing, -0.5) : V(-26, 16.4, -11), 0.2, 0, tint(7, 0.95), 1.05, [{ clip: '79_71', from: 0 }, { clip: '94_01', from: T.okay2 }], 6);
     const fe = w.anchors(18, -9, 3, ['fireEscape'], { seed: 1, minY: 9, maxY: 13.5 })[0];
-    near(fe ? fe.pos.clone() : V(18, 12.4, -8.9), -0.4, 1, tint(6, 0.95), 1.05, [{ clip: '142_15', from: 0 }, { clip: '141_16', from: T.town + 0.4 }], 8, true);
+    near(fe ? fe.pos.clone() : V(18, 12.4, -8.9), -0.4, 1, tint(6, 0.95), 1.05, [{ clip: '79_74', from: 0 }, { clip: '141_16', from: T.town + 0.4 }], 8, true);
   }
 
   /** People in open windows of both hero buildings: their rooms light when the power comes back, they wave. */
@@ -206,7 +206,7 @@ export default class Rooftops extends Scene {
     const hisS = sideSpots('his'), herS = sideSpots('hers');
     const N = 16;
     const r = mulberry32(12);
-    const clips = ['77_02', '142_15', '111_28', '79_71'];
+    const clips = ['77_02', '79_74', '111_28', '79_71'];
     for (let i = 0; i < N; i++) {
       const s = (i + 0.5) / N;
       const pos = br.at(s);
@@ -266,9 +266,9 @@ export default class Rooftops extends Scene {
         pos.copy(sp).add(V(-2.2 + 0.6 * u, 2.6 - 0.3 * u, -3.6 - 0.4 * u)); tgt.copy(sp).add(V(0.3, -0.6, 6.0)); fov = 58; roll = -0.03; break;
       }
       case 4: { const u = k(48.0, 49.6); pos.set(11 - 1.5 * u, 29.6 - 1.0 * u, 5.5 - 0.8 * u); tgt.copy(M).add(V(0, 0.8, 0)); fov = 42 - 4 * u; break; }
-      case 5: { const u = k(49.6, 51.2); pos.set(-14.5 + 1.0 * u, 26.4, 6.2 - 0.4 * u); tgt.copy(M).add(V(0, 3.4 + 3.5 * k(50.75, 51.2, ease.inOutCubic), -3.2)); fov = 36; break; }
+      case 5: { const u = k(49.6, 51.2); pos.set(-10.5 + 0.8 * u, 26.2, 4.4 - 0.3 * u); tgt.copy(M).add(V(0, 2.4 + 4.0 * k(50.75, 51.2, ease.inOutCubic), -2.4)); fov = 34; break; }
       case 6: { const u = k(51.2, 52.79); pos.copy(M).add(V(2.6 - 0.6 * u, 0.4, 3.6)); tgt.copy(M).add(V(-6, 55, -22)); fov = 70; roll = -0.05; break; }
-      case 7: { const u = k(52.79, 54.39, ease.inOutCubic); pos.copy(M).add(V(lerp(1.5, 8, u), lerp(2.0, 48, u), lerp(4, 30, u))); tgt.copy(M).add(V(0, lerp(18, 0, u), lerp(-10, -6, u))); fov = 60; break; }
+      case 7: { const u = k(52.79, 54.39, ease.inOutCubic); pos.copy(M).add(V(lerp(1.5, 6, u), lerp(1.6, 26, u), lerp(5, 16, u))); tgt.copy(M).add(V(0, lerp(55, 90, u), lerp(-14, -30, u))); fov = 62; roll = 0.05 * u; break; }
       case 8: { const u = k(54.39, 57.59, ease.linear); const a = 0.3 * u; pos.copy(M).add(V(Math.sin(a) * 60, 360 + 50 * u, 40 + Math.cos(a) * 40)); tgt.copy(M).add(V(0, 0, -40)); fov = 52; roll = 0.2 * u; break; }
       case 9: { const u = k(57.59, 60.79, ease.inOutQuad); pos.copy(M).add(V(80 + 40 * u, 520 + 200 * u, 380 + 120 * u)); tgt.copy(M).add(V(0, 0, -260)); fov = 50; break; }
       case 10: { const u = k(60.79, 63.99, ease.inOutQuad); pos.copy(M).add(V(lerp(-300, -170, u), lerp(250, 120, u), lerp(330, 210, u))); tgt.copy(M).add(V(0, lerp(10, 20, u), -120)); fov = 50; break; }
@@ -331,7 +331,6 @@ export default class Rooftops extends Scene {
     he.time = she.time = t;
     // she is barely glowing until he reaches her; then brighter, and both warm a little where their hands meet
     const herLevel = lerp(0.35, 0.75, smoothstep(T.okay, T.take, t)) + 0.35 * smoothstep(T.hand, T.hand + 1, t) + 0.25 * smoothstep(T.wake, T.town, t);
-    (she.mat.uniforms.level!.value as number) = herLevel;
     she.mat.uniforms.level!.value = herLevel;
     he.mat.uniforms.level!.value = 0.95 + 0.2 * smoothstep(T.hand, T.hand + 1, t);
     for (const [fig, o] of [[he, contact], [she, contact]] as [RealFigure, THREE.Vector3][]) {
