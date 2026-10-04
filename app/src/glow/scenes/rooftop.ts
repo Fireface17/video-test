@@ -14,7 +14,7 @@ import { col } from '../lib/palette';
 import { GlowPoints } from '../lib/points';
 import { City } from '../lib/city';
 import { Landmarks } from '../lib/landmarks';
-import { RealFigure, bend, limbDir, loadBody } from '../lib/people';
+import { LightMotes, RealFigure, bend, limbDir, loadBody } from '../lib/people';
 import { LightTrail, lineText, sampleStrokeText } from '../lib/lightpaint';
 import { displayTextGeometry, loadDisplayFont } from '../lib/fonts';
 import { flickerOn } from '../lib/neon';
@@ -36,6 +36,7 @@ export default class Rooftop extends Scene {
   roof = new THREE.Group();
   hero!: RealFigure;
   heroLight = new GlowPoints(24, 0.05);
+  motes = new LightMotes(160, 0.03);
   rowA!: LightTrail;
   rowB!: LightTrail;
   textGrp = new THREE.Group();
@@ -106,7 +107,7 @@ export default class Rooftop extends Scene {
           gl_FragColor = vec4(c, 1.0); }`,
     });
     const dark = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.006, 0.007, 0.012) });
-    const rim = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.03, 0.035, 0.06) });
+    const rim = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.008, 0.009, 0.014) });
     // (the slab uses the city's window shader, so its facade has windows too)
     const sg = new THREE.BoxGeometry(1, 1, 1);
     sg.translate(0, 0.5, 0);
@@ -136,7 +137,7 @@ export default class Rooftop extends Scene {
     this.hero = new RealFigure(rpm, 'rpm', col('cyan', 1.1).lerp(col('blue', 1.3), 0.35));
     this.hero.position.copy(HERO).setY(ROOF + 0.3 + this.hero.hipHeight);
     this.hero.rotation.y = Math.PI;
-    S.add(this.hero, this.heroLight);
+    S.add(this.hero, this.heroLight, this.motes);
 
     // "Put your hands up / if you've ever felt low" — written in the sky by the light from his hand
     const put = this.L.put!;
@@ -228,17 +229,25 @@ export default class Rooftop extends Scene {
     const open = ease.inOutCubic(prog(t, ton.start, ton.start + 1.2)) * (1 - prog(t, hereT - 0.3, hereT + 0.4));
     const both = ease.outCubic(prog(t, hereT - 0.2, hereT + 0.6));
     const bob = Math.sin(f.beat * Math.PI) * 0.02;
-    h.setSpine(-0.04 - 0.12 * both, 0.03 * Math.sin(t * 0.7), -0.15 - 0.35 * Math.max(raise * (1 - open), both) + 0.1 * open, 0);
-    // left arm (index 1): up to the sky with the light, then open, then both up
+    // head up to the sky; on "open" he lifts his face and opens his arms low and soft, palms forward
+    const look = Math.max(raise * (1 - open), both);
+    h.setSpine(-0.05 - 0.1 * both - 0.08 * open, 0.04 * Math.sin(t * 0.7) + 0.05 * open, -0.12 - 0.35 * look - 0.3 * open, 0.12 * open);
+    // left arm (index 1): up to the sky with the light, then open, then both up (not symmetric)
     const upA = limbDir(1, lerp(0.15, 2.55, raise), lerp(0.05, 0.55, raise));
-    const openA = limbDir(1, 1.2, 0.35);
-    const bothA = limbDir(1, 2.75, 0.25);
+    const openA = limbDir(1, 0.62, 0.3);
+    const bothA = limbDir(1, 2.6, 0.3);
     const ua1 = upA.clone().lerp(openA, open).lerp(bothA, both).normalize();
-    h.setArm(1, ua1, bend(ua1, new THREE.Vector3(-0.3, 0.2, 1), 0.25), -0.4 * raise);
-    const ua0 = limbDir(-1, lerp(0.15, 1.2, open), 0.3).lerp(limbDir(-1, 2.75, 0.25), both).normalize();
-    h.setArm(0, ua0, bend(ua0, new THREE.Vector3(0.3, 0.2, 1), 0.3));
-    h.setHand(1, raise > 0.98 ? 0.15 : 0.6);
-    h.setHand(0, 0.25);
+    h.setArm(1, ua1, bend(ua1, new THREE.Vector3(-0.2, 0.25, 1), 0.25 + 0.15 * open), -0.4 * raise * (1 - open));
+    const ua0 = limbDir(-1, lerp(0.15, 0.62, open), lerp(0.1, 0.3, open)).lerp(limbDir(-1, 2.85, 0.15), both).normalize();
+    h.setArm(0, ua0, bend(ua0, new THREE.Vector3(0.2, 0.25, 1), 0.3 + 0.1 * open));
+    h.setHand(1, raise > 0.98 ? 0.12 : 0.6);
+    h.setHand(0, 0.12 + 0.2 * (1 - open));
+    // weight on one leg, the other knee soft
+    const l0 = limbDir(-1, 0.04, 0.1), l1 = limbDir(1, 0.1, -0.03);
+    h.setLeg(0, l0, bend(l0, new THREE.Vector3(0, 0, 1), -0.25));
+    h.setLeg(1, l1, l1);
+    h.time = t;
+    this.motes.update(h, t, (h.mat.uniforms.color!.value as THREE.Color).clone().lerp(GOLD, goldK).multiplyScalar(1.4), 1);
     h.position.y = ROOF + 0.3 + h.hipHeight + bob * both;
     const gu = h.mat.uniforms;
     (gu.gold!.value as THREE.Color).copy(GOLD);
@@ -351,8 +360,9 @@ export default class Rooftop extends Scene {
       roll = 0.05;
     } else if (t < hereT - 0.05) {
       const k = prog(t, tGold + 0.9, hereT);
-      pos.set(-2.6 + 0.8 * k, ROOF + 2.3, -3.6 - 1.2 * k);
-      tgt.set(-1, 60, -300);
+      pos.set(-1.6 + 0.6 * k, ROOF + 0.75, -6.6 - 0.4 * k);
+      tgt.set(0.25, ROOF + 2.2, -14);
+      fov = 40;
       fov = 52;
     } else {
       const k = ease.inOutCubic(prog(t, hereT - 0.05, burst));

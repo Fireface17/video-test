@@ -321,6 +321,7 @@ export default class Fall extends Scene {
       const openIn = i === 1 ? prog(t, T.s + 0.3, T.reach, ease.inOutQuad) : 0.8 + 0.2 * arrive;
       const ui = limbDir(s, lerp(0.35, 1.45, openIn) + 0.08 * nz(0.44, 107), lerp(-0.1, 0.25, openIn));
       fig.setArm(inner, ui, bend(ui, new THREE.Vector3(0, 0.3, 1), 0.35));
+      fig.time = t;
       fig.setHand(outer, 0.1);
       fig.setHand(inner, 0.15 + 0.45 * holdK);
     });

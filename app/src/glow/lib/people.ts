@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { clamp } from '../../engine/util';
+import { GlowPoints } from './points';
 
 export type BodyKind = 'xbot' | 'michelle' | 'rpm';
 const FILES: Record<BodyKind, string> = { xbot: 'models/Xbot.glb', michelle: 'models/Michelle.glb', rpm: 'models/readyplayer.me.glb' };
@@ -42,12 +43,17 @@ const SKIN_VERT = /* glsl */ `
   }`;
 
 /**
- * A body made of light (skinned): hot facing core, bright saturated fresnel rim; tinted by `tint`, and `gold`
- * spreads from `goldO` out to `goldR` (same uniforms as the bridge's figureMaterial).
+ * A body made of light (skinned): see-through glowing glass — a soft inner glow, a bright rim that runs to white
+ * at the silhouette, light flowing up through the body in slow bands and fine glints; additive (the figure is
+ * drawn with a depth prepass so only its nearest surface shows). `tint` colours it; `gold` spreads from `goldO`
+ * out to `goldR`. Set `time` (song seconds) for the flow.
  */
 export function glowBodyMaterial(color: THREE.Color) {
   return new THREE.ShaderMaterial({
     fog: true,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
       color: { value: color.clone() },
       tint: { value: new THREE.Color(0, 0, 0) },
@@ -56,12 +62,19 @@ export function glowBodyMaterial(color: THREE.Color) {
       goldO: { value: new THREE.Vector3() },
       goldR: { value: -1 },
       level: { value: 1 },
+      time: { value: 0 },
     }]),
     vertexShader: SKIN_VERT,
     fragmentShader: /* glsl */ `
       #include <fog_pars_fragment>
-      uniform vec3 color, tint, gold, goldO; uniform float tintK, goldR, level;
+      uniform vec3 color, tint, gold, goldO; uniform float tintK, goldR, level, time;
       varying vec3 vN; varying vec3 vV; varying vec3 vW;
+      float h3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+      float n3(vec3 p) {
+        vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(mix(h3(i), h3(i + vec3(1, 0, 0)), f.x), mix(h3(i + vec3(0, 1, 0)), h3(i + vec3(1, 1, 0)), f.x), f.y),
+                   mix(mix(h3(i + vec3(0, 0, 1)), h3(i + vec3(1, 0, 1)), f.x), mix(h3(i + vec3(0, 1, 1)), h3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+      }
       void main() {
         float ln = length(vN), lv = length(vV);
         vec3 n = ln > 1e-5 ? vN / ln : vec3(0.0, 0.0, 1.0), v = lv > 1e-5 ? vV / lv : vec3(0.0, 0.0, 1.0);
@@ -71,7 +84,12 @@ export function glowBodyMaterial(color: THREE.Color) {
         vec3 c = mix(color, tint, tintK);
         c = mix(c, gold, gk);
         float lum = max(c.r, max(c.g, c.b));
-        vec3 col = c * (0.22 + 0.45 * pow(f, 3.0) + 1.9 * pow(rim, 2.4)) + vec3(lum) * 0.3 * pow(f, 6.0);
+        // light rising through the body in soft bands, and fine glints that twinkle
+        float flow = n3(vec3(vW.x * 3.0, vW.y * 2.2 - time * 1.1, vW.z * 3.0));
+        float bands = smoothstep(0.55, 0.9, flow);
+        float glint = step(0.985, h3(floor(vW * 90.0) + floor(time * 8.0))) * f;
+        float r2 = rim * rim, r4 = r2 * r2;
+        vec3 col = c * (0.07 + 0.35 * bands + 0.9 * r2 + 2.2 * r4 * r2) + mix(c, vec3(lum), 0.6) * 1.6 * r4 * r4 + vec3(lum) * (0.12 * pow(f, 8.0) + 1.5 * glint);
         gl_FragColor = vec4(col * level, 1.0);
         #include <fog_fragment>
       }`,
@@ -151,7 +169,7 @@ export class RealFigure extends THREE.Group {
       m.material = this.mat;
       m.frustumCulled = false;
       this.meshes.push(m);
-      if (o.prepass) {
+      if (o.prepass ?? this.mat.transparent) {
         const d = new THREE.SkinnedMesh(m.geometry, DEPTH_ONLY);
         d.bind(m.skeleton, m.bindMatrix);
         d.position.copy(m.position); d.quaternion.copy(m.quaternion); d.scale.copy(m.scale);
@@ -181,6 +199,9 @@ export class RealFigure extends THREE.Group {
     this.thigh = this.wpos('LeftLeg').distanceTo(this.wpos('LeftUpLeg'));
     this.shin = this.wpos('LeftFoot').distanceTo(this.wpos('LeftLeg'));
   }
+
+  /** Song time for the material's flowing light. */
+  set time(t: number) { const u = this.mat.uniforms.time; if (u) u.value = t; }
 
   bone(name: string) {
     const b = this.bones.get(name);
@@ -486,4 +507,31 @@ export function dance(fig: RealFigure, beat: number, style: number, energy = 1, 
   }
   for (const i of [0, 1]) fig.setHand(i, style === 3 ? 0.7 : 0.15);
   return bounce;
+}
+
+const MOTE_BONES = ['Hips', 'Spine1', 'Spine2', 'Neck', 'Head', 'LeftArm', 'RightArm', 'LeftForeArm', 'RightForeArm', 'LeftHand', 'RightHand', 'LeftUpLeg', 'RightUpLeg', 'LeftLeg', 'RightLeg'];
+
+/** Motes of light drifting up off a figure of light, a pure function of t: `update(fig, t, colour, k)` per frame. */
+export class LightMotes extends GlowPoints {
+  constructor(n = 140, size = 0.035, public life = 1.8) { super(n, size); }
+
+  update(fig: RealFigure, t: number, c: THREE.Color, k = 1) {
+    fig.updateMatrixWorld(true);
+    const p = new THREE.Vector3();
+    for (let i = 0; i < this.n; i++) {
+      const ph = hash01(i, 1) * this.life, cyc = Math.floor((t + ph) / this.life), age = t + ph - cyc * this.life, u = age / this.life;
+      const bone = MOTE_BONES[Math.floor(hash01(i, cyc) * MOTE_BONES.length)]!;
+      fig.bone(bone).getWorldPosition(p);
+      p.x += (hash01(i, cyc + 3) - 0.5) * 0.25 + Math.sin(age * 2.3 + i) * 0.05 * u;
+      p.z += (hash01(i, cyc + 5) - 0.5) * 0.25 + Math.cos(age * 1.9 + i) * 0.05 * u;
+      p.y += (hash01(i, cyc + 7) - 0.5) * 0.2 + age * (0.25 + 0.3 * hash01(i, 9));
+      this.set(i, p.x, p.y, p.z, c, k * Math.sin(Math.PI * u) * (0.4 + 0.6 * hash01(i, cyc + 11)), 0.5 + hash01(i, 13) * 1.2);
+    }
+    this.commit();
+  }
+}
+
+function hash01(a: number, b: number) {
+  const x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+  return x - Math.floor(x);
 }
