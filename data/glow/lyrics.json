@@ -1,0 +1,1982 @@
+{
+ "lines": [
+  {
+   "i": 0,
+   "section": "verse1",
+   "text": "We were running on an empty tank",
+   "start": 18.55,
+   "end": 21.465,
+   "words": [
+    {
+     "w": "We",
+     "start": 18.55,
+     "end": 18.715,
+     "conf": 0.83
+    },
+    {
+     "w": "were",
+     "start": 18.84,
+     "end": 19.2,
+     "conf": 0.62
+    },
+    {
+     "w": "running",
+     "start": 19.2,
+     "end": 19.615,
+     "conf": 0.05
+    },
+    {
+     "w": "on",
+     "start": 19.615,
+     "end": 19.82,
+     "conf": 0.47
+    },
+    {
+     "w": "an",
+     "start": 19.82,
+     "end": 20.0,
+     "conf": 0.02
+    },
+    {
+     "w": "empty",
+     "start": 20.0,
+     "end": 20.36,
+     "conf": 0.77
+    },
+    {
+     "w": "tank",
+     "start": 20.36,
+     "end": 21.465,
+     "conf": 0.66
+    }
+   ]
+  },
+  {
+   "i": 1,
+   "section": "verse1",
+   "text": "Painting smiles on the days that we lost",
+   "start": 21.735,
+   "end": 24.67,
+   "words": [
+    {
+     "w": "Painting",
+     "start": 21.735,
+     "end": 22.28,
+     "conf": 0.47
+    },
+    {
+     "w": "smiles",
+     "start": 22.28,
+     "end": 22.835,
+     "conf": 0.47
+    },
+    {
+     "w": "on",
+     "start": 22.835,
+     "end": 23.04,
+     "conf": 0.95
+    },
+    {
+     "w": "the",
+     "start": 23.04,
+     "end": 23.16,
+     "conf": 0.89
+    },
+    {
+     "w": "days",
+     "start": 23.16,
+     "end": 23.44,
+     "conf": 0.29
+    },
+    {
+     "w": "that",
+     "start": 23.44,
+     "end": 23.625,
+     "conf": 0.0
+    },
+    {
+     "w": "we",
+     "start": 23.625,
+     "end": 23.96,
+     "conf": 0.65
+    },
+    {
+     "w": "lost",
+     "start": 23.96,
+     "end": 24.67,
+     "conf": 0.59
+    }
+   ]
+  },
+  {
+   "i": 2,
+   "section": "verse1",
+   "text": "Now the sun's coming up where it sank",
+   "start": 25.08,
+   "end": 27.915,
+   "words": [
+    {
+     "w": "Now",
+     "start": 25.08,
+     "end": 25.42,
+     "conf": 0.99
+    },
+    {
+     "w": "the",
+     "start": 25.42,
+     "end": 25.53,
+     "conf": 1.0
+    },
+    {
+     "w": "sun's",
+     "start": 25.53,
+     "end": 26.01,
+     "conf": 0.96
+    },
+    {
+     "w": "coming",
+     "start": 26.01,
+     "end": 26.36,
+     "conf": 0.94
+    },
+    {
+     "w": "up",
+     "start": 26.36,
+     "end": 26.56,
+     "conf": 0.97
+    },
+    {
+     "w": "where",
+     "start": 26.62,
+     "end": 26.84,
+     "conf": 0.49
+    },
+    {
+     "w": "it",
+     "start": 26.84,
+     "end": 27.14,
+     "conf": 0.85
+    },
+    {
+     "w": "sank",
+     "start": 27.14,
+     "end": 27.915,
+     "conf": 0.85
+    }
+   ]
+  },
+  {
+   "i": 3,
+   "section": "verse1",
+   "text": "And I'd pay any cost",
+   "start": 28.105,
+   "end": 30.585,
+   "words": [
+    {
+     "w": "And",
+     "start": 28.105,
+     "end": 28.44,
+     "conf": 0.87
+    },
+    {
+     "w": "I'd",
+     "start": 28.44,
+     "end": 28.68,
+     "conf": 0.04
+    },
+    {
+     "w": "pay",
+     "start": 28.725,
+     "end": 29.22,
+     "conf": 0.44
+    },
+    {
+     "w": "any",
+     "start": 29.64,
+     "end": 30.0,
+     "conf": 0.03
+    },
+    {
+     "w": "cost",
+     "start": 30.0,
+     "end": 30.585,
+     "conf": 0.81
+    }
+   ]
+  },
+  {
+   "i": 4,
+   "section": "pre1",
+   "text": "Put your hands up if you've ever felt low",
+   "start": 30.975,
+   "end": 34.59,
+   "words": [
+    {
+     "w": "Put",
+     "start": 30.975,
+     "end": 31.35,
+     "conf": 0.23
+    },
+    {
+     "w": "your",
+     "start": 31.35,
+     "end": 31.6,
+     "conf": 0.07
+    },
+    {
+     "w": "hands",
+     "start": 31.6,
+     "end": 32.07,
+     "conf": 0.16
+    },
+    {
+     "w": "up",
+     "start": 32.07,
+     "end": 32.33,
+     "conf": 0.02
+    },
+    {
+     "w": "if",
+     "start": 32.33,
+     "end": 32.445,
+     "conf": 0.02
+    },
+    {
+     "w": "you've",
+     "start": 32.445,
+     "end": 32.865,
+     "conf": 0.01
+    },
+    {
+     "w": "ever",
+     "start": 32.865,
+     "end": 33.17,
+     "conf": 0.0
+    },
+    {
+     "w": "felt",
+     "start": 33.17,
+     "end": 33.505,
+     "conf": 0.01
+    },
+    {
+     "w": "low",
+     "start": 33.505,
+     "end": 34.59,
+     "conf": 0.0
+    }
+   ]
+  },
+  {
+   "i": 5,
+   "section": "pre1",
+   "text": "Tonight we let it all go",
+   "start": 34.59,
+   "end": 37.735,
+   "words": [
+    {
+     "w": "Tonight",
+     "start": 34.59,
+     "end": 35.285,
+     "conf": 0.0
+    },
+    {
+     "w": "we",
+     "start": 35.385,
+     "end": 35.735,
+     "conf": 0.01
+    },
+    {
+     "w": "let",
+     "start": 35.785,
+     "end": 36.47,
+     "conf": 0.0
+    },
+    {
+     "w": "it",
+     "start": 36.47,
+     "end": 36.52,
+     "conf": 0.0
+    },
+    {
+     "w": "all",
+     "start": 36.51,
+     "end": 36.86,
+     "conf": 0.0
+    },
+    {
+     "w": "go",
+     "start": 36.86,
+     "end": 37.735,
+     "conf": 0.02
+    }
+   ]
+  },
+  {
+   "i": 6,
+   "section": "pre1",
+   "text": "Turn the pain into gold, oh",
+   "start": 37.735,
+   "end": 41.085,
+   "words": [
+    {
+     "w": "Turn",
+     "start": 37.735,
+     "end": 38.075,
+     "conf": 0.0
+    },
+    {
+     "w": "the",
+     "start": 38.075,
+     "end": 38.2,
+     "conf": 0.0
+    },
+    {
+     "w": "pain",
+     "start": 38.2,
+     "end": 39.33,
+     "conf": 0.0
+    },
+    {
+     "w": "into",
+     "start": 39.33,
+     "end": 39.665,
+     "conf": 0.0
+    },
+    {
+     "w": "gold,",
+     "start": 39.665,
+     "end": 40.54,
+     "conf": 0.03
+    },
+    {
+     "w": "oh",
+     "start": 40.54,
+     "end": 41.085,
+     "conf": 0.01
+    }
+   ]
+  },
+  {
+   "i": 7,
+   "section": "pre1",
+   "text": "Here we go, here we go",
+   "start": 41.085,
+   "end": 43.925,
+   "words": [
+    {
+     "w": "Here",
+     "start": 41.085,
+     "end": 41.455,
+     "conf": 0.01
+    },
+    {
+     "w": "we",
+     "start": 41.455,
+     "end": 41.54,
+     "conf": 0.02
+    },
+    {
+     "w": "go,",
+     "start": 41.54,
+     "end": 42.41,
+     "conf": 0.02
+    },
+    {
+     "w": "here",
+     "start": 42.41,
+     "end": 42.855,
+     "conf": 0.05
+    },
+    {
+     "w": "we",
+     "start": 42.855,
+     "end": 43.0,
+     "conf": 0.06
+    },
+    {
+     "w": "go",
+     "start": 43.0,
+     "end": 43.925,
+     "conf": 0.09
+    }
+   ]
+  },
+  {
+   "i": 8,
+   "section": "chorus1",
+   "text": "We don't gotta be okay to dance",
+   "start": 43.925,
+   "end": 47.335,
+   "words": [
+    {
+     "w": "We",
+     "start": 43.925,
+     "end": 44.025,
+     "conf": 0.35
+    },
+    {
+     "w": "don't",
+     "start": 44.025,
+     "end": 44.4,
+     "conf": 0.1
+    },
+    {
+     "w": "gotta",
+     "start": 44.4,
+     "end": 44.84,
+     "conf": 0.24
+    },
+    {
+     "w": "be",
+     "start": 44.84,
+     "end": 45.26,
+     "conf": 0.26
+    },
+    {
+     "w": "okay",
+     "start": 45.26,
+     "end": 46.025,
+     "conf": 0.03
+    },
+    {
+     "w": "to",
+     "start": 46.025,
+     "end": 46.16,
+     "conf": 0.0
+    },
+    {
+     "w": "dance",
+     "start": 46.16,
+     "end": 47.335,
+     "conf": 0.0
+    }
+   ]
+  },
+  {
+   "i": 9,
+   "section": "chorus1",
+   "text": "We'll be glowing in the dark, take my hand",
+   "start": 47.335,
+   "end": 50.67,
+   "words": [
+    {
+     "w": "We'll",
+     "start": 47.335,
+     "end": 47.715,
+     "conf": 0.72
+    },
+    {
+     "w": "be",
+     "start": 47.715,
+     "end": 48.035,
+     "conf": 0.83
+    },
+    {
+     "w": "glowing",
+     "start": 48.035,
+     "end": 48.32,
+     "conf": 0.15
+    },
+    {
+     "w": "in",
+     "start": 48.32,
+     "end": 48.69,
+     "conf": 0.0
+    },
+    {
+     "w": "the",
+     "start": 48.69,
+     "end": 48.8,
+     "conf": 0.01
+    },
+    {
+     "w": "dark,",
+     "start": 48.865,
+     "end": 49.34,
+     "conf": 0.87
+    },
+    {
+     "w": "take",
+     "start": 49.34,
+     "end": 49.68,
+     "conf": 0.99
+    },
+    {
+     "w": "my",
+     "start": 49.8,
+     "end": 50.095,
+     "conf": 0.8
+    },
+    {
+     "w": "hand",
+     "start": 50.095,
+     "end": 50.67,
+     "conf": 0.97
+    }
+   ]
+  },
+  {
+   "i": 10,
+   "section": "chorus1",
+   "text": "Every broken piece becomes a star",
+   "start": 50.67,
+   "end": 53.685,
+   "words": [
+    {
+     "w": "Every",
+     "start": 50.67,
+     "end": 51.075,
+     "conf": 0.71
+    },
+    {
+     "w": "broken",
+     "start": 51.075,
+     "end": 51.4,
+     "conf": 0.08
+    },
+    {
+     "w": "piece",
+     "start": 51.4,
+     "end": 51.88,
+     "conf": 0.0
+    },
+    {
+     "w": "becomes",
+     "start": 51.88,
+     "end": 52.28,
+     "conf": 0.1
+    },
+    {
+     "w": "a",
+     "start": 52.28,
+     "end": 52.33,
+     "conf": 0.0
+    },
+    {
+     "w": "star",
+     "start": 52.32,
+     "end": 53.685,
+     "conf": 0.0
+    }
+   ]
+  },
+  {
+   "i": 11,
+   "section": "chorus1",
+   "text": "Look how beautiful we are",
+   "start": 53.685,
+   "end": 57.335,
+   "words": [
+    {
+     "w": "Look",
+     "start": 53.685,
+     "end": 54.04,
+     "conf": 0.07
+    },
+    {
+     "w": "how",
+     "start": 54.04,
+     "end": 54.365,
+     "conf": 0.0
+    },
+    {
+     "w": "beautiful",
+     "start": 54.425,
+     "end": 56.29,
+     "conf": 0.02
+    },
+    {
+     "w": "we",
+     "start": 56.29,
+     "end": 56.455,
+     "conf": 0.02
+    },
+    {
+     "w": "are",
+     "start": 56.455,
+     "end": 57.335,
+     "conf": 0.01
+    }
+   ]
+  },
+  {
+   "i": 12,
+   "section": "chorus1",
+   "text": "So sing it like we're never coming down",
+   "start": 57.335,
+   "end": 60.72,
+   "words": [
+    {
+     "w": "So",
+     "start": 57.335,
+     "end": 57.49,
+     "conf": 0.0
+    },
+    {
+     "w": "sing",
+     "start": 57.49,
+     "end": 57.875,
+     "conf": 0.05
+    },
+    {
+     "w": "it",
+     "start": 57.875,
+     "end": 58.04,
+     "conf": 0.0
+    },
+    {
+     "w": "like",
+     "start": 58.04,
+     "end": 58.09,
+     "conf": 0.0
+    },
+    {
+     "w": "we're",
+     "start": 58.08,
+     "end": 58.375,
+     "conf": 0.0
+    },
+    {
+     "w": "never",
+     "start": 58.375,
+     "end": 58.69,
+     "conf": 0.0
+    },
+    {
+     "w": "coming",
+     "start": 58.69,
+     "end": 59.08,
+     "conf": 0.0
+    },
+    {
+     "w": "down",
+     "start": 59.08,
+     "end": 60.72,
+     "conf": 0.0
+    }
+   ]
+  },
+  {
+   "i": 13,
+   "section": "chorus1",
+   "text": "Loud enough to wake the whole town",
+   "start": 60.72,
+   "end": 63.57,
+   "words": [
+    {
+     "w": "Loud",
+     "start": 60.72,
+     "end": 61.04,
+     "conf": 0.0
+    },
+    {
+     "w": "enough",
+     "start": 61.04,
+     "end": 61.315,
+     "conf": 0.0
+    },
+    {
+     "w": "to",
+     "start": 61.315,
+     "end": 61.365,
+     "conf": 0.0
+    },
+    {
+     "w": "wake",
+     "start": 61.355,
+     "end": 61.84,
+     "conf": 0.0
+    },
+    {
+     "w": "the",
+     "start": 61.84,
+     "end": 61.92,
+     "conf": 0.05
+    },
+    {
+     "w": "whole",
+     "start": 61.92,
+     "end": 62.33,
+     "conf": 0.02
+    },
+    {
+     "w": "town",
+     "start": 62.33,
+     "end": 63.57,
+     "conf": 0.0
+    }
+   ]
+  },
+  {
+   "i": 14,
+   "section": "chorus1",
+   "text": "We don't gotta be okay to dance",
+   "start": 63.57,
+   "end": 66.32,
+   "words": [
+    {
+     "w": "We",
+     "start": 63.57,
+     "end": 63.695,
+     "conf": 0.03
+    },
+    {
+     "w": "don't",
+     "start": 63.695,
+     "end": 63.895,
+     "conf": 0.27
+    },
+    {
+     "w": "gotta",
+     "start": 63.895,
+     "end": 64.27,
+     "conf": 0.19
+    },
+    {
+     "w": "be",
+     "start": 64.27,
+     "end": 64.495,
+     "conf": 0.17
+    },
+    {
+     "w": "okay",
+     "start": 64.495,
+     "end": 65.16,
+     "conf": 0.09
+    },
+    {
+     "w": "to",
+     "start": 65.16,
+     "end": 65.28,
+     "conf": 0.0
+    },
+    {
+     "w": "dance",
+     "start": 65.28,
+     "end": 66.32,
+     "conf": 0.01
+    }
+   ]
+  },
+  {
+   "i": 15,
+   "section": "chorus1",
+   "text": "We'll be glowing in the dark",
+   "start": 66.655,
+   "end": 70.52,
+   "words": [
+    {
+     "w": "We'll",
+     "start": 66.655,
+     "end": 66.975,
+     "conf": 0.38
+    },
+    {
+     "w": "be",
+     "start": 66.975,
+     "end": 67.095,
+     "conf": 0.73
+    },
+    {
+     "w": "glowing",
+     "start": 67.095,
+     "end": 69.695,
+     "conf": 0.04
+    },
+    {
+     "w": "in",
+     "start": 69.695,
+     "end": 69.94,
+     "conf": 0.0
+    },
+    {
+     "w": "the",
+     "start": 69.94,
+     "end": 70.04,
+     "conf": 0.0
+    },
+    {
+     "w": "dark",
+     "start": 70.04,
+     "end": 70.52,
+     "conf": 0.1
+    }
+   ]
+  },
+  {
+   "i": 16,
+   "section": "drop1",
+   "text": "Take my hand",
+   "start": 88.64,
+   "end": 90.08,
+   "words": [
+    {
+     "w": "Take",
+     "start": 88.64,
+     "end": 89.11,
+     "conf": 0.35
+    },
+    {
+     "w": "my",
+     "start": 89.11,
+     "end": 89.27,
+     "conf": 0.85
+    },
+    {
+     "w": "hand",
+     "start": 89.27,
+     "end": 90.08,
+     "conf": 0.77
+    }
+   ]
+  },
+  {
+   "i": 17,
+   "section": "drop1",
+   "text": "Take my hand",
+   "start": 91.84,
+   "end": 93.32,
+   "words": [
+    {
+     "w": "Take",
+     "start": 91.84,
+     "end": 92.215,
+     "conf": 0.4
+    },
+    {
+     "w": "my",
+     "start": 92.215,
+     "end": 92.63,
+     "conf": 0.85
+    },
+    {
+     "w": "hand",
+     "start": 92.63,
+     "end": 93.32,
+     "conf": 0.72
+    }
+   ]
+  },
+  {
+   "i": 18,
+   "section": "verse2",
+   "text": "We've been ghosts in a crowded room",
+   "start": 95.44,
+   "end": 97.935,
+   "words": [
+    {
+     "w": "We've",
+     "start": 95.44,
+     "end": 95.73,
+     "conf": 0.9
+    },
+    {
+     "w": "been",
+     "start": 95.73,
+     "end": 95.93,
+     "conf": 0.96
+    },
+    {
+     "w": "ghosts",
+     "start": 95.93,
+     "end": 96.34,
+     "conf": 0.55
+    },
+    {
+     "w": "in",
+     "start": 96.34,
+     "end": 96.55,
+     "conf": 0.54
+    },
+    {
+     "w": "a",
+     "start": 96.55,
+     "end": 96.735,
+     "conf": 0.27
+    },
+    {
+     "w": "crowded",
+     "start": 96.735,
+     "end": 97.12,
+     "conf": 0.65
+    },
+    {
+     "w": "room",
+     "start": 97.12,
+     "end": 97.935,
+     "conf": 0.1
+    }
+   ]
+  },
+  {
+   "i": 19,
+   "section": "verse2",
+   "text": "Holding on to the friends that we've got",
+   "start": 98.54,
+   "end": 101.75,
+   "words": [
+    {
+     "w": "Holding",
+     "start": 98.54,
+     "end": 99.16,
+     "conf": 0.81
+    },
+    {
+     "w": "on",
+     "start": 99.16,
+     "end": 99.47,
+     "conf": 0.98
+    },
+    {
+     "w": "to",
+     "start": 99.47,
+     "end": 99.685,
+     "conf": 0.55
+    },
+    {
+     "w": "the",
+     "start": 99.685,
+     "end": 99.76,
+     "conf": 0.95
+    },
+    {
+     "w": "friends",
+     "start": 99.76,
+     "end": 100.15,
+     "conf": 0.56
+    },
+    {
+     "w": "that",
+     "start": 100.15,
+     "end": 100.345,
+     "conf": 0.0
+    },
+    {
+     "w": "we've",
+     "start": 100.345,
+     "end": 100.64,
+     "conf": 0.09
+    },
+    {
+     "w": "got",
+     "start": 100.64,
+     "end": 101.75,
+     "conf": 0.01
+    }
+   ]
+  },
+  {
+   "i": 20,
+   "section": "verse2",
+   "text": "If the night's gonna swallow the moon",
+   "start": 101.805,
+   "end": 104.88,
+   "words": [
+    {
+     "w": "If",
+     "start": 101.805,
+     "end": 102.14,
+     "conf": 0.86
+    },
+    {
+     "w": "the",
+     "start": 102.14,
+     "end": 102.28,
+     "conf": 0.95
+    },
+    {
+     "w": "night's",
+     "start": 102.28,
+     "end": 102.63,
+     "conf": 0.21
+    },
+    {
+     "w": "gonna",
+     "start": 102.63,
+     "end": 103.08,
+     "conf": 0.42
+    },
+    {
+     "w": "swallow",
+     "start": 103.08,
+     "end": 103.495,
+     "conf": 0.65
+    },
+    {
+     "w": "the",
+     "start": 103.495,
+     "end": 103.705,
+     "conf": 0.02
+    },
+    {
+     "w": "moon",
+     "start": 103.705,
+     "end": 104.88,
+     "conf": 0.07
+    }
+   ]
+  },
+  {
+   "i": 21,
+   "section": "verse2",
+   "text": "Then we'll light up the spot",
+   "start": 104.88,
+   "end": 112.205,
+   "words": [
+    {
+     "w": "Then",
+     "start": 104.88,
+     "end": 105.15,
+     "conf": 0.56
+    },
+    {
+     "w": "we'll",
+     "start": 105.15,
+     "end": 105.475,
+     "conf": 0.57
+    },
+    {
+     "w": "light",
+     "start": 105.475,
+     "end": 106.195,
+     "conf": 0.08
+    },
+    {
+     "w": "up",
+     "start": 106.195,
+     "end": 106.36,
+     "conf": 0.64
+    },
+    {
+     "w": "the",
+     "start": 106.36,
+     "end": 106.55,
+     "conf": 0.0
+    },
+    {
+     "w": "spot",
+     "start": 106.55,
+     "end": 112.205,
+     "conf": 0.36
+    }
+   ]
+  },
+  {
+   "i": 22,
+   "section": "pre2",
+   "text": "Oh, here we go, here we go",
+   "start": 117.18,
+   "end": 120.53,
+   "words": [
+    {
+     "w": "Oh,",
+     "start": 117.18,
+     "end": 117.76,
+     "conf": 0.0
+    },
+    {
+     "w": "here",
+     "start": 117.76,
+     "end": 118.08,
+     "conf": 0.0
+    },
+    {
+     "w": "we",
+     "start": 118.08,
+     "end": 118.175,
+     "conf": 0.0
+    },
+    {
+     "w": "go,",
+     "start": 118.175,
+     "end": 119.215,
+     "conf": 0.0
+    },
+    {
+     "w": "here",
+     "start": 119.215,
+     "end": 119.525,
+     "conf": 0.07
+    },
+    {
+     "w": "we",
+     "start": 119.525,
+     "end": 119.745,
+     "conf": 0.06
+    },
+    {
+     "w": "go",
+     "start": 119.745,
+     "end": 120.53,
+     "conf": 0.09
+    }
+   ]
+  },
+  {
+   "i": 23,
+   "section": "chorus2",
+   "text": "We don't gotta be okay to dance",
+   "start": 120.53,
+   "end": 124.2,
+   "words": [
+    {
+     "w": "We",
+     "start": 120.53,
+     "end": 120.695,
+     "conf": 0.5
+    },
+    {
+     "w": "don't",
+     "start": 120.695,
+     "end": 121.135,
+     "conf": 0.12
+    },
+    {
+     "w": "gotta",
+     "start": 121.135,
+     "end": 121.545,
+     "conf": 0.24
+    },
+    {
+     "w": "be",
+     "start": 121.545,
+     "end": 121.89,
+     "conf": 0.56
+    },
+    {
+     "w": "okay",
+     "start": 121.89,
+     "end": 122.55,
+     "conf": 0.06
+    },
+    {
+     "w": "to",
+     "start": 122.55,
+     "end": 122.865,
+     "conf": 0.0
+    },
+    {
+     "w": "dance",
+     "start": 122.865,
+     "end": 124.2,
+     "conf": 0.0
+    }
+   ]
+  },
+  {
+   "i": 24,
+   "section": "chorus2",
+   "text": "We'll be glowing in the dark, take my hand",
+   "start": 124.2,
+   "end": 127.47,
+   "words": [
+    {
+     "w": "We'll",
+     "start": 124.2,
+     "end": 124.48,
+     "conf": 0.76
+    },
+    {
+     "w": "be",
+     "start": 124.48,
+     "end": 124.73,
+     "conf": 0.9
+    },
+    {
+     "w": "glowing",
+     "start": 124.73,
+     "end": 125.08,
+     "conf": 0.16
+    },
+    {
+     "w": "in",
+     "start": 125.08,
+     "end": 125.32,
+     "conf": 0.03
+    },
+    {
+     "w": "the",
+     "start": 125.32,
+     "end": 125.555,
+     "conf": 0.08
+    },
+    {
+     "w": "dark,",
+     "start": 125.555,
+     "end": 126.035,
+     "conf": 0.97
+    },
+    {
+     "w": "take",
+     "start": 126.035,
+     "end": 126.52,
+     "conf": 0.9
+    },
+    {
+     "w": "my",
+     "start": 126.52,
+     "end": 126.95,
+     "conf": 1.0
+    },
+    {
+     "w": "hand",
+     "start": 126.95,
+     "end": 127.47,
+     "conf": 0.99
+    }
+   ]
+  },
+  {
+   "i": 25,
+   "section": "chorus2",
+   "text": "Every broken piece becomes a star",
+   "start": 127.47,
+   "end": 130.37,
+   "words": [
+    {
+     "w": "Every",
+     "start": 127.47,
+     "end": 127.74,
+     "conf": 0.57
+    },
+    {
+     "w": "broken",
+     "start": 127.74,
+     "end": 128.24,
+     "conf": 0.86
+    },
+    {
+     "w": "piece",
+     "start": 128.24,
+     "end": 128.525,
+     "conf": 0.53
+    },
+    {
+     "w": "becomes",
+     "start": 128.525,
+     "end": 129.0,
+     "conf": 0.45
+    },
+    {
+     "w": "a",
+     "start": 129.0,
+     "end": 129.2,
+     "conf": 0.0
+    },
+    {
+     "w": "star",
+     "start": 129.2,
+     "end": 130.37,
+     "conf": 0.01
+    }
+   ]
+  },
+  {
+   "i": 26,
+   "section": "chorus2",
+   "text": "Look how beautiful we are",
+   "start": 130.37,
+   "end": 133.985,
+   "words": [
+    {
+     "w": "Look",
+     "start": 130.37,
+     "end": 130.75,
+     "conf": 0.01
+    },
+    {
+     "w": "how",
+     "start": 130.75,
+     "end": 131.065,
+     "conf": 0.0
+    },
+    {
+     "w": "beautiful",
+     "start": 131.065,
+     "end": 133.015,
+     "conf": 0.15
+    },
+    {
+     "w": "we",
+     "start": 133.015,
+     "end": 133.48,
+     "conf": 0.5
+    },
+    {
+     "w": "are",
+     "start": 133.48,
+     "end": 133.985,
+     "conf": 0.09
+    }
+   ]
+  },
+  {
+   "i": 27,
+   "section": "chorus2",
+   "text": "So sing it like we're never coming down",
+   "start": 133.985,
+   "end": 137.24,
+   "words": [
+    {
+     "w": "So",
+     "start": 133.985,
+     "end": 134.2,
+     "conf": 0.0
+    },
+    {
+     "w": "sing",
+     "start": 134.2,
+     "end": 134.495,
+     "conf": 0.15
+    },
+    {
+     "w": "it",
+     "start": 134.495,
+     "end": 134.655,
+     "conf": 0.0
+    },
+    {
+     "w": "like",
+     "start": 134.655,
+     "end": 134.76,
+     "conf": 0.0
+    },
+    {
+     "w": "we're",
+     "start": 134.76,
+     "end": 135.01,
+     "conf": 0.04
+    },
+    {
+     "w": "never",
+     "start": 135.01,
+     "end": 135.495,
+     "conf": 0.0
+    },
+    {
+     "w": "coming",
+     "start": 135.495,
+     "end": 135.755,
+     "conf": 0.44
+    },
+    {
+     "w": "down",
+     "start": 135.755,
+     "end": 137.24,
+     "conf": 0.04
+    }
+   ]
+  },
+  {
+   "i": 28,
+   "section": "chorus2",
+   "text": "Loud enough to wake the whole town",
+   "start": 137.24,
+   "end": 140.205,
+   "words": [
+    {
+     "w": "Loud",
+     "start": 137.24,
+     "end": 137.545,
+     "conf": 0.0
+    },
+    {
+     "w": "enough",
+     "start": 137.545,
+     "end": 137.895,
+     "conf": 0.0
+    },
+    {
+     "w": "to",
+     "start": 137.895,
+     "end": 138.06,
+     "conf": 0.06
+    },
+    {
+     "w": "wake",
+     "start": 138.06,
+     "end": 138.5,
+     "conf": 0.03
+    },
+    {
+     "w": "the",
+     "start": 138.5,
+     "end": 138.605,
+     "conf": 0.65
+    },
+    {
+     "w": "whole",
+     "start": 138.605,
+     "end": 138.945,
+     "conf": 0.08
+    },
+    {
+     "w": "town",
+     "start": 138.945,
+     "end": 140.205,
+     "conf": 0.0
+    }
+   ]
+  },
+  {
+   "i": 29,
+   "section": "chorus2",
+   "text": "We don't gotta be okay to dance",
+   "start": 140.205,
+   "end": 143.4,
+   "words": [
+    {
+     "w": "We",
+     "start": 140.205,
+     "end": 140.365,
+     "conf": 0.65
+    },
+    {
+     "w": "don't",
+     "start": 140.365,
+     "end": 140.68,
+     "conf": 0.99
+    },
+    {
+     "w": "gotta",
+     "start": 140.68,
+     "end": 141.07,
+     "conf": 0.76
+    },
+    {
+     "w": "be",
+     "start": 141.07,
+     "end": 141.28,
+     "conf": 0.66
+    },
+    {
+     "w": "okay",
+     "start": 141.28,
+     "end": 141.89,
+     "conf": 0.54
+    },
+    {
+     "w": "to",
+     "start": 141.89,
+     "end": 141.965,
+     "conf": 0.0
+    },
+    {
+     "w": "dance",
+     "start": 141.965,
+     "end": 143.4,
+     "conf": 0.04
+    }
+   ]
+  },
+  {
+   "i": 30,
+   "section": "chorus2",
+   "text": "We'll be glo-glo-glo-glowing in the dark",
+   "start": 143.4,
+   "end": 147.375,
+   "words": [
+    {
+     "w": "We'll",
+     "start": 143.4,
+     "end": 143.715,
+     "conf": 0.76
+    },
+    {
+     "w": "be",
+     "start": 143.715,
+     "end": 143.805,
+     "conf": 0.93
+    },
+    {
+     "w": "glo-glo-glo-glowing",
+     "start": 143.805,
+     "end": 145.76,
+     "conf": 0.03
+    },
+    {
+     "w": "in",
+     "start": 146.32,
+     "end": 146.55,
+     "conf": 0.01
+    },
+    {
+     "w": "the",
+     "start": 146.55,
+     "end": 146.75,
+     "conf": 0.1
+    },
+    {
+     "w": "dark",
+     "start": 146.75,
+     "end": 147.375,
+     "conf": 0.12
+    }
+   ]
+  },
+  {
+   "i": 31,
+   "section": "bridge",
+   "text": "And if you fall, I'll fall with you",
+   "start": 159.12,
+   "end": 161.775,
+   "words": [
+    {
+     "w": "And",
+     "start": 159.12,
+     "end": 159.32,
+     "conf": 0.6
+    },
+    {
+     "w": "if",
+     "start": 159.32,
+     "end": 159.51,
+     "conf": 0.75
+    },
+    {
+     "w": "you",
+     "start": 159.51,
+     "end": 159.72,
+     "conf": 0.99
+    },
+    {
+     "w": "fall,",
+     "start": 159.72,
+     "end": 160.13,
+     "conf": 0.33
+    },
+    {
+     "w": "I'll",
+     "start": 160.13,
+     "end": 160.44,
+     "conf": 0.97
+    },
+    {
+     "w": "fall",
+     "start": 160.515,
+     "end": 160.94,
+     "conf": 0.33
+    },
+    {
+     "w": "with",
+     "start": 160.94,
+     "end": 161.16,
+     "conf": 0.77
+    },
+    {
+     "w": "you",
+     "start": 161.16,
+     "end": 161.775,
+     "conf": 0.01
+    }
+   ]
+  },
+  {
+   "i": 32,
+   "section": "bridge",
+   "text": "Through the colors and the blue",
+   "start": 162.32,
+   "end": 164.57,
+   "words": [
+    {
+     "w": "Through",
+     "start": 162.32,
+     "end": 162.84,
+     "conf": 0.84
+    },
+    {
+     "w": "the",
+     "start": 162.84,
+     "end": 163.035,
+     "conf": 1.0
+    },
+    {
+     "w": "colors",
+     "start": 163.035,
+     "end": 163.695,
+     "conf": 0.67
+    },
+    {
+     "w": "and",
+     "start": 163.695,
+     "end": 164.1,
+     "conf": 0.81
+    },
+    {
+     "w": "the",
+     "start": 164.1,
+     "end": 164.24,
+     "conf": 0.57
+    },
+    {
+     "w": "blue",
+     "start": 164.24,
+     "end": 164.57,
+     "conf": 0.02
+    }
+   ]
+  },
+  {
+   "i": 33,
+   "section": "bridge",
+   "text": "We'll be golden, me and you",
+   "start": 165.695,
+   "end": 168.145,
+   "words": [
+    {
+     "w": "We'll",
+     "start": 165.695,
+     "end": 165.905,
+     "conf": 0.57
+    },
+    {
+     "w": "be",
+     "start": 165.905,
+     "end": 166.07,
+     "conf": 1.0
+    },
+    {
+     "w": "golden,",
+     "start": 166.07,
+     "end": 167.0,
+     "conf": 0.99
+    },
+    {
+     "w": "me",
+     "start": 167.0,
+     "end": 167.12,
+     "conf": 0.0
+    },
+    {
+     "w": "and",
+     "start": 167.12,
+     "end": 167.48,
+     "conf": 0.63
+    },
+    {
+     "w": "you",
+     "start": 167.48,
+     "end": 168.145,
+     "conf": 0.99
+    }
+   ]
+  },
+  {
+   "i": 34,
+   "section": "bridge",
+   "text": "We'll be golden, me and you",
+   "start": 168.855,
+   "end": 171.5,
+   "words": [
+    {
+     "w": "We'll",
+     "start": 168.855,
+     "end": 169.155,
+     "conf": 0.21
+    },
+    {
+     "w": "be",
+     "start": 169.155,
+     "end": 169.26,
+     "conf": 0.25
+    },
+    {
+     "w": "golden,",
+     "start": 169.26,
+     "end": 170.0,
+     "conf": 0.43
+    },
+    {
+     "w": "me",
+     "start": 170.0,
+     "end": 170.46,
+     "conf": 0.0
+    },
+    {
+     "w": "and",
+     "start": 170.46,
+     "end": 170.68,
+     "conf": 0.0
+    },
+    {
+     "w": "you",
+     "start": 170.68,
+     "end": 171.5,
+     "conf": 0.03
+    }
+   ]
+  },
+  {
+   "i": 35,
+   "section": "chorus3",
+   "text": "We don't gotta be okay to dance",
+   "start": 171.5,
+   "end": 175.175,
+   "words": [
+    {
+     "w": "We",
+     "start": 171.5,
+     "end": 171.84,
+     "conf": 0.02
+    },
+    {
+     "w": "don't",
+     "start": 171.84,
+     "end": 172.045,
+     "conf": 0.04
+    },
+    {
+     "w": "gotta",
+     "start": 172.045,
+     "end": 172.445,
+     "conf": 0.06
+    },
+    {
+     "w": "be",
+     "start": 172.445,
+     "end": 172.82,
+     "conf": 0.01
+    },
+    {
+     "w": "okay",
+     "start": 172.895,
+     "end": 173.76,
+     "conf": 0.03
+    },
+    {
+     "w": "to",
+     "start": 173.76,
+     "end": 173.855,
+     "conf": 0.0
+    },
+    {
+     "w": "dance",
+     "start": 173.855,
+     "end": 175.175,
+     "conf": 0.01
+    }
+   ]
+  },
+  {
+   "i": 36,
+   "section": "chorus3",
+   "text": "We'll be glowing in the dark, take my hand",
+   "start": 175.175,
+   "end": 178.47,
+   "words": [
+    {
+     "w": "We'll",
+     "start": 175.175,
+     "end": 175.425,
+     "conf": 0.09
+    },
+    {
+     "w": "be",
+     "start": 175.425,
+     "end": 175.68,
+     "conf": 0.38
+    },
+    {
+     "w": "glowing",
+     "start": 175.68,
+     "end": 175.995,
+     "conf": 0.1
+    },
+    {
+     "w": "in",
+     "start": 175.995,
+     "end": 176.225,
+     "conf": 0.03
+    },
+    {
+     "w": "the",
+     "start": 176.225,
+     "end": 176.44,
+     "conf": 0.06
+    },
+    {
+     "w": "dark,",
+     "start": 176.44,
+     "end": 177.0,
+     "conf": 0.14
+    },
+    {
+     "w": "take",
+     "start": 177.0,
+     "end": 177.415,
+     "conf": 0.98
+    },
+    {
+     "w": "my",
+     "start": 177.415,
+     "end": 177.64,
+     "conf": 0.91
+    },
+    {
+     "w": "hand",
+     "start": 177.765,
+     "end": 178.47,
+     "conf": 0.86
+    }
+   ]
+  },
+  {
+   "i": 37,
+   "section": "chorus3",
+   "text": "Every broken piece becomes a star",
+   "start": 178.47,
+   "end": 180.415,
+   "words": [
+    {
+     "w": "Every",
+     "start": 178.47,
+     "end": 178.72,
+     "conf": 0.01
+    },
+    {
+     "w": "broken",
+     "start": 178.72,
+     "end": 179.2,
+     "conf": 0.03
+    },
+    {
+     "w": "piece",
+     "start": 179.2,
+     "end": 179.385,
+     "conf": 0.01
+    },
+    {
+     "w": "becomes",
+     "start": 179.385,
+     "end": 179.96,
+     "conf": 0.01
+    },
+    {
+     "w": "a",
+     "start": 179.96,
+     "end": 180.12,
+     "conf": 0.0
+    },
+    {
+     "w": "star",
+     "start": 180.12,
+     "end": 180.415,
+     "conf": 0.01
+    }
+   ]
+  },
+  {
+   "i": 38,
+   "section": "chorus3",
+   "text": "Look how beautiful we are",
+   "start": 181.425,
+   "end": 184.31,
+   "words": [
+    {
+     "w": "Look",
+     "start": 181.425,
+     "end": 182.1,
+     "conf": 0.04
+    },
+    {
+     "w": "how",
+     "start": 182.1,
+     "end": 182.48,
+     "conf": 0.01
+    },
+    {
+     "w": "beautiful",
+     "start": 182.48,
+     "end": 183.9,
+     "conf": 0.01
+    },
+    {
+     "w": "we",
+     "start": 183.9,
+     "end": 184.22,
+     "conf": 0.03
+    },
+    {
+     "w": "are",
+     "start": 184.22,
+     "end": 184.31,
+     "conf": 0.0
+    }
+   ]
+  },
+  {
+   "i": 39,
+   "section": "chorus3",
+   "text": "We'll be glowing in the dark!",
+   "start": 184.31,
+   "end": 189.915,
+   "words": [
+    {
+     "w": "We'll",
+     "start": 184.31,
+     "end": 184.56,
+     "conf": 0.0
+    },
+    {
+     "w": "be",
+     "start": 184.56,
+     "end": 187.965,
+     "conf": 0.0
+    },
+    {
+     "w": "glowing",
+     "start": 187.965,
+     "end": 188.2,
+     "conf": 0.0
+    },
+    {
+     "w": "in",
+     "start": 188.2,
+     "end": 188.25,
+     "conf": 0.0
+    },
+    {
+     "w": "the",
+     "start": 188.24,
+     "end": 188.29,
+     "conf": 0.0
+    },
+    {
+     "w": "dark!",
+     "start": 188.28,
+     "end": 189.915,
+     "conf": 0.0
+    }
+   ]
+  },
+  {
+   "i": 40,
+   "section": "outro",
+   "text": "Take my hand",
+   "start": 218.87,
+   "end": 220.56,
+   "words": [
+    {
+     "w": "Take",
+     "start": 218.87,
+     "end": 219.395,
+     "conf": 1.0
+    },
+    {
+     "w": "my",
+     "start": 219.395,
+     "end": 219.57,
+     "conf": 0.77
+    },
+    {
+     "w": "hand",
+     "start": 219.57,
+     "end": 220.56,
+     "conf": 0.64
+    }
+   ]
+  }
+ ],
+ "notes": "Word times in the gapless-mp3 timeline. CTC forced alignment (NeMo Conformer-CTC large, vocal stem from UVR-MDX-NET-Voc_FT) of the lyrics as sung, word starts snapped to vocal onsets; conf = mean CTC probability of the word's frames. Chops (the drops' vocal samples) are not lyric lines: see audio.json onsets.chop."
+}

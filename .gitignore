@@ -12,3 +12,9 @@ analysis/__pycache__/
 analysis/stems/
 analysis/work/
 analysis/qa/
+
+# glow analysis: Python env, decoded audio, stems, emissions, plots (regenerable)
+analysis/glow/.venv/
+analysis/glow/work/
+analysis/glow/qa/
+analysis/glow/__pycache__/
