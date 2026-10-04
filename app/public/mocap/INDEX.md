@@ -14,7 +14,7 @@ File name = CMU trial id (subject_trial), 30 fps. Description from the CMU index
 - `13_04` — sit on a stepstool, chin in hand
 - `13_05` — sit on a stepstool, hands against chin, fidget, stand up
 - `13_11` — forward jump
-- `140_06` — idle
+- `140_06` — idle (crouching low, looking around — not a standing idle; for standing use 77_02 or 111_28)
 - `141_12` — dance, twist
 - `141_16` — wave hello
 - `142_15` — sad
