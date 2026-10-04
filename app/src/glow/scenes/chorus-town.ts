@@ -9,6 +9,7 @@ import { clamp, ease, hash, lerp, mulberry32, noise1, prog, pulse, smoothstep } 
 import { Stage, aim } from '../lib/stage';
 import { col, STICKS } from '../lib/palette';
 import { NeonLine, flickerOn, splitRows } from '../lib/neon';
+import { Dancers } from './chorus-dancers';
 
 // 3x5 pixel font for lit windows: five rows of three cells, top to bottom ('#' = lit)
 const FONT: Record<string, string> = {
@@ -59,6 +60,7 @@ export class Town {
   lanterns!: THREE.InstancedMesh;
   lanternData: { x: number; z: number; t0: number; v: number; c: THREE.Color; s: number }[] = [];
   l12?: NeonLine;
+  people!: Dancers;
   private c = new THREE.Color();
   private m = new THREE.Matrix4();
 
@@ -163,6 +165,12 @@ export class Town {
       }
     S.add(this.wins);
 
+    // people of light in the streets: they let the lanterns go and wave
+    const spots: { x: number; z: number }[] = [];
+    for (let i = 0; i < 22; i++) spots.push({ x: (rnd() - 0.5) * 22, z: (i % 2 ? -6.4 : 4) + (rnd() - 0.5) * 2.2 });
+    this.people = new Dancers(spots, (this.n === 3 ? ['gold', 'pink'] : STICKS).map((k) => col(k, 1.3)));
+    this.people.spots.forEach((s) => (s.style = 2));
+    S.add(this.people);
     // lanterns
     const lgeo = new THREE.SphereGeometry(1, 12, 8);
     this.lanterns = new THREE.InstancedMesh(lgeo, new THREE.MeshBasicMaterial({ color: 0xffffff, fog: true }), 46);
@@ -170,12 +178,18 @@ export class Town {
     const t0 = l12 ? l12.start - 0.8 : 0;
     for (let i = 0; i < 46; i++) {
       const k = STICKS[i % STICKS.length]!;
-      this.lanternData.push({ x: (rnd() - 0.5) * 40, z: -28 + rnd() * 22, t0: t0 + rnd() * 1.6, v: 3.4 + rnd() * 3.0, c: col(this.n === 3 ? 'gold' : k, 1), s: 0.3 + rnd() * 0.3 });
+      // the first ones from the people's hands, the rest from all over town
+      const sp = spots[i % spots.length]!;
+      const fromHand = i < spots.length;
+      this.lanternData.push({
+        x: fromHand ? sp.x : (rnd() - 0.5) * 40, z: fromHand ? sp.z + 0.3 : -28 + rnd() * 22,
+        t0: t0 + (fromHand ? i * 0.06 : 0.4 + rnd() * 1.6), v: 2.6 + rnd() * 2.6, c: col(this.n === 3 ? 'gold' : k, 1), s: 0.26 + rnd() * 0.24,
+      });
     }
     S.add(this.lanterns);
 
     if (l12) {
-      this.l12 = new NeonLine(l12, splitRows(l12, 2), { font: 'script', size: 1.25, color: col('white', 2), leading: 1.35 });
+      this.l12 = new NeonLine(l12, splitRows(l12, 2), { font: 'script', size: 0.8, color: col('white', 2), leading: 0.95 });
       S.add(this.l12);
     }
   }
@@ -209,12 +223,13 @@ export class Town {
       this.houseWins.setColorAt(i, this.c);
     }
     this.houseWins.instanceColor!.needsUpdate = true;
+    this.people.pose(this.ctx.audio.beatAt(t), 0.6, 1);
     // lanterns rise forever
     const q = new THREE.Quaternion();
     this.lanternData.forEach((L, i) => {
       const dt = Math.max(0, t - L.t0);
-      const y = 1.5 + dt * L.v + 0.3 * Math.sin(dt * 1.7 + i);
-      const k = smoothstep(0, 0.6, dt) * (0.85 + 0.15 * noise1(t * 2 + i, i));
+      const y = 2.15 + dt * L.v * Math.min(1, dt * 1.2 + 0.2) + 0.3 * Math.sin(dt * 1.7 + i) * Math.min(1, dt);
+      const k = (t >= L.t0 - 0.8 ? smoothstep(L.t0 - 0.8, L.t0, t) : 0) * (0.85 + 0.15 * noise1(t * 2 + i, i));
       this.m.compose(new THREE.Vector3(L.x + noise1(t * 0.3, i) * 1.2, y, L.z), q, new THREE.Vector3(L.s, L.s * 1.2, L.s).multiplyScalar(k > 0 ? 1 : 0.0001));
       this.lanterns.setMatrixAt(i, this.m);
       this.lanterns.setColorAt(i, this.c.copy(L.c).multiplyScalar(2.2 * k));
@@ -225,8 +240,8 @@ export class Town {
     // camera: from the street looking up at the rising lanterns, craning up to face the block
     const up = ease.inOutCubic(prog(t, second - 1.4, second + 0.2));
     const p1 = prog(t, segStart, second);
-    const pos = new THREE.Vector3(lerp(-2, 0.5, p1), lerp(lerp(2.2, 6, ease.inOutQuad(p1)), 9.5, up), lerp(14, 4.5, up));
-    const tgt = new THREE.Vector3(0, lerp(lerp(9, 14, p1), 5.2, up), lerp(-2, -32, up));
+    const pos = new THREE.Vector3(lerp(-1.5, 0.8, p1), lerp(lerp(1.7, 6.5, ease.inOutQuad(p1)), 9.5, up), lerp(lerp(15, 12.5, p1), 4.5, up));
+    const tgt = new THREE.Vector3(0, lerp(lerp(2.6, 13, ease.inOutCubic(p1)), 5.2, up), lerp(lerp(0, -4, p1), -32, up));
     pos.add(new THREE.Vector3(noise1(t * 0.6, 1) * 0.2, noise1(t * 0.6, 2) * 0.15, 0));
     aim(S.cam, pos, tgt, noise1(t * 0.25, 4) * 0.025 + lerp(0.04, 0, up));
     // the first line rides up with the lanterns, in front of the camera
