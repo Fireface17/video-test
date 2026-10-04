@@ -19,12 +19,14 @@ export const NWORDS = 8;
 /** Planar reflection of the scene in the road (y = 0), plus a streaked copy for the damp asphalt. */
 export class Reflection {
   cam = new THREE.PerspectiveCamera();
-  rt = makeRT(640, 360);
-  blur = makeRT(320, 180, { depthBuffer: false });
+  rt: THREE.WebGLRenderTarget;
+  blur: THREE.WebGLRenderTarget;
   texMat = new THREE.Matrix4();
   private pass: FSPass;
 
-  constructor() {
+  constructor(w = 640, h = 360) {
+    this.rt = makeRT(w, h);
+    this.blur = makeRT(w / 2, h / 2, { depthBuffer: false });
     this.pass = new FSPass(/* glsl */ `
       uniform sampler2D src; uniform vec2 px;
       void main() {
@@ -78,7 +80,7 @@ export class RoadSurface extends THREE.Mesh {
       wRect: { value: Array.from({ length: NWORDS }, () => new THREE.Vector4(0, -1e4, 0, -1e4)) },
       wAtlas: { value: Array.from({ length: NWORDS }, () => new THREE.Vector4()) },
       wState: { value: Array.from({ length: NWORDS }, () => new THREE.Vector4()) },
-      wet: { value: 1 }, reflK: { value: 1 }, studK: { value: 1 }, dbg: { value: 0 }, wBox: { value: new THREE.Vector4(0, 0, -1, -1) },
+      wet: { value: 1 }, reflK: { value: 1 }, studK: { value: 1 }, wBox: { value: new THREE.Vector4(0, 0, -1, -1) },
     };
     const mat = new THREE.ShaderMaterial({
       uniforms: u,
@@ -90,7 +92,7 @@ export class RoadSurface extends THREE.Mesh {
         uniform sampler2D tA, tN, tM, tR, tRB, tW;
         uniform mat4 texMat;
         uniform vec4 wRect[NW]; uniform vec4 wAtlas[NW]; uniform vec4 wState[NW];
-        uniform float wet, reflK, dbg; uniform vec4 wBox;
+        uniform float wet, reflK; uniform vec4 wBox;
         varying vec3 vW;
         // box-filtered coverage of the stripe [c - hw, c + hw] over a pixel footprint fw
         float cov(float x, float fw, float c, float hw) { return clamp((min(x + 0.5 * fw, c + hw) - max(x - 0.5 * fw, c - hw)) / fw, 0.0, 1.0); }
@@ -105,14 +107,13 @@ export class RoadSurface extends THREE.Mesh {
           float fx = max(abs(dx.x) + abs(dy.x), 1e-4), fu = max(abs(dx.y) + abs(dy.y), 1e-4);
           float asph = cov(ax, fx, (0.3 + ${ROAD.asphalt.toFixed(2)}) * 0.5, (${ROAD.asphalt.toFixed(2)} - 0.3) * 0.5);
           // ---- textures
-          vec4 mac = vec4(0.5, 0.3, 0.8, 0.0);
-          if (dbg != 6.0) mac = texture2D(tM, vec2((x + 16.0) / 32.0, u / 128.0));
+          vec4 mac = texture2D(tM, vec2((x + 16.0) / 32.0, u / 128.0));
           vec2 d1 = xu / 1.6;
           vec2 d2 = mat2(0.8, -0.6, 0.6, 0.8) * xu / 0.71 + 0.31;
           // packed detail (albedo, roughness, normal xy); the fine layer only near the lens
           vec4 a1 = vec4(0.3, 0.6, 0.5, 0.5), a2 = a1;
-          if (dist < 140.0 && dbg != 5.0) a1 = texture2D(tN, d1);
-          if (dist < 22.0 && dbg != 5.0) a2 = texture2D(tN, d2);
+          if (dist < 140.0) a1 = texture2D(tN, d1);
+          if (dist < 22.0) a2 = texture2D(tN, d2);
           float tone = mac.r * 1.25 - 0.1;
           float alb = mix(a1.r, a2.r, 0.4) * (0.55 + 0.6 * tone) * 0.2;
           float cavity = 1.0 - mix(a1.g, a2.g, 0.4);
@@ -149,7 +150,7 @@ export class RoadSurface extends THREE.Mesh {
             word = max(word, c);
             wglow = max(wglow, c * (st.y + 2.2 * exp(-front * 14.0) * step(st.x, 1.0)));
           }
-          word *= smoothstep(0.25, 0.42, mix(a1.g, 1.0, 0.65) * (0.7 + 0.3 * mac.b) + 0.3 * fu);
+          word *= 0.82 + 0.18 * smoothstep(0.2, 0.5, mix(a1.g, 1.0, 0.5) + 0.3 * fu);
           // ---- surface
           float paint = max(mk, word);
           vec3 albedo = vec3(alb) * vec3(0.95, 0.97, 1.03);
@@ -162,9 +163,8 @@ export class RoadSurface extends THREE.Mesh {
           // normal: bumpy aggregate, smoothed by the water film and flat in the puddles
           vec3 nb = normalize(mix(tn, vec3(0.0, 0.0, 1.0), clamp(puddle * 0.92 + damp * 0.35, 0.0, 1.0)));
           vec3 N = normalize(vec3(nb.x, nb.z, -nb.y));
-          vec3 spec = vec3(0.0);
-          vec3 diff = vec3(0.1);
-          if (dbg != 1.0) diff = hwLight(P, N, V, rough * (1.0 - 0.6 * damp), 0.35 + 0.65 * (1.0 - paint), spec);
+          vec3 spec;
+          vec3 diff = hwLight(P, N, V, rough * (1.0 - 0.6 * damp), 0.35 + 0.65 * (1.0 - paint), spec);
           vec3 c = albedo * diff + spec * (1.0 - puddle) * 0.9;
           // retroreflective paint in our headlights
           c += paint * uHeadOn * hwHead(P, vec3(0.0, 1.0, 0.0)) * 2.5;
@@ -183,7 +183,7 @@ export class RoadSurface extends THREE.Mesh {
           vec3 refl = mix(rBlur * (0.7 + 0.3 * damp), mix(rBlur, rSharp, 0.6), puddle) * mix(fresR, fres, puddle * 0.7);
           refl *= (1.0 - paint * 0.7) * mix(0.35, 1.0, max(damp, puddle)) * reflK * mix(0.04, 1.0, asph);
           c += refl;
-          if (dbg != 4.0) c = hwFog(c, P, cameraPosition);
+          c = hwFog(c, P, cameraPosition);
           gl_FragColor = vec4(c, 1.0);
         }`,
     });

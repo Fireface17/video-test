@@ -85,7 +85,7 @@ void hwLamps(vec3 P, vec3 N, vec3 V, float rough, float specK, inout vec3 diff, 
       float ndl = max(dot(N, L), 0.0);
       float I = hwLampDist(-L) * flick / (d2 + 1.0);
       diff += uLampCol * (I * ndl);
-      if (specK > 0.0 && j == 0) spec += uLampCol * (I * ndl * hwSpec(N, L, V, rough) * specK);
+      if (specK > 0.0) spec += uLampCol * (I * ndl * hwSpec(N, L, V, rough) * specK);
     }
   }
 }

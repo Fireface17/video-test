@@ -272,7 +272,7 @@ export class City extends THREE.Group {
       if (hgt > 150) tall.push(new THREE.Vector3(x, hgt - 2, z));
     }
     geo.setAttribute('bInfo', new THREE.InstancedBufferAttribute(info, 4));
-    this.towers.frustumCulled = false;
+    this.towers.computeBoundingSphere(); // (culled when we look away from the city)
 
     // aviation lights (blinking red) on the tall towers and a few masts on the hills
     this.lights = new GlowPoints(140, 1);

@@ -60,7 +60,7 @@ function brush(cv: CanvasRenderingContext2D, tc: CanvasRenderingContext2D, raw: 
   // time channel: the whole stroke width, darkest (earliest) wins
   tc.lineCap = 'round';
   for (let i = 1; i < n; i++) {
-    const v = Math.round(1 + 253 * tOf((i - 0.5) / (n - 1)));
+    const v = Math.min(254, Math.ceil(1 + 253 * tOf((i - 1) / (n - 1)) + 0.5)); // (rounded late, never early)
     tc.strokeStyle = `rgb(${v},${v},${v})`;
     tc.lineWidth = wOf(i) * 1.15 + 3;
     tc.beginPath(); tc.moveTo(pts[i - 1]!.x, pts[i - 1]!.y); tc.lineTo(pts[i]!.x, pts[i]!.y); tc.stroke();

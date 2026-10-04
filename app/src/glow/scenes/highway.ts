@@ -33,7 +33,6 @@ type Shot = 'dive' | 'gauge' | 'boards' | 'mirror' | 'sun' | 'station' | 'pylon'
 interface Cam { pos: THREE.Vector3; yaw: number; pitch: number; roll: number; fov: number }
 interface WordRow { words: number[]; u: number; len: number }
 
-const DBG = (): Record<string, boolean> => (globalThis as any).__HW ?? {};
 export default class Highway extends Scene {
   scene = new THREE.Scene();
   cam = new THREE.PerspectiveCamera(50, 16 / 9, 0.05, 12000);
@@ -61,6 +60,7 @@ export default class Highway extends Scene {
   hood!: Hood;
   mirrorRT = makeRT(768, 205);
   flare = new LensFlare();
+  backRefl = new Reflection(320, 180);
 
   L: Line[] = [];
   S0 = 0; S1 = 0; W0 = 0; W1 = 0; lab = false;
@@ -135,8 +135,8 @@ export default class Highway extends Scene {
       { day: 'WEDNESDAY', date: '15', words: [[6, 7]], smile: w1[7]!, side: 1, focus: [nearestBeat(w1[6]!.start), T.l2 + 0.3] as [number, number], D: 44 },
     ];
     specs.forEach((s, i) => {
-      const lines = s.words.map((row) => row.map((wi) => ({ text: w1[wi]!.w, t0: w1[wi]!.start, t1: Math.min(w1[wi]!.end, w1[wi]!.start + 0.55) })));
-      const b = new CalendarBoard({ day: s.day, date: s.date, month: 'OCTOBER', lines, smile: [s.smile.start + 0.05, s.smile.start + 0.5], seed: 11 + i * 17 });
+      const lines = s.words.map((row) => row.map((wi) => ({ text: w1[wi]!.w, t0: w1[wi]!.start, t1: Math.min(w1[wi]!.end, w1[wi]!.start + 0.38) })));
+      const b = new CalendarBoard({ day: s.day, date: s.date, month: 'OCTOBER', lines, smile: [s.smile.start + 0.04, s.smile.start + 0.42], seed: 11 + i * 17 });
       const first = Math.min(...lines.flat().map((w) => w.t0));
       const u = this.sAt(first) + s.D;
       const x = s.side > 0 ? 21 : -18.5;
@@ -380,7 +380,6 @@ export default class Highway extends Scene {
 
   render(f: Frame, out: THREE.WebGLRenderTarget) {
     const t = f.t, { renderer, audio } = this.ctx;
-    if (DBG().empty) { renderer.setRenderTarget(out); renderer.setClearColor(0, 1); renderer.clear(); return {}; }
 
     const T = this.T;
     const shot = this.shotAt(t);
@@ -484,7 +483,8 @@ export default class Highway extends Scene {
       this.hood.visible = false;
       for (const g of this.gantries) g.visible = false;
       this.road.u.reflK!.value = 0.8;
-      this.refl.render(renderer, this.hideFor(() => this.scene), this.backCam);
+      this.road.u.tR!.value = this.backRefl.rt.texture; this.road.u.tRB!.value = this.backRefl.blur.texture; this.road.u.texMat!.value = this.backRefl.texMat;
+      this.backRefl.render(renderer, this.hideFor(() => this.scene), this.backCam);
       this.unhide();
       renderer.setRenderTarget(this.mirrorRT);
       renderer.setClearColor(0x000000, 1);
@@ -497,10 +497,11 @@ export default class Highway extends Scene {
     }
     this.arc.update(t, arcCenter(pos), this.cam, 1, false);
     this.road.u.reflK!.value = 1;
+    this.road.u.tR!.value = this.refl.rt.texture; this.road.u.tRB!.value = this.refl.blur.texture; this.road.u.texMat!.value = this.refl.texMat;
     const iv2 = this.interior.visible, hv = this.hood.visible;
     this.interior.visible = false;
     this.hood.visible = false;
-    if (!DBG().norefl) this.refl.render(renderer, this.hideFor(() => this.scene), this.cam); else this.hideFor(() => this.scene);
+    this.refl.render(renderer, this.hideFor(() => this.scene), this.cam);
     this.unhide();
     this.sky.stars.visible = hideStars;
     this.interior.visible = iv2;
@@ -508,11 +509,7 @@ export default class Highway extends Scene {
     renderer.setRenderTarget(out);
     renderer.setClearColor(0x000000, 1);
     renderer.clear(true, true, true);
-    { const D = DBG(); if (D.noland) this.land.visible = false; if (D.nocity) this.city.visible = false; if (D.notraffic) this.traffic.visible = false;
-      if (D.noroad) this.road.visible = false; if (D.nolamps) this.lamps.visible = false; if (D.nofurn) this.furn.visible = false; if (D.nosky) this.sky.visible = false;
-      if (D.notrees) this.land.trees.visible = false; if (D.nocones) this.lamps.cones.visible = false; this.road.u.dbg!.value = (D as any).rdbg ?? 0; }
     renderer.render(this.scene, this.cam);
-    this.land.visible = this.city.visible = this.traffic.visible = this.road.visible = this.lamps.visible = this.furn.visible = this.sky.visible = this.land.trees.visible = this.lamps.cones.visible = true;
 
     // ---- the sun's lens flare (once it is up and in view)
     let flareK = 0;
@@ -579,13 +576,14 @@ export default class Highway extends Scene {
           p = g0 + Math.floor(turns * 4) / 4;
           // last approach: decelerate into the target
           const tot = (land - tSpin) * (14 + 3 * i);
-          const target = g1 + NG * Math.ceil((g0 + tot - g1) / NG);
+          const target = g1 + NG * Math.ceil((g0 + tot + 1 - g1) / NG);
           const k = prog(t, land - 0.28, land, ease.outCubic);
-          p = lerp(p, target - 0.6, k);
+          p = Math.min(lerp(p, target - 1, k), target - 1);
         } else {
+          // the letter only rolls into the window once its word is sung
           const tot = (land - tSpin) * (14 + 3 * i);
-          const target = g1 + NG * Math.ceil((g0 + tot - g1) / NG);
-          p = target - 0.6 * (1 - springStep(t - land, 3.5, 0.45));
+          const target = g1 + NG * Math.ceil((g0 + tot + 1 - g1) / NG);
+          p = target - (1 - prog(t, land, land + 0.12, ease.outCubic));
         }
         row.pos[i] = p;
         row.on[i] = 1;

@@ -38,7 +38,7 @@ function dialCanvases(size = 2048) {
   };
   // reserve zone: a red band from E to 1/8
   g.strokeStyle = '#ff2a1c'; g.lineWidth = R * 0.07;
-  g.beginPath(); g.arc(c0, c0, R * 0.86, ang(0), ang(0.125), true); g.stroke();
+  g.beginPath(); g.arc(c0, c0, R * 0.86, Math.min(ang(0), ang(0.125)), Math.max(ang(0), ang(0.125)), false); g.stroke();
   for (let i = 0; i <= 16; i++) {
     const lvl = i / 16, major = i % 4 === 0, mid = i % 2 === 0;
     tick(lvl, R * (major ? 0.7 : mid ? 0.76 : 0.79), R * 0.9, major ? R * 0.032 : mid ? R * 0.018 : R * 0.011, lvl < 0.13 ? '#ff4636' : '#e9f3ff');
@@ -49,8 +49,8 @@ function dialCanvases(size = 2048) {
     g.font = font(F.archivo(100, 700), px);
     g.fillText(s, c0 + Math.cos(a) * R * r, c0 + Math.sin(a) * R * r);
   };
-  g.fillStyle = '#ff4636'; lab(0, 'E', R * 0.2);
-  g.fillStyle = '#e9f3ff'; lab(1, 'F', R * 0.2); lab(0.5, '½', R * 0.15);
+  g.fillStyle = '#ff4636'; lab(0.085, 'E', R * 0.2, 0.5);
+  g.fillStyle = '#e9f3ff'; lab(0.915, 'F', R * 0.2, 0.5); lab(0.5, '½', R * 0.15);
   lab(0.25, '¼', R * 0.1, 0.58); lab(0.75, '¾', R * 0.1, 0.58);
   // the fuel-pump pictogram + filler arrow, small, under the hub
   const pump = (ctx: CanvasRenderingContext2D, x: number, y: number, s: number) => {
