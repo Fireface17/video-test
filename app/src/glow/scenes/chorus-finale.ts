@@ -10,6 +10,8 @@ import { col, STICKS } from '../lib/palette';
 import { glowStickGeometry } from '../lib/shapes';
 import { DanceFloor } from './chorus-floor';
 import { SlamLine } from './chorus-slam';
+import { Dancers, Beams } from './chorus-dancers';
+import { hash } from '../../engine/util';
 
 export class Finale {
   st = new Stage(42, 0.1, 900);
@@ -19,6 +21,8 @@ export class Finale {
   sky!: THREE.Mesh;
   sticks!: THREE.InstancedMesh;
   stickPos: { x: number; z: number; ph: number; c: THREE.Color }[] = [];
+  dancers!: Dancers;
+  beams!: Beams;
   private m = new THREE.Matrix4();
 
   constructor(private ctx: SceneCtx, private ls: Line[]) {}
@@ -55,9 +59,16 @@ export class Finale {
       this.stickPos.push({ x: Math.cos(a) * r, z: Math.sin(a) * r * 0.8 - 2, ph: i * 1.7, c: col(STICKS[i % STICKS.length]!, 2.2) });
     }
     S.add(this.sticks);
+    const spots: { x: number; z: number }[] = [];
+    for (let i = 0; i < 16; i++) { const s = i % 2 ? 1 : -1; spots.push({ x: s * (4.4 + hash(i, 1) * 4.5), z: -5 + hash(i, 2) * 10 }); }
+    for (let i = 0; i < 12; i++) spots.push({ x: (i / 11 - 0.5) * 15, z: -3.5 - hash(i, 4) * 4 });
+    this.dancers = new Dancers(spots, ['gold', 'pink', 'cyan', 'phosphor'].map((k) => col(k, 1.4)));
+    this.beams = new Beams(6, ['gold', 'pink', 'cyan'].map((k) => col(k, 1)));
+    S.add(this.dancers, this.beams);
     const l = this.ls[0];
     if (l) {
-      this.slam = new SlamLine(l, rowsOf(l), { size: 1.25, leading: 1.25, face: col('gold', 1.5), side: col('ember', 0.35) });
+      this.slam = new SlamLine(l, rowsOf(l), { size: 1.05, leading: 1.15, face: col('gold', 1.5), side: col('ember', 0.35), maxWidth: 7 });
+      this.slam.position.z = -1.2;
       S.add(this.slam);
     }
   }
@@ -85,6 +96,8 @@ export class Finale {
     this.floor.light(t, audio.beatAt(t), ['gold', 'pink', 'cyan', 'phosphor'].map((k) => col(k, 1)), 0.7 + 0.3 * audio.env('rms', t), smoothstep(segEnd - 1.5, segEnd, t), col('gold', 1.3), ripples);
     // sticks wave on the beat
     const beat = audio.beatAt(t);
+    this.dancers.pose(beat, 0.7 + 0.3 * audio.env('rms', t), 1 + rise);
+    this.beams.pose(beat, 0.8 + 0.4 * rise);
     this.stickPos.forEach((s, i) => {
       const sw = Math.sin(beat * Math.PI + s.ph) * 0.5;
       const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.3 * Math.cos(beat * Math.PI * 0.5 + s.ph), 0, sw));
