@@ -240,7 +240,16 @@ export function ringBatch(geo: THREE.BufferGeometry, list: RInst[], mat: THREE.M
  * 0 instance colour × rgb, 1 fixed albedo rgb, 2 emissive rgb × instance light × power, 3 glass,
  * 4 emissive rgb × instance light (no power: car lights), 5 iron bars (cut out), 6 slats (cut out).
  */
-export const M = { TINT: 0, ALB: 1, LAMP: 2, GLASS: 3, LIGHT: 4, BARS: 5, SLATS: 6 } as const;
+export const M = { TINT: 0, ALB: 1, LAMP: 2, GLASS: 3, LIGHT: 4, BARS: 5, SLATS: 6, WOOD: 7 } as const;
+
+/** A unit box (x, z in [-0.5, 0.5], y in [0, 1]) without its bottom face. */
+export function boxNoBottom() {
+  const g = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
+  const nor = g.attributes.normal as THREE.BufferAttribute, idx = g.index!.array, keep: number[] = [];
+  for (let i = 0; i < idx.length; i += 3) if (nor.getY(idx[i]!) > -0.5) keep.push(idx[i]!, idx[i + 1]!, idx[i + 2]!);
+  g.setIndex(keep);
+  return g;
+}
 
 /** Builds a small mesh from primitives with per-vertex material. */
 export class KitBuilder {
@@ -328,15 +337,23 @@ export function kitMaterial(U: CityUniforms, o: { side?: THREE.Side; streetK?: n
       varying vec3 vW, vN, vL; varying vec4 vV, vCol, vX;
       void main() {
         float mode = vV.a;
-        if (mode > 4.5) {
-          // cut-outs: iron bars (vertical) / stair treads (horizontal)
-          if (mode < 5.5) { if (fract((vL.x + vL.z) * 8.0) > 0.2) discard; }
+        if (mode > 4.5 && mode < 6.5) {
+          // cut-outs: iron bars (vertical, with a top and bottom rail) / stair treads (horizontal)
+          if (mode < 5.5) { float ry = vL.y - 0.05; if (fract((vL.x + vL.z) * 8.0) > 0.2 && ry > 0.06 && ry < 0.82) discard; }
           else if (fract(vL.y * 4.2) > 0.3) discard;
         }
         vec3 N = normalize(vN);
         if (!gl_FrontFacing) N = -N;
         float p = power(vW.xz);
         vec3 alb = mode < 0.5 ? vCol.rgb * vV.rgb : vV.rgb;
+        if (mode > 6.5) {
+          // the wooden barrel of a water tank: staves, iron hoops, weathering
+          float ang = atan(vL.z, vL.x + 1e-4);
+          float sv = ang * 3.82;
+          alb *= (0.82 + 0.3 * h11(floor(sv) + 3.0)) * (1.0 - 0.35 * smoothstep(0.42, 0.5, abs(fract(sv) - 0.5)));
+          float hoop = step(abs(fract(vL.y / 0.78) - 0.5), 0.05);
+          alb = mix(alb * (0.85 + 0.3 * vnoise(vec2(ang * 3.0, vL.y * 0.6))), vec3(0.06, 0.055, 0.05), hoop);
+        }
         vec3 L = ambient(N, p) * 1.3 + streetLight(vW.xz, vW.y, p) * ${(o.streetK ?? 1).toFixed(2)} + sunLight(vW, N) + peopleGlow(vW, N);
         vec3 c = alb * L;
         if (mode > 1.5 && mode < 2.5) {
@@ -391,49 +408,35 @@ export function kitBatch(geo: THREE.BufferGeometry, list: KInst[], mat: THREE.Ma
 
 const IRON = [0.05, 0.05, 0.055, M.ALB], STEEL = [0.16, 0.16, 0.17, M.ALB];
 
-/** A rooftop water tank: a stand of steel legs, a wooden barrel with hoops, a conical roof. Unit: r = 1, barrel h = 1, stand h = 1 → scaled per instance via iX. */
+/** A rooftop water tank: a stand of steel legs, a wooden barrel (planks and hoops drawn by the shader), a conical roof. r = 1. */
 export function waterTowerGeometry() {
   const k = new KitBuilder();
-  const wood = [0.34, 0.25, 0.17, M.ALB], hoop = [0.07, 0.065, 0.06, M.ALB];
-  // legs (in a stand of height 1: the instance's y-scale stretches the whole tower, so we build at real size for r=1)
-  for (const [x, z] of [[0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]] as const) k.box(x, 1.25, z, 0.14, 2.5, 0.14, IRON);
-  k.box(0, 1.2, 0.7, 1.5, 0.08, 0.06, IRON).box(0, 1.2, -0.7, 1.5, 0.08, 0.06, IRON).box(0.7, 1.2, 0, 0.06, 0.08, 1.5, IRON).box(-0.7, 1.2, 0, 0.06, 0.08, 1.5, IRON);
-  k.box(0, 0.6, 0.7, 1.9, 0.05, 0.05, IRON, 0, 0, 0.9).box(0, 0.6, -0.7, 1.9, 0.05, 0.05, IRON, 0, 0, -0.9);
-  k.cyl(0, 2.55, 0, 1.12, 1.12, 0.1, 10, IRON);
-  k.cyl(0, 2.6 + 1.9, 0, 0.98, 1.02, 3.8, 12, wood, true);
-  for (const y of [3.0, 3.8, 4.6, 5.4, 6.1]) k.cyl(0, y, 0, 1.035, 1.035, 0.06, 12, hoop, true);
-  k.cyl(0, 6.4 + 0.5, 0, 0.05, 1.12, 1.0, 12, [0.2, 0.18, 0.16, M.ALB]);
-  k.cyl(0, 7.5, 0, 0.04, 0.06, 0.4, 5, IRON);
-  // the ladder up the side
-  k.box(1.08, 4.2, 0, 0.03, 3.6, 0.32, IRON);
+  for (const [x, z] of [[0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]] as const) k.cyl(x, 1.25, z, 0.07, 0.07, 2.5, 3, IRON, true);
+  k.cyl(0, 2.55, 0, 1.12, 1.12, 0.1, 8, IRON);
+  k.cyl(0, 2.6 + 1.9, 0, 0.98, 1.02, 3.8, 10, [0.34, 0.25, 0.17, M.WOOD], true);
+  k.cyl(0, 6.4 + 0.5, 0, 0.05, 1.12, 1.0, 10, [0.2, 0.18, 0.16, M.ALB], true);
   return k.geometry();
 }
 
 /** A box unit for roof props (AC, vents, chimneys): 1×1×1 tinted, with a grille band on top. */
 export function roofBoxGeometry() {
   const k = new KitBuilder();
-  k.box(0, 0.5, 0, 1, 1, 1, [1, 1, 1, M.TINT]);
-  k.box(0, 1.02, 0, 0.92, 0.04, 0.92, [0.6, 0.6, 0.6, M.TINT]);
+  k.add(boxNoBottom(), new THREE.Matrix4(), [1, 1, 1, M.TINT]);
   return k.geometry();
 }
 
 /** A fire-escape landing: the platform, railings, the stair down to the landing below. Unit width 1 (x), the facade at z = 0, out to +z; y = 0 the landing's floor, the stair reaches y = -3.05 (scaled by the floor height). */
 export function fireEscapeGeometry() {
   const k = new KitBuilder();
-  const d = 1.15, H = 3.05, IR = [0.045, 0.045, 0.05, M.ALB];
+  const d = 1.15, H = 3.05, IR = [0.045, 0.045, 0.05, M.ALB], BARS = [0.045, 0.045, 0.05, M.BARS];
   k.box(0, -0.03, d / 2, 1, 0.06, d, IR);
-  // railings: a top rail and bars on three sides
-  k.box(0, 0.95, d, 1, 0.04, 0.04, IR).box(-0.5, 0.95, d / 2, 0.04, 0.04, d, IR).box(0.5, 0.95, d / 2, 0.04, 0.04, d, IR);
-  k.box(0, 0.08, d, 1, 0.08, 0.03, IR);
-  k.quad(0, 0.5, d, 1, 0.9, [0.045, 0.045, 0.05, M.BARS]);
-  k.quad(-0.5, 0.5, d / 2, d, 0.9, [0.045, 0.045, 0.05, M.BARS], Math.PI / 2);
-  k.quad(0.5, 0.5, d / 2, d, 0.9, [0.045, 0.045, 0.05, M.BARS], Math.PI / 2);
-  // the stair: a slanted plane of slats along the facade from this landing to the one below
+  k.quad(0, 0.5, d, 1, 0.9, BARS);
+  k.quad(-0.5, 0.5, d / 2, d, 0.9, BARS, Math.PI / 2);
+  k.quad(0.5, 0.5, d / 2, d, 0.9, BARS, Math.PI / 2);
+  // the stair: a slanted plane of treads along the facade from this landing to the one below, and its rail
   const zc = d * 0.42, hw = 0.26;
   k.poly4([0.32, 0, zc - hw], [0.32, 0, zc + hw], [-0.32, -H, zc + hw], [-0.32, -H, zc - hw], [0.045, 0.045, 0.05, M.SLATS]);
-  k.poly4([0.32, 0.9, zc + hw], [0.32, 0.0, zc + hw], [-0.32, -H, zc + hw], [-0.32, -H + 0.9, zc + hw], [0.045, 0.045, 0.05, M.BARS]);
-  // brackets under the platform
-  k.box(-0.45, -0.3, d / 2, 0.04, 0.04, d * 1.1, IR, 0, 0.5).box(0.45, -0.3, d / 2, 0.04, 0.04, d * 1.1, IR, 0, 0.5);
+  k.poly4([0.32, 0.9, zc + hw], [0.32, 0.0, zc + hw], [-0.32, -H, zc + hw], [-0.32, -H + 0.9, zc + hw], BARS);
   return k.geometry();
 }
 
@@ -441,8 +444,8 @@ export function fireEscapeGeometry() {
 export function balconyGeometry() {
   const k = new KitBuilder();
   k.box(0, 0, 0.75, 1, 0.18, 1.5, [0.32, 0.32, 0.31, M.ALB]);
-  k.box(0, 1.0, 1.5, 1, 0.05, 0.05, STEEL).box(-0.5, 1.0, 0.75, 0.05, 0.05, 1.5, STEEL).box(0.5, 1.0, 0.75, 0.05, 0.05, 1.5, STEEL);
-  k.quad(0, 0.55, 1.49, 1, 0.85, [0.03, 0.035, 0.04, M.GLASS]);
+  k.quad(0, 0.55, 1.49, 1, 0.9, [0.03, 0.035, 0.04, M.GLASS]);
+  k.quad(-0.5, 0.55, 0.75, 1.5, 0.9, [0.16, 0.16, 0.17, M.BARS], Math.PI / 2).quad(0.5, 0.55, 0.75, 1.5, 0.9, [0.16, 0.16, 0.17, M.BARS], Math.PI / 2);
   return k.geometry();
 }
 

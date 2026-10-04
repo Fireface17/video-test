@@ -169,12 +169,36 @@ export class CityPower {
   }
 }
 
-const TILE_X = 500, TILE_Z = 480;
+/** Tiles: big ones carry the buildings and the mid-distance things, small ones the small things seen up close. */
+const TILE_X = 500, TILE_Z = 480, NEAR_X = 250, NEAR_Z = 240;
 
-interface Tile {
-  origin: THREE.Vector3;
-  b: BInst[]; cornice: RInst[]; parapet: RInst[];
-  water: KInst[]; roofBox: KInst[]; ant: KInst[]; fe: KInst[]; bal: KInst[]; cobra: KInst[]; park: KInst[];
+/** Instances of each kind of thing, gathered per tile. */
+export class TileSet<T> {
+  map = new Map<string, { origin: THREE.Vector3; lists: Map<string, T[]> }>();
+  constructor(public sx: number, public sz: number) {}
+  add(kind: string, x: number, z: number, item: T) {
+    const a = Math.floor(x / this.sx), b = Math.floor(z / this.sz), k = `${a},${b}`;
+    let t = this.map.get(k);
+    if (!t) { t = { origin: new THREE.Vector3((a + 0.5) * this.sx, 0, (b + 0.5) * this.sz), lists: new Map() }; this.map.set(k, t); }
+    let l = t.lists.get(kind);
+    if (!l) t.lists.set(kind, (l = []));
+    l.push(item);
+  }
+  /** Build every tile into a LOD (drawn within `dist`) using make(kind, list, origin) → mesh. */
+  build(parent: THREE.Object3D, dist: number, make: (kind: string, list: T[], origin: THREE.Vector3) => THREE.Object3D | null, lods: THREE.Object3D[]) {
+    for (const t of this.map.values()) {
+      const g = new THREE.Group();
+      for (const [kind, list] of t.lists) { const m = make(kind, list, t.origin); if (m) g.add(m); }
+      if (!g.children.length) continue;
+      const lod = new THREE.LOD();
+      lod.position.copy(t.origin);
+      g.position.set(-t.origin.x, 0, -t.origin.z);
+      lod.addLevel(g, 0);
+      lod.addLevel(new THREE.Object3D(), dist);
+      parent.add(lod);
+      lods.push(lod);
+    }
+  }
 }
 
 export class City extends THREE.Group {
@@ -206,6 +230,10 @@ export class City extends THREE.Group {
   private lampBase: Float32Array;
   private beaconSpots: [number, number, number, number][] = [];
   private mirror?: Mirror;
+  /** the distance-drawn groups of small things (hidden from the mirror pass) */
+  lods: THREE.Object3D[] = [];
+  midTiles!: TileSet<unknown>;
+  nearTiles!: TileSet<unknown>;
   private o: CityOpts;
   private t = 0;
 
@@ -245,46 +273,37 @@ export class City extends THREE.Group {
     this.mat = buildingMaterial(U);
     const ringMat = ringMaterial(U);
     const kitMat = kitMaterial(U), kitMat2 = kitMaterial(U, { side: THREE.DoubleSide, streetK: 1.2 });
-    const tiles = new Map<string, Tile>();
-    const tileOf = (x: number, z: number) => {
-      const a = Math.floor(x / TILE_X), b = Math.floor(z / TILE_Z), k = `${a},${b}`;
-      let t = tiles.get(k);
-      if (!t) { t = { origin: new THREE.Vector3((a + 0.5) * TILE_X, 0, (b + 0.5) * TILE_Z), b: [], cornice: [], parapet: [], water: [], roofBox: [], ant: [], fe: [], bal: [], cobra: [], park: [] }; tiles.set(k, t); }
-      return t;
-    };
-    for (const b of plan.buildings) this.addBuilding(b, tileOf(b.x0 / 2 + b.x1 / 2, b.z0 / 2 + b.z1 / 2));
+    // buildings in big tiles (always drawn), small things in tiles drawn only within a distance
+    const big = new Map<string, BInst[]>(), bigO = new Map<string, THREE.Vector3>();
+    const mid = new TileSet<unknown>(TILE_X, TILE_Z), near = new TileSet<unknown>(NEAR_X, NEAR_Z);
+    for (const b of plan.buildings) {
+      const cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2, a = Math.floor(cx / TILE_X), c = Math.floor(cz / TILE_Z), k = `${a},${c}`;
+      if (!big.has(k)) { big.set(k, []); bigO.set(k, new THREE.Vector3((a + 0.5) * TILE_X, 0, (c + 0.5) * TILE_Z)); }
+      this.addBuilding(b, big.get(k)!, mid, near);
+    }
     plan.lamps.forEach((l, i) => {
-      const t = tileOf(l.x, l.z);
-      if (l.kind === 1) t.park.push({ x: l.x, y: 0.15, z: l.z, yaw: 0, sx: 1, sy: 1, sz: 1, col: [1, 1, 1], k: 0.5 + this.lampSeeds[i]! * 0.49 });
-      else if (l.kind === 0) t.cobra.push({ x: l.x, y: 0.15, z: l.z, yaw: Math.atan2(-l.az, l.ax), sx: 1, sy: l.h / 9, sz: 1, col: [1, 1, 1], k: 0.5 + this.lampSeeds[i]! * 0.49 });
+      if (l.kind === 1) near.add('park', l.x, l.z, { x: l.x, y: 0.15, z: l.z, yaw: 0, sx: 1, sy: 1, sz: 1, col: [1, 1, 1], k: 0.5 + this.lampSeeds[i]! * 0.49 } as KInst);
+      else if (l.kind === 0) near.add('cobra', l.x, l.z, { x: l.x, y: 0.15, z: l.z, yaw: Math.atan2(-l.az, l.ax), sx: 1, sy: l.h / 9, sz: 1, col: [1, 1, 1], k: 0.5 + this.lampSeeds[i]! * 0.49 } as KInst);
     });
     const lod = o.lod ?? 1;
     const geoRingC = ringGeometry([[0, 0, 0], [0.22, 0.25, 0], [0.3, 0.3, 0], [0.42, 0.38, 0], [0.7, 0.92, 0], [0.82, 1, 0], [1, 1, 0]], 0.35, false);
     const geoRingP = ringGeometry([[0, 0, 0.0], [1, 0, 0.0], [1, 0, 0.06]], 0.32, true);
-    const geoWater = waterTowerGeometry(), geoRoof = roofBoxGeometry(), geoAnt = antennaGeometry(), geoFE = fireEscapeGeometry(), geoBal = balconyGeometry();
-    const geoCobra = cobraGeometry(), geoPark = parkLampGeometry();
-    for (const t of tiles.values()) {
-      const grp = new THREE.Group();
-      if (t.b.length) grp.add(buildingBatch(t.b, this.mat, t.origin));
-      const mid = new THREE.Group(), near = new THREE.Group();
-      if (t.cornice.length) mid.add(ringBatch(geoRingC, t.cornice, ringMat, t.origin));
-      if (t.parapet.length) mid.add(ringBatch(geoRingP, t.parapet, ringMat, t.origin));
-      if (t.water.length) mid.add(kitBatch(geoWater, t.water, kitMat, t.origin, 8));
-      if (t.ant.length) mid.add(kitBatch(geoAnt, t.ant, kitMat, t.origin, 1));
-      if (t.cobra.length) mid.add(kitBatch(geoCobra, t.cobra, kitMat, t.origin, 10));
-      if (t.park.length) mid.add(kitBatch(geoPark, t.park, kitMat, t.origin, 5));
-      if (t.roofBox.length) near.add(kitBatch(geoRoof, t.roofBox, kitMat, t.origin, 3));
-      if (t.fe.length) near.add(kitBatch(geoFE, t.fe, kitMat2, t.origin, 4));
-      if (t.bal.length) near.add(kitBatch(geoBal, t.bal, kitMat2, t.origin, 2));
-      const lMid = new THREE.LOD(), lNear = new THREE.LOD();
-      lMid.position.copy(t.origin); lNear.position.copy(t.origin);
-      // (children of a LOD are positioned relative to it; the batches carry the tile origin themselves)
-      mid.position.set(-t.origin.x, 0, -t.origin.z); near.position.set(-t.origin.x, 0, -t.origin.z);
-      lMid.addLevel(mid, 0); lMid.addLevel(new THREE.Object3D(), 2600 * lod);
-      lNear.addLevel(near, 0); lNear.addLevel(new THREE.Object3D(), 900 * lod);
-      grp.add(lMid, lNear);
-      this.add(grp);
-    }
+    const geo: Record<string, THREE.BufferGeometry> = {
+      water: waterTowerGeometry(), roofBox: roofBoxGeometry(), ant: antennaGeometry(), fe: fireEscapeGeometry(), bal: balconyGeometry(), cobra: cobraGeometry(), park: parkLampGeometry(),
+    };
+    const rad: Record<string, number> = { water: 8, roofBox: 3, ant: 1, fe: 4, bal: 2, cobra: 10, park: 5 };
+    for (const [k, list] of big) this.add(buildingBatch(list, this.mat, bigO.get(k)!));
+    this.lods = [];
+    const make = (kind: string, list: unknown[], origin: THREE.Vector3) => {
+      if (kind === 'cornice') return ringBatch(geoRingC, list as RInst[], ringMat, origin);
+      if (kind === 'parapet') return ringBatch(geoRingP, list as RInst[], ringMat, origin);
+      const g = geo[kind];
+      if (!g) return null;
+      return kitBatch(g, list as KInst[], kind === 'fe' || kind === 'bal' ? kitMat2 : kitMat, origin, rad[kind] ?? 4);
+    };
+    mid.build(this, 1500 * lod, make, this.lods);
+    near.build(this, 430 * lod, make, this.lods);
+    this.midTiles = mid; this.nearTiles = near;
 
     // ---- ground, sidewalks, water ----
     const elX = el !== null ? g.avX(el) : null;
@@ -301,7 +320,7 @@ export class City extends THREE.Group {
     this.add(this.ground);
     const slabs = slabMesh(plan, slabMaterial(U));
     this.add(slabs);
-    const mirrorHide: THREE.Object3D[] = [this.ground, slabs];
+    const mirrorHide: THREE.Object3D[] = [this.ground, slabs, ...this.lods];
     if (river !== null) {
       const wg = new THREE.PlaneGeometry(16000, 16000);
       wg.rotateX(-Math.PI / 2);
@@ -384,7 +403,13 @@ export class City extends THREE.Group {
   }
 
   /** Building → instances in its tile. */
-  private addBuilding(b: Building, t: Tile) {
+  private addBuilding(b: Building, bl: BInst[], mid: TileSet<unknown>, near: TileSet<unknown>) {
+    const t = {
+      b: bl,
+      cornice: { push: (r: RInst) => mid.add('cornice', r.x, r.z, r) }, parapet: { push: (r: RInst) => mid.add('parapet', r.x, r.z, r) },
+      water: { push: (q: KInst) => mid.add('water', q.x, q.z, q) }, ant: { push: (q: KInst) => mid.add('ant', q.x, q.z, q) },
+      roofBox: { push: (q: KInst) => near.add('roofBox', q.x, q.z, q) }, fe: { push: (q: KInst) => near.add('fe', q.x, q.z, q) }, bal: { push: (q: KInst) => near.add('bal', q.x, q.z, q) },
+    };
     const stoneish: [number, number, number] = [b.wall[0] * 0.9 + 0.1, b.wall[1] * 0.9 + 0.09, b.wall[2] * 0.9 + 0.08];
     const masks = (top: boolean, base: boolean) => (base ? b.winFaces : 15) + 16 * (base ? b.shopFaces : 0) + (top ? 0 : 0);
     const f3 = (tr: Tier) => [masks(false, tr.y0 < 0.5), b.h, b.crown + 4 * b.pairs, b.warmth];

@@ -561,6 +561,7 @@ export default class Train extends Scene {
     (U.uFix.value as number[]).splice(0, 10, ...this.car.fixLevel);
     this.car.update(t, this.ride.acc(t), this.ride.v(t));
     const ceil = this.car.fixLevel.reduce((a, b) => a + b, 0) / 10;
+    if (Math.abs(t - 106.3) < 0.01) console.warn('[train]', t.toFixed(2), JSON.stringify({ gap0: T.gap0, gap1: T.gap1, cD: T.cD, ceil, fix: Array.from(this.car.fixLevel) }));
 
     // ---- camera
     const shot = this.camAt(t);

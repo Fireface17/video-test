@@ -166,12 +166,14 @@ export class Crowd {
       order.push(i);
     }
     order.sort((a, b) => this.dist[a]! - this.dist[b]!);
-    const L = this.look;
+    const L = this.look, ph = cam.projectionMatrix.elements[5]! * 540;
     for (const i of order) {
       const P = ppl[i]!, a = this.arm[i]!, lk = this.lk[i]!;
       const p = _p.fromArray(this.wpos, i * 3);
       const d = Math.sqrt(this.dist[i]!);
-      const near = smoothstep(1.0 * sc, 3.2 * sc, d); // (a body at the lens would fill the frame)
+      // (a body at the lens would fill the frame; one a few pixels tall is just one of the galaxy's stars)
+      const px = (1.75 * P.s * sc * ph) / Math.max(d, 1e-3);
+      const near = smoothstep(1.0 * sc, 3.2 * sc, d) * smoothstep(2, 4.5, px);
       if (near <= 0.003) continue;
       const w = o.wave ? o.wave(a, lk) : 0;
       const pose = this.poseOf(i, o.t, w);

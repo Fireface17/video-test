@@ -433,8 +433,14 @@ export class Streetlights extends THREE.Group {
     this.add(this.poles, this.lenses, this.cones, this.halos);
   }
 
-  update(camU: number, lampCol: THREE.Color, offU: number, coneK: number) {
+  update(camU: number, lampCol: THREE.Color, offU: number, coneK: number, t = 0) {
     const P = ROAD.lampP;
+    const alive = (u: number) => {
+      if (u < offU) return 0;
+      if (u > offU + 30) return 1;
+      const x = Math.sin(u * 12.9898 + Math.floor(t * 22) * 78.233) * 43758.5453;
+      return x - Math.floor(x) < 0.45 ? 1 : 0;
+    };
     const k0 = Math.floor((camU - 30) / P);
     const m = new THREE.Matrix4();
     let nc = 0, nh = 0;
@@ -443,8 +449,8 @@ export class Streetlights extends THREE.Group {
       const u = (k0 + i) * P;
       m.makeTranslation(0, 0, -u);
       this.poles.setMatrixAt(i, m);
-      this.lenses.setMatrixAt(i, u >= offU ? m : off);
-      if (nc < Streetlights.NC && u > camU - 30 && u >= offU) this.cones.setMatrixAt(nc++, m);
+      this.lenses.setMatrixAt(i, alive(u) > 0 ? m : off);
+      if (nc < Streetlights.NC && u > camU - 30 && alive(u) > 0) this.cones.setMatrixAt(nc++, m);
     }
     this.cones.count = nc;
     this.poles.instanceMatrix.needsUpdate = true;
@@ -455,7 +461,7 @@ export class Streetlights extends THREE.Group {
     this.coneU.cK.value = coneK;
     for (let i = 0; i < Streetlights.N + Streetlights.NFAR; i++) {
       const u = (k0 + i) * P;
-      const on = u >= offU ? 1 : 0;
+      const on = alive(u);
       for (const s of [-1, 1]) {
         const d = Math.abs(u - camU);
         this.halos.set(nh++, s * ROAD.lampArm, ROAD.lampH - 0.25, -u, lampCol, 0.016 * on * (1 + d / 500), 1.6 + d * 0.004);

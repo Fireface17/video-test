@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { F, font } from '../../engine/type';
 import { canvasTex } from './highway-tex';
+import { LedRow, glyphIndex, ledGlyphs } from './highway-station';
 
 const C = (hex: string, k = 1) => new THREE.Color(hex).multiplyScalar(k);
 const DEG = Math.PI / 180;
@@ -90,22 +91,31 @@ export class Gauge {
   glassU: Record<string, THREE.IUniform>;
   chromeU: Record<string, THREE.IUniform>;
   speedNeedle: THREE.Group;
+  lcd: LedRow;
 
   constructor() {
     const { base, glow, lamp } = dialCanvases();
     const baseT = canvasTex(base), glowT = canvasTex(glow), lampT = canvasTex(lamp);
     // dial face: lit dimly by the sweeping streetlight + backlit graphics
-    this.dialU = { base: { value: baseT }, glow: { value: glowT }, back: { value: 1 }, sweep: { value: 0 }, sweepCol: { value: C('#ff9a3c', 1) } };
+    this.dialU = { base: { value: baseT }, glow: { value: glowT }, back: { value: 1 }, sweep: { value: 0 }, sweepCol: { value: C('#ff9a3c', 1) }, uT: { value: 0 } };
     const dialMat = new THREE.ShaderMaterial({
       uniforms: this.dialU,
       vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: /* glsl */ `uniform sampler2D base, glow; uniform float back, sweep; uniform vec3 sweepCol; varying vec2 vUv;
+      fragmentShader: /* glsl */ `uniform sampler2D base, glow; uniform float back, sweep, uT; uniform vec3 sweepCol; varying vec2 vUv;
         void main(){
           vec3 b = texture2D(base, vUv).rgb;
           vec3 g = texture2D(glow, vUv).rgb;
           // light leaking from the passing lamps across the dial
           float band = exp(-pow((vUv.x + vUv.y * 0.6 - sweep * 2.6 + 0.6) / 0.35, 2.0));
-          vec3 c = b * (0.08 + sweepCol * band * 0.35) + g * vec3(0.75, 0.88, 1.0) * back * 1.9;
+          // the rain on the windscreen throws little caustic rings into that light, sliding down
+          vec2 q = vUv * 13.0 + vec2(0.0, uT * 0.6);
+          vec2 id = floor(q), fq = fract(q) - 0.5;
+          float hh = fract(sin(dot(id, vec2(12.9898, 78.233))) * 43758.5453);
+          vec2 off = vec2(fract(hh * 7.3), fract(hh * 3.1)) - 0.5;
+          float r = length(fq - off * 0.5);
+          float drop = step(0.5, hh) * (smoothstep(0.17, 0.11, r) - 0.7 * smoothstep(0.11, 0.05, r));
+          vec3 c = b * (0.08 + sweepCol * band * (0.35 + 0.6 * drop)) + g * vec3(0.75, 0.88, 1.0) * back * 1.9;
+          c += vec3(0.2, 0.75, 1.0) * 0.02 * exp(-length(vUv - vec2(0.05, 0.0)) * 3.0);
           gl_FragColor = vec4(c, 1.0);
         }`,
     });
@@ -176,6 +186,8 @@ export class Gauge {
         void main(){ float g = h(floor(vP.xy * 160.0)) * 0.4 + 0.6; float r = length(vP.xy);
           float band = exp(-pow((vP.x * 0.4 + vP.y * 0.25 - (sweep * 3.0 - 1.4)) / 0.5, 2.0));
           vec3 c = vec3(0.006, 0.0065, 0.008) * g * (1.0 + 2.0 * smoothstep(1.4, 1.1, r)) + sweepCol * band * 0.02 * g;
+          // the cyan of his hand on the wheel, just out of frame (the glow on the dash is his)
+          c += vec3(0.2, 0.75, 1.0) * 0.05 * g * exp(-length(vP.xy - vec2(-2.6, -2.4)) * 0.75);
           gl_FragColor = vec4(c, 1.0); }`,
     }));
     hood.position.z = 0.36;
@@ -195,13 +207,24 @@ export class Gauge {
     speedo.add(sp, this.speedNeedle);
     speedo.scale.setScalar(1.25);
     speedo.position.set(-2.75, 0.2, -0.05);
-    this.scene.add(dial, wall, bezel, this.needle, lampM, glass, hood, speedo);
+    // the trip computer under the hub: RANGE 0 KM, blinking
+    this.lcd = new LedRow(10, 0.055, C('#ffb347', 1.4), ledGlyphs());
+    this.lcd.setText('RANGE 0 KM');
+    this.lcd.position.set(-0.02, -0.74, 0.012);
+    const lcdBack = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.11), new THREE.MeshBasicMaterial({ color: C('#020203') }));
+    lcdBack.position.set(-0.02, -0.74, 0.008);
+    this.scene.add(dial, wall, bezel, this.needle, lampM, glass, hood, speedo, lcdBack, this.lcd);
   }
 
   /** fuel 0..1, lamp 0..1, sweep phase (0..1, lamp passing), shot progress for the camera push. */
-  update(fuel: number, lamp: number, sweep: number, push: number, shake: [number, number], roll: number) {
+  update(fuel: number, lamp: number, sweep: number, push: number, shake: [number, number], roll: number, t = 0) {
+    this.dialU.uT!.value = t;
+    this.lcd.on.fill(1);
+    const blinkOn = (t % 0.8) < 0.5 ? 1 : 0;
+    for (let i = 6; i < 10; i++) this.lcd.on[i] = blinkOn;
+    void glyphIndex;
     this.needle.rotation.z = fuelAngle(fuel);
-    this.speedNeedle.rotation.z = (-40 + 260 * (1 - 128 / 260)) * DEG + 0.01 * Math.sin(sweep * 40);
+    this.speedNeedle.rotation.z = (-40 + 260 * (1 - 128 / 260)) * DEG + 0.008 * Math.sin(t * 9);
     this.lampMat.color.copy(C('#ff9a1a', 3.2 * lamp));
     this.dialU.sweep!.value = sweep;
     this.dialU.back!.value = 1;

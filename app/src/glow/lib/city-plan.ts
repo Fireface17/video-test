@@ -447,10 +447,10 @@ export class CityPlan {
       }
     }
     // ---- balconies (modern towers) ----
-    if (st === ST.MODERN && r() < 0.6) {
+    if (st === ST.MODERN && r() < 0.35) {
       const t0 = tiers[tiers.length - 1]!;
       for (const fb of [F.N, F.S, F.W, F.E]) {
-        if (!(fb & (faces | (r() < 0.3 ? 15 : 0)))) continue;
+        if (!(fb & faces) || r() < 0.4) continue;
         const [nx, nz] = faceNormal(fb), fw = nx ? t0.d : t0.w;
         const nb = Math.max(1, Math.floor((fw - 1.2) / bayW + 0.5)), bw = (fw - 1.2) / nb;
         const every = r() < 0.5 ? 2 : 3, off = Math.floor(r() * every);

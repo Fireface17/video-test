@@ -106,7 +106,7 @@ export class Handprints extends THREE.InstancedMesh {
     this.renderOrder = 2;
   }
 
-  add(p: Print) {
+  print(p: Print) {
     if (this.list.length >= this.cap) return;
     this.list.push(p);
   }
@@ -119,7 +119,7 @@ export class Handprints extends THREE.InstancedMesh {
       const pos = a.clone().lerp(b, u);
       pos.y += h0 + r() * (h1 - h0);
       const up = new THREE.Vector3(0, 1, 0).applyAxisAngle(normal, (r() - 0.5) * 0.9);
-      this.add({ pos, normal: normal.clone(), up, t: t0 + (t1 - t0) * u + (r() - 0.5) * 0.3, color: colors[Math.floor(r() * colors.length)]!, size: 0.17 + r() * 0.05, left: r() < 0.5 });
+      this.print({ pos, normal: normal.clone(), up, t: t0 + (t1 - t0) * u + (r() - 0.5) * 0.3, color: colors[Math.floor(r() * colors.length)]!, size: 0.17 + r() * 0.05, left: r() < 0.5 });
     }
   }
 

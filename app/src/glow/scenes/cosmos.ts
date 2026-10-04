@@ -1,20 +1,22 @@
 // The drops (params.n = 1, 3): inside the galaxy of people (lib/galaxy.ts). Every star you fly past is a
 // person of stardust (lib/stardust.ts) moving like a real person (motion capture, cosmos-motion.ts); along
-// the middle of each spiral arm people hold hands in a chain.
+// the middle of each spiral arm people hold hands in a chain. At the core float the two the story follows,
+// HIM and HER (lib/heroes.ts colours), as giants of stardust over dark dust-lane bodies.
 //
-// Drop 1 (cyan / white). "Glo-o-owing in the dark": fast flights low over the arms, past the chains, a new
-// angle on every bar; on each sung "Glo-" a wave of raised hands races along the arm. "Da-a-ance, da-a-ance":
-// two giants of stardust dance in front of the bright core, dust flying off their hands. "Glo-o-owing" again:
-// the waves run out from the core along both arms. The instrumental bars: flights, the core pulsing on every
-// kick, rings of light running out through the people. "Take my hand" (1): there is a gap in a chain; the
-// two people at its ends reach for each other, their hands join in a flash and the light runs along the whole
-// arm. "Take my hand" (2): the giants join hands over the core; we rush into the light of their hands.
-// Drop 3 (gold, the finale). The golden galaxy at full power, wave after wave of raised hands; at its centre
-// the giant pair dance, he carrying his star sticker and she her paper lantern. On "take my hand" their
-// hands — and the two lights — meet and merge into one star; the star swells into the sun; then everything
-// slows down and converges into that single point (the outro starts from a star).
+// Drop 1 (cyan / white), the galaxy half (the city's lights stream up into it on bar 9): the galaxy assembles
+// out of flying stars; the instrumental bars are flights low over the arms, past the chains, a new angle on
+// every bar, the core pulsing and rings of light running out through the people on every kick. "Take my
+// hand" (1): there is a gap in a chain; the two people at its ends reach for each other, their hands join in
+// a flash and the light runs along the whole arm. "Take my hand" (2): he and she join hands over the core;
+// we rush into the light of their hands (the bright end for the cut). If the entry starts with the drop
+// itself, its first eight bars are galaxy shots too: waves of raised hands racing along the arms on each sung
+// "Glo-", the two dancing in front of the core on "Da-a-ance, da-a-ance".
+// Drop 3 (gold, the finale): the golden galaxy at full power, wave after wave of raised hands; at its centre
+// the two dance, he carrying her paper lantern and she his star sticker (they swapped them in the break). On
+// "take my hand" their hands — and the two lights — meet and merge into one star; the star swells into the
+// sun; then everything slows down and converges into that single point (the outro starts from a star).
 // Shots are a list on the section's bar grid (bar k = k-th downbeat of the drop section), so the entry can
-// start later than the section (the drop's first bars may be another scene) and still land on its shots.
+// start later than the section and still land on its shots; the first shot moves through the lead-in.
 import * as THREE from 'three';
 import { Scene, type Frame } from '../../engine/scene';
 import { clamp, ease, hash, lerp, noise1, prog, pulse, smoothstep } from '../../engine/util';
@@ -88,8 +90,8 @@ export default class Cosmos extends Scene {
   sticker = new StarSticker(0.05 * GS * 1.5);
   sunDisc = new SunDisc();
   lantern = new PaperLantern(0.11 * GS * 1.2);
-  /** Drop 1's gap: arm, the link before it, its tangent. */
-  gap = { arm: 0, link: 120, tan: V(1, 0, 0), pos: V() };
+  /** Drop 1's gap in a chain: arm, the link just before it, its middle. */
+  gap = { arm: 0, link: 120, pos: V() };
   private tangents: THREE.Vector3[] = [];
   // per frame
   private kick = 0;
@@ -151,7 +153,6 @@ export default class Cosmos extends Scene {
     const ch0 = this.crowd.chains[0]!;
     const gl = ch0.findIndex((i) => Math.hypot(P[i]!.p.x, P[i]!.p.z) > 46);
     this.gap.link = gl;
-    this.gap.tan.copy(this.tangents[ch0[gl]!]!);
     this.gap.pos.copy(P[ch0[gl]!]!.p).lerp(P[ch0[gl + 1]!]!.p, 0.5);
     this.shots = this.makeShots();
   }
@@ -339,7 +340,7 @@ export default class Cosmos extends Scene {
     this.far.rotation.copy(this.neb.rotation);
 
     const chop = this.ctx.audio.hit('chop', t, 0.1);
-    const st: DrawState = { k: 1 + 0.22 * chop, core: 1 + 0.45 * this.kick, scale: 1, twist: 0, clock: t, heroes: false, post: {} };
+    const st: DrawState = { k: 1 + 0.22 * chop, core: 1 + 0.45 * this.kick, scale: 1, twist: 0, clock: t, post: {} };
     switch (sh.kind) {
       case 'fly': this.fly(t, sh, st); break;
       case 'giants': this.giants(t, sh, st); break;
@@ -351,6 +352,9 @@ export default class Cosmos extends Scene {
     cam.updateProjectionMatrix();
     cam.updateMatrixWorld();
     for (const o of [this.neb, this.far]) o.position.copy(cam.position);
+    const nm = (this.neb.material as THREE.ShaderMaterial).uniforms;
+    (nm.gas!.value as THREE.Color).copy(L.gas).multiplyScalar(st.neb ?? 1);
+    (nm.fil!.value as THREE.Color).copy(L.fil).multiplyScalar(st.neb ?? 1);
 
     // the galaxy's own light; the core pulses on the kicks
     this.crowd.sky(cam, st.core, st.disk ?? 1);
@@ -523,7 +527,7 @@ export default class Cosmos extends Scene {
     if (o.rings) this.rings = 1;
     this.addWaves(t, sh, o.waves === 'core' ? 'chops' : undefined, () => 0, 1, -1, 46);
     if (o.rings) for (const b of this.downs) if (b >= sh.t0 - 1 && b <= t) this.waves.push({ t0: b, arm: -1, L0: 0, dir: 1, v: 60, amp: 1 });
-    if (o.join) { this.poseGiants(t, sh, st, true); st.heroes = true; }
+    if (o.join) this.poseGiants(t, sh, st, true);
   }
 
   // ---- the giants ----
@@ -555,7 +559,6 @@ export default class Cosmos extends Scene {
     const gripNow = jA[6]!.clone().lerp(jB[7]!, 0.5);
     const hold = smoothstep(T.hand2 - 0.06, T.hand2 + 0.02, t) * (join ? 1 : 0);
     if (hold > 0) this.waves.push({ t0: T.hand2, arm: -1, L0: 0, dir: 1, v: 50, amp: 1 });
-    st.heroes = true;
     const prev = st.extra;
     st.extra = () => {
       prev?.();
@@ -792,12 +795,13 @@ export default class Cosmos extends Scene {
     st.k = (st.k ?? 1) * (1 - 0.4 * c);
     for (const b of this.beats) if (b >= t0 - 0.9 && b <= Math.min(t, t0 + 1.2)) this.waves.push({ t0: b, arm: -1, L0: 0, dir: 1, v: 55 * (1 - 0.5 * x), amp: 1 - x });
     st.post.exposure = 1 - 0.1 * c;
+    st.neb = 1 - 0.9 * c;
   }
 }
 
 interface DrawState {
-  k?: number; core: number; coreK?: number; disk?: number; scale: number; twist: number; clock: number;
-  near?: THREE.Vector3; range?: number; heroes: boolean; heroK?: number; heroShatter?: number; lightK?: number;
+  k?: number; core: number; coreK?: number; disk?: number; neb?: number; scale: number; twist: number; clock: number;
+  near?: THREE.Vector3; range?: number; heroK?: number; heroShatter?: number; lightK?: number;
   hide?: (i: number) => boolean; shift?: (i: number, P: import('../lib/galaxy').GalaxyPerson, p: THREE.Vector3) => void;
   extra?: () => void; post: Record<string, any>;
 }

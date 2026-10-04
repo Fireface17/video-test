@@ -78,7 +78,10 @@ void hwLamps(vec3 P, vec3 N, vec3 V, float rough, float specK, inout vec3 diff, 
     float lu = (kc + float(j)) * LAMP_P;
     float on = step(uLampOffU, lu);
     if (on < 0.5) continue;
-    float flick = 0.92 + 0.08 * hwH12(vec2(lu, 3.0));
+    // the lamps just ahead of the blackout front stutter before they die
+    float near = step(lu, uLampOffU + 30.0);
+    on *= 1.0 - near * step(0.45, hwH12(vec2(lu, floor(uTime * 22.0))));
+    float flick = (0.92 + 0.08 * hwH12(vec2(lu, 3.0))) * on;
     for (int s = 0; s < 2; s++) {
       vec3 Lp = vec3(s == 0 ? -LAMP_ARM : LAMP_ARM, LAMP_H, -lu);
       vec3 Lv = Lp - P; float d2 = dot(Lv, Lv); vec3 L = Lv * inversesqrt(d2);

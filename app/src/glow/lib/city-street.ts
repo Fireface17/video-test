@@ -305,20 +305,18 @@ export function slabMesh(plan: CityPlan, mat: THREE.Material) {
 export function cobraGeometry() {
   const k = new KitBuilder();
   const pole = [0.09, 0.095, 0.1, M.ALB];
-  k.cyl(0, 4.2, 0, 0.08, 0.13, 8.4, 8, pole);
-  k.cyl(0, 0.35, 0, 0.2, 0.24, 0.7, 8, pole);
+  k.cyl(0, 4.2, 0, 0.08, 0.14, 8.4, 6, pole, true);
   k.box(0.95, 8.55, 0, 1.9, 0.09, 0.09, pole, 0, 0, 0.12);
   k.box(1.9, 8.72, 0, 0.75, 0.2, 0.36, [0.12, 0.12, 0.13, M.ALB]);
-  k.box(1.95, 8.6, 0, 0.55, 0.04, 0.26, [1.0, 0.8, 0.55, M.LAMP]);
+  k.quad(1.95, 8.61, 0, 0.55, 0.26, [1.0, 0.8, 0.55, M.LAMP], 0, Math.PI / 2);
   return k.geometry();
 }
 
 /** A park lamp: a slim post with a lantern globe. Height 4.2. */
 export function parkLampGeometry() {
   const k = new KitBuilder();
-  k.cyl(0, 2.0, 0, 0.05, 0.08, 4.0, 8, [0.04, 0.05, 0.045, M.ALB]);
-  k.cyl(0, 0.2, 0, 0.14, 0.17, 0.4, 8, [0.04, 0.05, 0.045, M.ALB]);
-  k.sphere(0, 4.2, 0, 0.26, [1.0, 0.85, 0.6, M.LAMP], 1, 1.15, 1, 1);
-  k.cyl(0, 4.52, 0, 0.02, 0.18, 0.14, 8, [0.04, 0.05, 0.045, M.ALB]);
+  k.cyl(0, 2.0, 0, 0.05, 0.09, 4.0, 6, [0.04, 0.05, 0.045, M.ALB], true);
+  k.sphere(0, 4.2, 0, 0.26, [1.0, 0.85, 0.6, M.LAMP], 1, 1.15, 1, 0);
+  k.cyl(0, 4.52, 0, 0.02, 0.18, 0.14, 6, [0.04, 0.05, 0.045, M.ALB], true);
   return k.geometry();
 }

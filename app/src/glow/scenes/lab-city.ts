@@ -24,6 +24,19 @@ export default class LabCity extends Scene {
     const S = this.st;
     this.city = new City({ seed: 11, half: 1700, centre: [80, -950], downtownR: 520, clouds: 800 });
     S.add(this.city, this.dots);
+    (window as unknown as { __labCity: LabCity }).__labCity = this;
+    // stats: instanced vertices per kind of mesh
+    const st: Record<string, [number, number, number]> = {};
+    this.city.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh && !(o as THREE.Points).isPoints) return;
+      const g = m.geometry as THREE.InstancedBufferGeometry;
+      const v = g.index ? g.index.count : (g.attributes.position?.count ?? 0);
+      const n = g.instanceCount ?? 1, key = (m.material as THREE.ShaderMaterial).uuid.slice(0, 4) + ':' + v;
+      const e = st[key] ?? (st[key] = [0, 0, 0]);
+      e[0]++; e[1] += n === Infinity ? 1 : n; e[2] += v * (n === Infinity ? 1 : n);
+    });
+    console.warn('CITY STATS ' + Object.entries(st).sort((a, b) => b[1][2] - a[1][2]).slice(0, 25).map(([k, [c, n, v]]) => `${k} meshes=${c} inst=${n} idx=${(v / 1e6).toFixed(2)}M`).join(' | ') + ` buildings=${this.city.plan.buildings.length} shops=${this.city.plan.shops.length} lamps=${this.city.plan.lamps.length} trees=${this.city.plan.trees.length} parked=${this.city.plan.parked.length}`);
     const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
     const c = this.city;
     this.anchors = c.anchors({ x: 40, z: 130, r: 140, kinds: ['window', 'fireEscape', 'balcony', 'roofEdge'], max: 60, seed: 3, spacing: 6, from: V(60, 30, 260) });
