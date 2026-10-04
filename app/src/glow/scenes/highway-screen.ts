@@ -34,8 +34,8 @@ float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
 float fb(vec2 p) { return vn(p) * 0.55 + vn(p * 2.03 + 7.1) * 0.3 + vn(p * 4.1 + 3.3) * 0.15; }
 vec3 band(float y) {
   // a painted dawn: indigo, violet, rose, orange, gold at the horizon
-  vec3 c = vec3(0.012, 0.012, 0.05);
-  c = mix(c, vec3(0.05, 0.022, 0.11), smoothstep(0.95, 0.68, y));
+  vec3 c = vec3(0.003, 0.004, 0.016);
+  c = mix(c, vec3(0.04, 0.018, 0.09), smoothstep(0.98, 0.66, y));
   c = mix(c, vec3(0.42, 0.07, 0.16), smoothstep(0.66, 0.40, y));
   c = mix(c, vec3(1.15, 0.32, 0.08), smoothstep(0.42, 0.22, y));
   c = mix(c, vec3(1.9, 1.05, 0.35), smoothstep(0.24, ${HOR.toFixed(3)} + 0.005, y));
@@ -89,8 +89,8 @@ void main() {
     c = land;
   }
   // the edges of the picture fall off into the night (from afar the screen melts into the sky)
-  float vig = smoothstep(0.0, 0.16, vUv.x) * smoothstep(1.0, 0.84, vUv.x) * smoothstep(1.0, 0.7, vUv.y);
-  c *= mix(0.12, 1.0, vig);
+  float vig = smoothstep(0.0, 0.2, vUv.x) * smoothstep(1.0, 0.8, vUv.x) * smoothstep(1.0, 0.62, vUv.y);
+  c *= mix(0.06, 1.0, vig);
   gl_FragColor = vec4(c * uBright, 1.0);
 }`;
 
@@ -105,6 +105,7 @@ export class ScreenPicture {
   u = { uSunY: { value: -0.2 }, uBright: { value: 1 }, uTime: { value: 0 }, uDawn: { value: 0 } };
   words: SWord[] = [];
   R = 0.8;
+  sArc = 0.08;
 
   constructor(public line: Line) {
     const bg = new THREE.Mesh(new THREE.PlaneGeometry(ASPECT, 1), new THREE.ShaderMaterial({
@@ -130,11 +131,13 @@ export class ScreenPicture {
     const totL = wLine.slice(0, nLine).reduce((a, b) => a + b, 0) + gap * (nLine - 1);
     const scaleL = Math.min(sLine, (ASPECT * 0.86) / totL);
     // ---- arc layout around the sun
-    const sArc = 0.088;
     const gapA = 0.45;
-    const totA = wLine.reduce((a, b) => a + b, 0) * sArc + gapA * sArc * (L.length - 1);
-    this.R = totA / (150 * DEG);
-    const span = totA / this.R;
+    // the arc: a half circle over the risen sun, R fixed, the size fitted to it
+    this.R = 0.6;
+    const units = wLine.reduce((a, b) => a + b, 0) + gapA * (L.length - 1);
+    const sArc = (this.R * 132 * DEG) / units;
+    this.sArc = sArc;
+    const span = 132 * DEG;
     let accL = -totL / 2, accA = 0;
     L.forEach((w, i) => {
       const mat = new THREE.MeshBasicMaterial({ color: C('#fff3e0', 0), transparent: true, depthTest: false, depthWrite: false });
@@ -158,20 +161,22 @@ export class ScreenPicture {
     this.u.uDawn.value = dawn;
     this.u.uBright.value = bright;
     this.u.uTime.value = t;
-    const sun = new THREE.Vector2(0, HOR + Math.max(sunY, 0.02));
+    const sun = new THREE.Vector2(0, HOR + 0.13);
+    void sunY;
     const R = this.R;
     for (const w of this.words) {
       const born = t >= w.t0;
       w.mesh.visible = born;
       if (!born) continue;
-      const arcSlot = (r: number, a: number) => new THREE.Vector3(sun.x + Math.cos(a) * r, sun.y + Math.sin(a) * r, a - Math.PI / 2);
+      // (the words lean with the arc, but never more than ~50 degrees: the last ones stay readable)
+      const arcSlot = (r: number, a: number) => new THREE.Vector3(sun.x + Math.cos(a) * r, sun.y + Math.sin(a) * r, clamp(a - Math.PI / 2, -0.85, 0.85));
       let pos: THREE.Vector3, rot: number, scale: number;
       if (w.t0 >= tArc - 0.02) {
         // born at the sun, flies out along its ray to the arc
-        const p = prog(t, w.t0, w.t0 + 0.75, ease.outExpo);
-        const a = w.arcA + (1 - p) * (w.arcA > Math.PI / 2 ? 0.22 : -0.22);
-        const s = arcSlot(R * (0.25 + 0.75 * p), a);
-        pos = new THREE.Vector3(s.x, s.y, 0); rot = s.z; scale = 0.088 * (0.4 + 0.6 * p);
+        const p = prog(t, w.t0, w.t0 + 0.42, ease.outExpo);
+        const a = w.arcA + (1 - p) * (w.arcA > Math.PI / 2 ? 0.16 : -0.16);
+        const s = arcSlot(R * (0.45 + 0.55 * p), a);
+        pos = new THREE.Vector3(s.x, s.y, 0); rot = s.z; scale = this.sArc * (0.7 + 0.3 * p);
       } else {
         const s = arcSlot(R, w.arcA);
         const k = ease.inOutCubic(clamp(arcK));
@@ -180,7 +185,7 @@ export class ScreenPicture {
         const lp = new THREE.Vector3(w.line.x, lerp(sun.y + 0.08, w.line.y, pin), 0);
         pos = lp.lerp(new THREE.Vector3(s.x, s.y, 0), k);
         rot = lerp(0, s.z, k);
-        scale = lerp(w.line.z * (0.55 + 0.45 * pin), 0.088, k);
+        scale = lerp(w.line.z * (0.55 + 0.45 * pin), this.sArc, k);
       }
       w.mesh.position.set(pos.x, pos.y, 0);
       w.mesh.rotation.z = rot;
@@ -261,16 +266,16 @@ export class GiantScreen extends THREE.Group {
           // ---- whole-frame flicker
           c *= 1.0 - 0.6 * g * step(0.72, h1(floor(uT * 30.0)));
           // ---- the cascade: module by module to black (each flashes as it dies)
-          float dieAt = mh * 0.9;
-          float flash = smoothstep(dieAt - 0.06, dieAt, uOff) * (1.0 - step(dieAt, uOff));
+          float dieAt = 0.04 + mh * 0.9;
+          float flash = smoothstep(dieAt - 0.06, dieAt, uOff) * (1.0 - step(dieAt, uOff)) * step(0.001, uOff);
           c = mix(c, vec3(1.2, 1.1, 1.0) * 0.8, flash * 0.6);
-          c *= 1.0 - step(dieAt, uOff);
+          c *= 1.0 - step(dieAt, uOff) * step(0.001, uOff);
           // ---- LED structure: round diodes on a black mask, faded where they get smaller than a pixel
           vec2 lp = vUv * res;
           vec2 fw = fwidth(lp);
-          float sub = smoothstep(0.25, 0.65, max(fw.x, fw.y));
-          float diode = smoothstep(0.48, 0.3, length(fract(lp) - 0.5));
-          c *= mix(0.2 + 1.55 * diode, 1.0, sub);
+          float sub = smoothstep(0.18, 0.5, max(fw.x, fw.y));
+          float diode = smoothstep(0.5, 0.28, length(fract(lp) - 0.5));
+          c *= mix(0.6 + 0.75 * diode, 1.0, sub);
           // ---- stuck pixels after the death
           float sp = step(0.9975, h2(floor(lp) + 0.3));
           vec3 spc = mix(vec3(1.0, 0.1, 0.05), vec3(0.1, 1.0, 0.3), step(0.5, h2(floor(lp) + 1.7)));
@@ -279,7 +284,7 @@ export class GiantScreen extends THREE.Group {
           vec2 mf = fract(vUv * mgrid);
           vec2 mfw = fwidth(vUv * mgrid);
           float seam = (1.0 - smoothstep(0.0, mfw.x * 1.5 + 1e-4, min(mf.x, 1.0 - mf.x))) + (1.0 - smoothstep(0.0, mfw.y * 1.5 + 1e-4, min(mf.y, 1.0 - mf.y)));
-          c *= 1.0 - 0.35 * clamp(seam, 0.0, 1.0) * (1.0 - sub * 0.8);
+          c *= 1.0 - 0.22 * clamp(seam, 0.0, 1.0) * (1.0 - sub * 0.8);
           // a dead screen is a black glossy slab: the streetlights and the sky glance off it a little
           vec3 spec;
           vec3 V = normalize(cameraPosition - vW);

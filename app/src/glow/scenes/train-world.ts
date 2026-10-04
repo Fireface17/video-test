@@ -74,12 +74,13 @@ export class Outside extends THREE.Group {
   constructor(U: LightU, ride: Ride, moonDir: THREE.Vector3) {
     super();
     this.moonDir = moonDir.clone().normalize();
-    // the city: a street grid whose avenue runs under the line (z = 0) and a cross street at the station (x = 0);
-    // on the moon side (+z) a stretch of empty blocks so the moon can be seen low over the far roofs
-    const OFF = new THREE.Vector3(-50, 0, -50);
+    // the city (lib/city.ts): the line runs over one of its wide cross streets (local z = 40, along x); on the moon
+    // side (+z) a stretch of empty blocks so the moon can be seen low over the far roofs. Its own sky and elevated
+    // line are left out (the moon here is swallowed on cue).
+    const OFF = new THREE.Vector3(-50, 0, -44);
     const clear: [number, number, number][] = [];
     for (let x = -230; x <= 300; x += 55) for (let z = 45; z <= 330; z += 55) clear.push([x - OFF.x, z - OFF.z, 48]);
-    this.city = new City({ seed: 29, half: 1600, block: 110, street: 30, centre: [-420 - OFF.x, 1000 - OFF.z], downtownR: 520, clear, fog: 0.00105 });
+    this.city = new City({ seed: 29, half: 1600, centre: [-420 - OFF.x, 1000 - OFF.z], downtownR: 520, clear, fog: 0.00105, el: null, sky: false });
     this.city.position.copy(OFF);
     this.add(this.city);
     // sky and moon
@@ -164,11 +165,11 @@ export class Outside extends THREE.Group {
    * that, seen from `camAt(tCover)`, its leading edge crosses the moon at `tCover`.
    */
   placeTower(camAt: (t: number) => THREE.Vector3, tCover: number) {
-    const zf = 210;
+    const zf = 210, w = 46, d = 40, h = 138;
     const c = camAt(tCover);
-    const k = (zf - c.z) / this.moonDir.z;
+    // the silhouette edge the moon goes behind is the tower's far left corner (the moon is up and to the +x side)
+    const k = (zf + d - c.z) / this.moonDir.z;
     const xEdge = c.x + this.moonDir.x * k;
-    const w = 46, d = 40, h = 138;
     const g = new THREE.BoxGeometry(1, 1, 1);
     g.translate(0, 0.5, 0);
     g.setAttribute('aB', new THREE.InstancedBufferAttribute(new Float32Array([73.1, 0.015, 0.3, 1]), 4));
@@ -223,11 +224,14 @@ function billboardTextures() {
   const t3 = canvasTex(W, H, (c) => {
     c.fillStyle = '#111'; c.fillRect(0, 0, W, H); c.fillStyle = '#ff2d55'; c.font = font(F.archivo(75, 900), 230); c.fillText('24/7', 120, 330);
   });
-  const blade = (bg: string, fg: string, txt: string) => canvasTex(256, 640, (c) => {
-    c.fillStyle = bg; c.fillRect(0, 0, 256, 640); c.fillStyle = fg; c.font = font(F.archivo(62, 900), 120); c.textAlign = 'center';
-    Array.from(txt).forEach((ch, i) => c.fillText(ch, 128, 130 + i * 112));
+  // blade signs with symbols, not words (the words on screen are the song's)
+  const glyph = (bg: string, fg: string, kind: 'cross' | 'cup' | 'arrow') => canvasTex(256, 640, (c) => {
+    c.fillStyle = bg; c.fillRect(0, 0, 256, 640); c.fillStyle = fg; c.strokeStyle = fg; c.lineWidth = 22;
+    if (kind === 'cross') { c.fillRect(98, 120, 60, 200); c.fillRect(28, 190, 200, 60); c.fillRect(98, 400, 60, 120); }
+    if (kind === 'cup') { c.beginPath(); c.moveTo(50, 200); c.lineTo(80, 420); c.lineTo(176, 420); c.lineTo(206, 200); c.closePath(); c.stroke(); c.beginPath(); c.arc(210, 290, 40, -1.2, 1.2); c.stroke(); for (let i = 0; i < 3; i++) { c.beginPath(); c.moveTo(90 + i * 38, 170); c.bezierCurveTo(70 + i * 38, 130, 110 + i * 38, 110, 90 + i * 38, 70); c.stroke(); } }
+    if (kind === 'arrow') { for (let i = 0; i < 4; i++) { c.beginPath(); c.moveTo(60, 120 + i * 120); c.lineTo(128, 60 + i * 120); c.lineTo(196, 120 + i * 120); c.stroke(); } }
   });
-  return [t1, t2, t3, blade('#200008', '#ff4060', 'HOTEL'), blade('#001a10', '#30ff9a', 'BAR'), blade('#1a1000', '#ffb030', 'OPEN')];
+  return [t1, t2, t3, glyph('#001a10', '#30ff9a', 'cross'), glyph('#200008', '#ff4060', 'cup'), glyph('#1a1000', '#ffb030', 'arrow')];
 }
 
 // ------------------------------------------------------------------------------------------------- the station
@@ -242,7 +246,7 @@ export class Station extends THREE.Group {
     super();
     const Y = FLOOR_Y;
     const concrete = litMat(U, { color: new THREE.Color(0.12, 0.12, 0.125), pattern: 5 });
-    const tiles = litMat(U, { color: new THREE.Color(0.55, 0.55, 0.52), pattern: 4 });
+    const tiles = litMat(U, { color: new THREE.Color(0.2, 0.2, 0.19), pattern: 4 });
     const steel = litMat(U, { color: new THREE.Color(0.07, 0.075, 0.085), spec: 0.6, shin: 40 });
     const yellow = litMat(U, { color: new THREE.Color(0.6, 0.42, 0.03), pattern: 5 });
     const band = litMat(U, { color: new THREE.Color(0.03, 0.12, 0.3) });
@@ -256,7 +260,7 @@ export class Station extends THREE.Group {
     this.add(new THREE.Mesh(mergeGeometries(pf), concrete));
     this.add(new THREE.Mesh(boxG(x0, x1, Y - 0.3, Y + 0.004, zEdge - 0.5, zEdge), yellow));
     // the wall: tiles, a blue band; it runs down to the street (the station's side)
-    this.add(new THREE.Mesh(boxG(x0, x1, 0, ST.canopy, zWall - 0.3, zWall), tiles));
+    this.add(new THREE.Mesh(boxG(x0, x1, Y - 0.3, ST.canopy, zWall - 0.3, zWall), tiles));
     this.add(new THREE.Mesh(boxG(x0, x1, Y + 0.95, Y + 1.12, zWall + 0.0, zWall + 0.02), band));
     // the canopy and its light fixtures (four rows of tubes in segments that switch on one after another)
     this.add(new THREE.Mesh(boxG(x0, x1, ST.canopy, ST.canopy + 0.25, zWall, zEdge + 0.4), steel));
@@ -295,7 +299,13 @@ export class Station extends THREE.Group {
     const rail = new THREE.Mesh(boxG(-L / 2, L / 2, 0.95, 1.02, -0.05, 0.05), litMat(U, { color: new THREE.Color(0.4, 0.4, 0.42), spec: 1.2, shin: 50 }));
     rail.position.set((stairX + STAIR_FOOT) / 2, Y / 2, sz0 + 0.12);
     rail.rotation.z = -ang;
-    this.add(bal, rail);
+    const bal2 = bal.clone();
+    bal2.position.z = sz0 - 0.08;
+    // the stair's underside
+    const under = new THREE.Mesh(boxG(-L / 2, L / 2, -0.5, 0, sz0, sz1), concrete);
+    under.position.set((stairX + STAIR_FOOT) / 2, Y / 2 - 0.2, 0);
+    under.rotation.z = -ang;
+    this.add(bal, bal2, rail, under);
     // the railing around the opening on the platform
     this.add(new THREE.Mesh(boxG(stairX, x1, Y, Y + 1.05, sz1 - 0.04, sz1 + 0.04), steel));
   }
@@ -303,7 +313,7 @@ export class Station extends THREE.Group {
   /** Station lights: segment levels 0..1 (the canopy fixtures in pairs). */
   update() {
     const c = new THREE.Color();
-    for (let i = 0; i < this.lightsOn.length; i++) for (let r = 0; r < 2; r++) this.fixtures.setColorAt(i * 2 + r, c.setRGB(0.85, 0.92, 1.0).multiplyScalar(0.03 + 2.2 * this.lightsOn[i]!));
+    for (let i = 0; i < this.lightsOn.length; i++) for (let r = 0; r < 2; r++) this.fixtures.setColorAt(i * 2 + r, c.setRGB(0.85, 0.92, 1.0).multiplyScalar(0.03 + 1.6 * this.lightsOn[i]!));
     this.fixtures.instanceColor!.needsUpdate = true;
   }
 }
@@ -333,7 +343,7 @@ function riserMaterial(U: LightU, riser: { sharp: THREE.Texture; glow: THREE.Tex
           for (int i = 0; i < 8; i++) { vec4 b = uBox[i]; if (e.x > b.x && e.x < b.z && e.y > b.y && e.y < b.w) lv = uLv[i]; }
           float riser = smoothstep(0.5, 0.8, n.x);
           float s = texture2D(uSharp, e).r, g = texture2D(uGlowT, e).r;
-          c += uWC * lv * (s * 2.4 * riser + g * 0.5 * (0.35 + 0.65 * riser)) + vec3(lv * s * riser * 0.6);
+          c += uWC * lv * (s * 1.3 * riser + g * 0.32 * (0.35 + 0.65 * riser)) + vec3(lv * s * riser * 0.25);
         }
         gl_FragColor = vec4(fogged(c, vW), 1.0);`);
   return m;

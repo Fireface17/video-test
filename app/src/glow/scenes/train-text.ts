@@ -45,7 +45,7 @@ export class FogWriting extends THREE.Group {
     this.fogMat = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
-      uniforms: { uC: { value: new THREE.Color(0.05, 0.06, 0.075) }, uDens: { value: 0.8 }, uSize: { value: new THREE.Vector2(w, h) }, uTime: { value: 0 } },
+      uniforms: { uC: { value: new THREE.Color(0.05, 0.06, 0.075) }, uDens: { value: 1.0 }, uSize: { value: new THREE.Vector2(w, h) }, uTime: { value: 0 } },
       vertexShader: /* glsl */ `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: /* glsl */ `
         uniform vec3 uC; uniform float uDens; uniform vec2 uSize; uniform float uTime; varying vec2 vUv;
@@ -58,11 +58,11 @@ export class FogWriting extends THREE.Group {
           // thicker toward the bottom and the frame, thinner in a patch where breath has gone
           vec2 e = min(vUv, 1.0 - vUv) * uSize;
           float edge = smoothstep(0.0, 0.25, min(e.x, e.y));
-          float dens = uDens * (0.62 + 0.38 * n) * (0.75 + 0.25 * (1.0 - vUv.y)) * (0.5 + 0.5 * edge);
+          float dens = uDens * (0.72 + 0.28 * n) * (0.85 + 0.15 * (1.0 - vUv.y)) * (0.6 + 0.4 * edge);
           // droplets: tiny bright beads in the mist
           vec2 g = p * 160.0; vec2 id = floor(g);
-          float b = smoothstep(0.35, 0.1, length(fract(g) - 0.5)) * step(0.93, hsh(id));
-          vec3 c = uC * (0.8 + 0.4 * n) + uC * 2.5 * b;
+          float b = smoothstep(0.3, 0.1, length(fract(g) - 0.5)) * step(0.985, hsh(id));
+          vec3 c = uC * (0.8 + 0.4 * n) + uC * 1.2 * b;
           gl_FragColor = vec4(c, clamp(dens, 0.0, 0.95));
         }`,
     });
@@ -70,24 +70,27 @@ export class FogWriting extends THREE.Group {
     this.fog.renderOrder = -2;
     this.add(this.fog);
     const maskMat = new THREE.ShaderMaterial({
+      transparent: true,
       colorWrite: false,
       depthWrite: true,
-      uniforms: { width: { value: size * 0.06 }, reveal: { value: 0 }, gain: { value: 1 }, tipLen: { value: 0.1 }, seed: { value: 0 }, color: { value: new THREE.Color() } },
+      side: THREE.DoubleSide,
+      uniforms: { width: { value: size * 0.034 }, reveal: { value: 0 }, gain: { value: 1 }, tipLen: { value: 0.1 }, seed: { value: 0 }, color: { value: new THREE.Color() } },
       vertexShader: RIBBON_FLAT,
       fragmentShader: /* glsl */ `
         uniform float reveal; varying float vSide, vAlong, vCap;
         void main() { if (vAlong > reveal) discard; if (vSide * vSide + vCap * vCap > 1.0) discard; gl_FragColor = vec4(0.0); }`,
     });
     rows.forEach((r, i) => {
-      const mask = LightTrail.text(lineText(r.line), fontName, size, { width: size * 0.06, seed: i * 5 + 1 });
+      const mask = LightTrail.text(lineText(r.line), fontName, size, { width: size * 0.034, seed: i * 5 + 1 });
       mask.material = maskMat.clone();
       mask.renderOrder = -3;
       mask.position.set(r.x, r.y, 0.004);
       const edgeMat = new THREE.ShaderMaterial({
         transparent: true,
         depthWrite: false,
+        side: THREE.DoubleSide,
         blending: THREE.AdditiveBlending,
-        uniforms: { width: { value: size * 0.072 }, reveal: { value: 0 }, uC: { value: new THREE.Color(0.25, 0.3, 0.38) }, uK: { value: 1 }, seed: { value: i * 3.7 } },
+        uniforms: { width: { value: size * 0.046 }, reveal: { value: 0 }, uC: { value: new THREE.Color(0.16, 0.19, 0.24) }, uK: { value: 1 }, seed: { value: i * 3.7 } },
         vertexShader: RIBBON_FLAT,
         fragmentShader: /* glsl */ `
           uniform float reveal, uK, seed; uniform vec3 uC; varying float vSide, vAlong, vCap;
@@ -97,10 +100,11 @@ export class FogWriting extends THREE.Group {
             float r = sqrt(vSide * vSide + vCap * vCap);
             if (r > 1.0) discard;
             // a wet ridge where the finger pushed the mist aside; beads along it
-            float ridge = smoothstep(0.7, 0.88, r) * smoothstep(1.0, 0.9, r);
-            float bead = step(0.8, hsh(floor(vAlong * 300.0) + sign(vSide) * 3.0)) * ridge;
+            // a soft wet ridge where the finger pushed the mist aside (stronger on the lower side), beads along it
+            float ridge = smoothstep(0.72, 0.9, r) * smoothstep(1.0, 0.9, r) * (vSide < 0.0 ? 0.55 : 0.2);
+            float bead = step(0.86, hsh(floor(vAlong * 260.0) + sign(vSide) * 3.0)) * smoothstep(0.75, 0.9, r);
             float fresh = exp(-(reveal - vAlong) * 12.0);
-            vec3 c = uC * (ridge * (0.7 + 1.2 * fresh) + bead * 1.6) + uC * 0.08;
+            vec3 c = uC * (ridge * (0.6 + 1.0 * fresh) + bead * 1.2);
             gl_FragColor = vec4(c * uK, 1.0);
           }`,
       });
@@ -120,7 +124,7 @@ export class FogWriting extends THREE.Group {
       (r.edge.material as THREE.ShaderMaterial).uniforms.reveal!.value = rev;
       (r.edge.material as THREE.ShaderMaterial).uniforms.uK!.value = 0.4 + 0.8 * light;
     }
-    this.fogMat.uniforms.uC!.value.setRGB(0.07, 0.085, 0.11).multiplyScalar(0.5 + 1.0 * light);
+    this.fogMat.uniforms.uC!.value.setRGB(0.1, 0.115, 0.145).multiplyScalar(0.55 + 0.9 * light);
     this.fogMat.uniforms.uTime!.value = t;
   }
 
@@ -234,30 +238,32 @@ export class LineMap extends THREE.Mesh {
     cv.width = PX; cv.height = PY;
     const c = cv.getContext('2d')!;
     c.fillStyle = '#000'; c.fillRect(0, 0, PX, PY);
-    const ly = PY * 0.5, margin = PX * 0.05;
+    const ly = PY * 0.72, margin = PX * 0.03;
     // the route line (R: print), with arrows at the ends
     c.fillStyle = 'rgb(255,0,0)';
     c.fillRect(margin * 0.5, ly - PY * 0.045, PX - margin, PY * 0.09);
     const boxes: THREE.Vector4[] = [];
     const stopsU: number[] = [];
-    const n = stops.length;
+    let px = Math.round(PY * 0.36);
+    const gapW = PX * 0.035;
+    const measure = () => { c.font = font(F.archivo(62, 800), px); const ws = stops.map((s) => c.measureText(s.words.join(' ')).width); return { ws, total: ws.reduce((a, b) => a + b, 0) + gapW * (stops.length - 1) }; };
+    let { ws: widths, total } = measure();
+    if (total > PX * 0.94) { px = Math.floor(px * (PX * 0.94) / total); ({ ws: widths, total } = measure()); }
+    let sx = (PX - total) / 2;
     stops.forEach((s, i) => {
-      const x = margin + ((PX - 2 * margin) * (i + 0.5)) / n;
+      const x = sx + widths[i]! / 2;
+      sx += widths[i]! + gapW;
       stopsU.push(x / PX);
       c.beginPath(); c.arc(x, ly, PY * 0.11, 0, Math.PI * 2); c.fillStyle = 'rgb(255,0,0)'; c.fill();
       c.beginPath(); c.arc(x, ly, PY * 0.065, 0, Math.PI * 2); c.fillStyle = 'rgb(0,0,0)'; c.fill();
-      // the name (G), one box per word
-      const px = Math.round(PY * 0.27);
-      c.font = font(F.archivo(75, 800), px);
-      const text = s.words.join(' ');
-      const tw = c.measureText(text).width;
-      let wx = x - tw / 2;
-      const by = s.above ? ly - PY * 0.17 : ly + PY * 0.17 + px * 0.72;
+      // the name (G) above the stop, one box per word
+      let wx = x - widths[i]! / 2;
+      const by = ly - PY * 0.16;
       s.words.forEach((wd) => {
         const ww = c.measureText(wd).width;
         c.fillStyle = 'rgb(0,255,0)';
         c.fillText(wd, wx, by);
-        boxes.push(new THREE.Vector4((wx - 4) / PX, 1 - (by + 6) / PY, (wx + ww + 4) / PX, 1 - (by - px * 0.8) / PY));
+        boxes.push(new THREE.Vector4((wx - 4) / PX, 1 - (by + 8) / PY, (wx + ww + 4) / PX, 1 - (by - px * 0.8) / PY));
         wx += ww + c.measureText(' ').width;
       });
     });
@@ -277,7 +283,7 @@ export class LineMap extends THREE.Mesh {
           c += vec3(1.0, 0.42, 0.1) * s.r * 0.22 * uPrint;
           c += vec3(1.0, 0.97, 0.92) * s.g * lv * 1.6;
           // you are here: a blinking red LED on the line
-          float d = length((vUv - vec2(uHere, 0.5)) * vec2(${(w / h).toFixed(3)}, 1.0));
+          float d = length((vUv - vec2(uHere, 0.28)) * vec2(${(w / h).toFixed(3)}, 1.0));
           float blink = 0.65 + 0.35 * step(0.5, fract(uTime * 2.5));
           c += vec3(1.0, 0.1, 0.05) * smoothstep(0.11, 0.04, d) * 3.0 * blink * step(0.0, uHere);
           gl_FragColor = vec4(c, 1.0);

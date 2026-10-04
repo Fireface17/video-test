@@ -211,7 +211,7 @@ export class Sky extends THREE.Group {
 
 export const CITY = { x: -420, z: -2150 };
 
-export interface CityOpts { x: number; z: number; seed: number; n?: number; hills?: boolean; core?: number; spread?: number; facing?: number }
+export interface CityOpts { x: number; z: number; seed: number; n?: number; hills?: boolean; core?: number; spread?: number; facing?: number; lit?: number }
 
 /**
  * A far city: instanced towers with procedural windows, a carpet of street lights, aviation lights, and (for the
@@ -321,7 +321,7 @@ export class City extends THREE.Group {
       p.set(x, -2, z); q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (r() - 0.5) * 0.5); s.set(w, Math.max(10, hgt), dd);
       m.compose(p, q, s);
       this.towers.setMatrixAt(i, m);
-      info[i * 4] = r() * 10; info[i * 4 + 1] = isCore ? 0.06 + r() * 0.22 : 0.04 + r() * 0.12; info[i * 4 + 2] = isCore ? 0.25 + r() * 0.4 : 0.75; info[i * 4 + 3] = isCore && hgt > 200 && r() < 0.5 ? 1 : 0;
+      info[i * 4] = r() * 10; info[i * 4 + 1] = Math.min(0.9, (isCore ? 0.06 + r() * 0.22 : 0.04 + r() * 0.12) * (o.lit ?? 1)); info[i * 4 + 2] = isCore ? 0.25 + r() * 0.4 : 0.75; info[i * 4 + 3] = isCore && hgt > 200 && r() < 0.5 ? 1 : 0;
       ord[i] = ordAt(x, z) + 0.015 * r();
       if (hgt > 150) tall.push({ p: new THREE.Vector3(x, hgt - 2, z), ord: ord[i]! });
     }

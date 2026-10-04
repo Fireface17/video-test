@@ -73,7 +73,7 @@ export default class Run extends Scene {
   R2!: Route;
   R3!: Route;
   taxi = V(413.6, 0, 124.0);
-  hood = V(411.9, 0.97, 124.05);
+  hood = V(412.0, 0.97, 123.6);
   tracks: { he: HeroTrack; she: HeroTrack } | null = null;
   freezes: [number, number][] = [];
   heC = heColor();
@@ -117,7 +117,7 @@ export default class Run extends Scene {
     // the cab's hood, east along its south pavement
     this.R1 = new Route([
       [388.6, 4.6, 48], [388.6, 4.6, 55.5], [388.6, 0.15, 64.2], [388.3, 0.15, 104], [389.6, 0.15, 110.6], [395, 0.15, 112.7],
-      [404, 0.15, 112.7], [405.6, 0, 115.4], [410.2, 0, 121.6], [413.6, 0.15, 126.9], [418, 0.15, 127.4], [606, 0.15, 127.4],
+      [406, 0.15, 112.7], [409.3, 0, 115.4], [411.3, 0, 121.6], [413.1, 0.15, 126.9], [418.5, 0.15, 127.4], [606, 0.15, 127.4],
     ]);
     // R2: across avenue 2 and east along street 1 toward the river
     this.R2 = new Route([[560, 0.15, 127.4], [609, 0.15, 127.4], [614.5, 0, 127.0], [635.5, 0, 127.0], [641, 0.15, 127.4], [1105, 0.15, 127.4]]);
@@ -125,7 +125,7 @@ export default class Run extends Scene {
     const ov = this.city.overpass, oy = ov?.y ?? 8.5, ox = ov?.x ?? 1144;
     this.R3 = new Route([[1060, 0.15, 127.4], [1108, 0.15, 127.4], [1113, 0, 128.5], [1131.5, 0, 131], [1133.6, 0.15, 132.5], [1133.6, oy, 147.5], [1136.5, oy, 151], [ox - 2.5, oy, 160], [ox - 2.5, oy, 420]]);
     const sAt = (R: Route, p: THREE.Vector3) => { let best = 0, bd = Infinity; for (let s = 0; s <= R.length; s += 0.1) { const d = R.at(s).distanceToSquared(p); if (d < bd) { bd = d; best = s; } } return best; };
-    const sCar = sAt(this.R1, V(410.2, 0, 121.6));
+    const sCar = sAt(this.R1, V(411.3, 0, 121.6));
     const sWin = sAt(this.R1, V(434.7, 0.15, 127.4));
     T.sCar = sCar;
     // ---- the legs ----
@@ -134,12 +134,12 @@ export default class Run extends Scene {
     this.legs = [
       L('A', T.A, T.B, this.R1, 2.5),
       L('B', T.B, T.C, this.R1, sAt(this.R1, V(389.6, 0.15, 110.6)) - 2.0),
-      L('C', T.C, T.E, this.R1, sCar - 2.1),
+      L('C', T.C, T.E, this.R1, sCar - 0.4),
       L('E', T.E, T.F, this.R1, sE0, 1),
       L('F', T.F, T.G1, this.R1, sE0 + PACE * (T.F - T.E), 1),
       L('G1', T.G1, T.G2, this.R2, sAt(this.R2, V(612, 0, 127.2)) - PACE * 0.5, 1),
       L('G2', T.G2, T.I, this.R2, sAt(this.R2, V(626, 0, 127.0)) - PACE * 0.4, 1),
-      L('I', T.I, T.J, this.R2, sAt(this.R2, V(652, 0.15, 127.4)), 1),
+      L('I', T.I, T.J, this.R2, sAt(this.R2, V(676, 0.15, 127.4)), 1),
       L('J', T.J, T.K, this.R3, sAt(this.R3, V(1128, 0, 130.5)), 1),
       L('K', T.K, T.L, this.R3, sAt(this.R3, V(1136.5, oy, 151)) + 4, 1),
       L('L', T.L, this.ctx.end + 1, this.R3, sAt(this.R3, V(1136.5, oy, 151)) + 4 + PACE * (T.L - T.K), 1),
@@ -159,17 +159,18 @@ export default class Run extends Scene {
     this.T.grip = grip;
     const off = T.hand + 0.38; // she's down beside him, they run on
     this.T.off = off;
+    // (along the diagonal over the cab: its north edge at sV + 1.75, its south edge at sV + 3.9, the curb at sV + 4.2)
     this.tracks = {
       he: {
-        s: [[T.C, sV - 2.1], [tv0, sV - 0.55, ease.linear], [tv1, sV + 3.1, ease.linear], [tv1 + 0.45, sV + 4.3, ease.outCubic], [off, sV + 4.4], [off + 0.6, sV + 4.4 + PACE * 0.32, ease.inQuad], [T.E, sV + 4.4 + PACE * 0.32 + PACE * (T.E - off - 0.6), ease.linear]],
+        s: [[T.C, sV - 0.4], [tv0, sV + 1.0, ease.linear], [tv1, sV + 4.75, ease.linear], [tv1 + 0.4, sV + 5.9, ease.outCubic], [off, sV + 6.0], [off + 0.6, sV + 6.0 + PACE * 0.32, ease.inQuad], [T.E, sV + 6.0 + PACE * 0.32 + PACE * (T.E - off - 0.6), ease.linear]],
         turn: [[tv1 + 0.05, 0], [tv1 + 0.5, 1], [off - 0.15, 1], [off + 0.3, 0]],
-        lift: [[tv0, 0], [(tv0 + tv1) / 2, 0.82, ease.outQuad], [tv1, 0, ease.inQuad]],
+        lift: [[tv0, 0], [(tv0 + tv1) / 2, 0.85, ease.outQuad], [tv1, 0.12, ease.inQuad], [tv1 + 0.08, 0.15]],
         jumpK: [[tv0 - 0.16, 0], [tv0 - 0.02, 1], [tv1, 1], [tv1 + 0.16, 0]],
         jumpT: [tv0 - 0.24, tv1 + 0.18],
       },
       she: {
-        s: [[T.C, sV - 2.1 - 3.6], [T.take - 0.12, sV - 0.75, ease.linear], [T.take + 0.12, sV - 0.45, ease.outCubic], [grip, sV - 0.4], [grip + 0.32, sV + 1.1, ease.inOutCubic], [T.hand + 0.05, sV + 1.6], [off, sV + 3.9, ease.inOutQuad], [off + 0.6, sV + 3.9 + PACE * 0.32, ease.inQuad], [T.E, sV + 3.9 + PACE * 0.32 + PACE * (T.E - off - 0.6), ease.linear]],
-        lift: [[grip + 0.02, 0], [grip + 0.32, 0.95, ease.outQuad], [T.hand + 0.05, 0.95], [off - 0.04, 0, ease.inQuad]],
+        s: [[T.C, sV - 0.4 - 3.8], [T.take - 0.15, sV + 0.25, ease.linear], [T.take + 0.12, sV + 0.55, ease.outCubic], [grip, sV + 0.6], [grip + 0.3, sV + 2.5, ease.inOutCubic], [T.hand + 0.05, sV + 2.8], [off, sV + 5.1, ease.inOutQuad], [off + 0.6, sV + 5.1 + PACE * 0.32, ease.inQuad], [T.E, sV + 5.1 + PACE * 0.32 + PACE * (T.E - off - 0.6), ease.linear]],
+        lift: [[grip + 0.02, 0], [grip + 0.3, 0.95, ease.outQuad], [T.hand + 0.05, 0.95], [off - 0.04, 0.15, ease.inQuad]],
         jumpK: [[grip - 0.06, 0], [grip + 0.08, 1], [off - 0.02, 1], [off + 0.12, 0]],
         jumpT: [grip - 0.12, off + 0.12],
       },
@@ -181,8 +182,8 @@ export default class Run extends Scene {
     // two cabs stopped at the red light on avenue 2, headlights on the crossing
     S.add(placeKit(this.city, taxiKit(), 619.6, 0, 112.5, -Math.PI / 2), placeKit(this.city, taxiKit(), 624.4, 0, 111.4, -Math.PI / 2));
     // the bottom flight of the el station's stairs, and the steel stairs up to the overpass
-    S.add(placeKit(this.city, stairKit(V(388.6, 4.6, 55.5), V(388.6, 0.15, 64.2), 1.9), 388.6, 0, 60));
-    S.add(placeKit(this.city, stairKit(V(1133.6, oy, 147.5), V(1133.6, 0.15, 132.5), 1.8), 1133.6, 0, 140));
+    S.add(placeKit(this.city, stairKit(V(388.6, 4.6, 55.5), V(388.6, 0.15, 64.2), 1.9), 0, 0, 0));
+    S.add(placeKit(this.city, stairKit(V(1133.6, oy, 147.5), V(1133.6, 0.15, 132.5), 1.8), 0, 0, 0));
     // the smashed window (FOR RENT, street 1 south side)
     this.window = new BrokenWindow(this.city, V(434.7, 0.55, 129.5), V(0, 0, -1), 4.6, 2.5, T.piece - 0.15, T.star + 0.25, 80);
     S.add(this.window);
@@ -192,7 +193,7 @@ export default class Run extends Scene {
     const idles = ['77_02', '111_28', '142_15', '79_71', '13_04', '13_05', '140_06'];
     await this.folk.init(idles, [run, runB]);
     S.add(this.folk.crowd);
-    const pal = [col('cyan', 1.2), col('white', 1.2).lerp(col('cyan', 1.2), 0.35), col('pink', 1.2).lerp(col('white', 1.2), 0.35), col('violet', 1.1).lerp(col('white', 1.1), 0.4), col('blue', 1.2).lerp(col('cyan', 1.2), 0.5), col('gold', 1.1).lerp(col('white', 1.1), 0.5)];
+    const pal = [col('cyan', 1.2), col('white', 1.2).lerp(col('cyan', 1.2), 0.35), col('violet', 1.1).lerp(col('white', 1.1), 0.45), col('blue', 1.2).lerp(col('cyan', 1.2), 0.5), col('gold', 1.1).lerp(col('white', 1.1), 0.55), col('white', 1.1).lerp(col('pink', 1.1), 0.2)];
     // the stream: the train's crowd first (they come down the stairs behind them), then more and more
     const nS = 260;
     this.folk.addStream(nS, 2.5, 230, 1.0, (i) => (i < 16 ? T.c0 - 1 : T.c0 + Math.pow((i - 16) / (nS - 16), 0.75) * (T.L - T.c0 - 2)), pal, figs, PACE);
@@ -232,8 +233,8 @@ export default class Run extends Scene {
     };
     // A: under the el — a man against a column (his hand on it), a woman with her phone, a couple at a door,
     // two across the avenue; the first two stay with them all night
-    add('A', 13.5, -2.6, Math.PI / 2, { look: 'light', body: 0, idle: '111_28', color: col('cyan', 1.15).lerp(col('white', 1.15), 0.3), stay: 3.2, lane: -0.9, touch: V(0.25, 0.4, 0.05) });
-    add('A', 16.5, 1.4, -Math.PI / 2 + 0.3, { look: 'light', body: 1, idle: '79_71', color: col('pink', 1.15).lerp(col('white', 1.15), 0.4), stay: 4.6, lane: 0.9, mirror: true });
+    add('A', 13.5, 2.1, -Math.PI / 2, { look: 'light', body: 0, idle: '111_28', color: col('cyan', 1.15).lerp(col('white', 1.15), 0.3), stay: 5.2, lane: -0.9, touch: V(-0.25, 0.4, 0.05) });
+    add('A', 17.5, 1.5, -Math.PI / 2 + 0.3, { look: 'light', body: 1, idle: '79_71', color: col('violet', 1.1).lerp(col('white', 1.1), 0.5), stay: 6.5, lane: 0.9, mirror: true });
     add('A', 20, 1.6, -Math.PI / 2, { body: 0, idle: '142_15' });
     add('A', 20.8, 1.9, -Math.PI / 2 - 0.4, { body: 1, idle: '77_02', mirror: true });
     add('A', 24, -9, Math.PI / 2, { body: 1, idle: '140_06', go: 0.7 });
@@ -394,9 +395,12 @@ export default class Run extends Scene {
     const wakeK = t < T.I ? 1 : 0;
     const hp = this.he.position;
     if (leg.id === 'I' || leg.id === 'J' || leg.id === 'K' || leg.id === 'L') {
-      const r = t < T.wake ? 0 : (t - T.wake) * 260;
-      this.city.power.level = 0.42;
-      this.city.power.wave(0, { x: 652, z: 127, r: Math.max(1, r), soft: 90, to: 1 });
+      const a = Math.max(0, t - T.wake);
+      const r = t < T.wake ? 0 : 25 * (1 - Math.exp(-a * 6)) + 110 * a + 45 * a * a;
+      this.city.power.level = 0.4;
+      const wp = this.legs[this.legs.findIndex((l) => l.id === 'I')]!;
+      const w0 = wp.route.at(wp.s0 + PACE * (T.wake - wp.t0));
+      this.city.power.wave(0, { x: w0.x, z: w0.z, r: Math.max(1, r), soft: 45, to: 1 });
       void wakeK;
     } else {
       this.city.power.level = 1;
@@ -404,15 +408,15 @@ export default class Run extends Scene {
     }
     void hp;
     const glows = [
-      { pos: he.position.clone().setY(he.position.y + 0.3), color: this.heC.clone().multiplyScalar(0.6), radius: 6 },
-      { pos: she.position.clone().setY(she.position.y + 0.3), color: this.sheC.clone().multiplyScalar(0.6), radius: 6 },
-      { pos: this.lantern.position.clone(), color: col('gold', 0.5), radius: 4 },
+      { pos: he.position.clone().setY(he.position.y + 0.3), color: this.heC.clone().multiplyScalar(0.16), radius: 3.5 },
+      { pos: she.position.clone().setY(she.position.y + 0.3), color: this.sheC.clone().multiplyScalar(0.16), radius: 3.5 },
+      { pos: this.lantern.position.clone(), color: col('gold', 0.18), radius: 2.5 },
     ];
     // ---- everyone else ----
-    const lv = { route: leg.route, sH: (this.heroStride(0, li, tm).pos ? leg.s0 + PACE * (tm - leg.t0) : 0), v: PACE, index: li };
+    const lv = { route: leg.route, sH: leg.s0 + PACE * (tm - leg.t0), v: PACE, index: li, hideKept: leg.id === 'I' };
     if (leg.id === 'C') lv.sH = Math.max(keys(tm, this.tracks!.he.s), keys(tm, this.tracks!.she.s));
     this.folk.update(tm, lv, S.cam);
-    this.city.setGlows([...glows, ...this.folk.glows(S.cam.position, 13)]);
+    this.city.setGlows([...glows, ...this.folk.glows(S.cam.position, 9)]);
     this.city.update(t, S.cam.position);
     this.prints.time = t;
     this.window.update(tm, S.cam);
@@ -478,17 +482,19 @@ export default class Run extends Scene {
       }
       case 'C': {
         // the cab in the middle of the frame, from the street side ahead of its nose
-        pos = V(406.3, 1.35, 118.2).lerp(V(406.9, 1.25, 119.0), ease.inOutQuad(u));
-        tgt = V(413.2, 1.05, 125.0).lerp(V(413.4, 1.2, 125.6), ease.inOutQuad(u));
-        fov = 44 - 6 * ease.inOutQuad(u);
+        // (the cab's nose toward us, headlights on: she on the left on the street side, he lands on the right)
+        // (from the front-left, a little above: the hood between them)
+        pos = V(406.3, 2.7, 118.9).lerp(V(406.9, 2.5, 119.4), ease.inOutQuad(u));
+        tgt = V(412.4, 0.95, 124.0).lerp(V(412.6, 1.05, 124.2), ease.inOutQuad(u));
+        fov = 44 - 4 * ease.inOutQuad(u);
         break;
       }
       case 'E': {
         // low on the pavement past the smashed window: they run at us, the shards rise into the frame
         const tilt = smoothstep(T.star - 0.2, leg.t1, t);
-        pos = V(441.5 - 1.2 * u, 0.42 + 0.6 * tilt, 127.85);
-        tgt = V(433.5, 0.9 + 3.5 * tilt * tilt, 128.2).lerp(V(438, 6, 128.6), tilt * 0.5);
-        fov = 54;
+        pos = V(441.5 - 1.5 * u, 0.75 + 0.8 * tilt, 124.0);
+        tgt = V(433.0, 1.1 + 3.5 * tilt * tilt, 128.6).lerp(V(437, 6, 129), tilt * 0.5);
+        fov = 50;
         break;
       }
       case 'F': {
@@ -503,9 +509,9 @@ export default class Run extends Scene {
       }
       case 'G1': {
         // on the crossing, low between the cabs' headlights: they cross the avenue in front of us
-        pos = V(625.5, 0.75, 116.0).lerp(V(626.5, 0.8, 117.5), u);
-        tgt = mid.clone().setY(1.1).lerp(V(640, 1.2, 128), 0.2);
-        fov = 44;
+        pos = V(621.5, 0.7, 124.9).lerp(V(622.6, 0.75, 124.6), u);
+        tgt = mid.clone().setY(1.15).lerp(V(606, 1.6, 121), 0.2);
+        fov = 48;
         break;
       }
       case 'G2': {
@@ -519,9 +525,9 @@ export default class Run extends Scene {
       }
       case 'I': {
         // low behind them, down the long street to the river; the windows wake in a wave ahead of them
-        pos = at(mid, -4.2, -0.6, 0.85);
-        tgt = at(mid, 60, -0.5, 5.5);
-        fov = 56;
+        pos = at(mid, -7.5, -3.2, 3.2 + 0.8 * u);
+        tgt = at(mid, 70, -1.5, 10 + 6 * smoothstep(T.wake, T.wake + 1.8, t));
+        fov = 60;
         roll = 0.02 * Math.sin(t * 2.1);
         break;
       }

@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { applyLayers, type Layer } from '../lib/motion';
 import type { RealFigure } from '../lib/people';
 import { Crowd, type Person } from '../lib/crowd';
+import { GlowPoints } from '../lib/points';
 import { col } from '../lib/palette';
 import { clamp, hash, noise1, smoothstep } from '../../engine/util';
 import type { CycleMotion, Route } from './run-motion';
@@ -79,6 +80,8 @@ export interface LegView {
   /** Stream speed (m/s). */
   v: number;
   index: number;
+  /** Leave the companions out of this shot. */
+  hideKept?: boolean;
 }
 
 /**
@@ -90,11 +93,15 @@ export class Folk {
   joiners: Joiner[] = [];
   /** The stream: members with a gap behind the heroes, a lane, a time they are there from. */
   stream: { gap: number; lane: number; from: number; p: Person; ph: number; c: THREE.Color }[] = [];
-  private grey = col('#8d9bb5', 0.5);
+  private grey = col('#a9b6cc', 0.75);
   private runs: CycleMotion[] = [];
+
+  /** Far away a person is a soft point of light (so the stream reads from high up). */
+  beacons = new GlowPoints(700, 0.5);
 
   constructor(dust: [number, number, number]) {
     this.crowd = new Crowd({ dust, dustGain: 0.1 });
+    this.crowd.add(this.beacons);
   }
 
   async init(idles: string[], runs: CycleMotion[]) {
@@ -129,7 +136,7 @@ export class Folk {
     for (let i = 0; i < n; i++) {
       const b = (hash(i, 11) < 0.5 ? 0 : 1) as 0 | 1, run = i % this.runs.length;
       const c = colors[Math.floor(hash(i, 12) * colors.length)]!.clone();
-      const gap = g0 + (g1 - g0) * Math.pow((i + hash(i, 13)) / n, 0.9);
+      const gap = g0 + (g1 - g0) * Math.pow((i + hash(i, 13)) / n, 1.5);
       const p = this.crowd.addPerson({
         pos: V(), yaw: 0, look: 'dust', body: b, color: c, k: 0, mirror: hash(i, 14) < 0.5, offset: hash(i, 15) * 3,
         clips: [{ clip: `run${run}`, from: -1e9, speed: this.rate(b, run, v * (0.97 + 0.06 * hash(i, 16)), figs), at: hash(i, 17) }],
@@ -159,7 +166,7 @@ export class Folk {
     for (const j of this.joiners) {
       const p = j.p!;
       const here = j.leg === leg.index, kept = j.stay !== undefined && leg.index > j.leg;
-      if (!here && !kept) { p.k = 0; continue; }
+      if ((!here && !kept) || (kept && leg.hideKept)) { p.k = 0; continue; }
       const a = t - j.tj, go = j.tj + (j.go ?? 0.35);
       let s: number, side: number, yaw: number;
       if (kept) {
@@ -187,7 +194,7 @@ export class Folk {
       if (j.look === 'dust') {
         p.color.copy(j.grey!).lerp(j.color, smoothstep(0, 0.5, a));
         p.k = (0.32 + 0.68 * lit * smoothstep(0, 0.5, a) + 1.6 * flash) * (kept ? 1 : 1);
-      } else p.k = 0.38 + 0.62 * smoothstep(0, 0.6, Math.max(a, 0)) + 0.9 * flash;
+      } else p.k = 0.5 + 0.5 * smoothstep(0, 0.6, Math.max(a, 0)) + 0.9 * flash;
     }
     // the stream
     for (const m of this.stream) {
@@ -200,6 +207,18 @@ export class Folk {
       p.k = smoothstep(m.from, m.from + 0.6, t) * (0.85 + 0.15 * Math.sin(t * 3 + m.ph));
     }
     this.crowd.update(t, cam);
+    // far people: a soft glow at the chest
+    const cp = cam.position, B = this.beacons;
+    let n = 0;
+    for (const p of this.crowd.people) {
+      const k = typeof p.k === 'number' ? p.k : 0;
+      if (k < 0.05 || n >= B.n) continue;
+      const d = p.pos.distanceTo(cp);
+      const f = smoothstep(14, 45, d);
+      if (f <= 0) continue;
+      B.set(n++, p.pos.x, p.pos.y + 1.15, p.pos.z, p.color, 0.5 * k * f, 1);
+    }
+    B.commit(n);
   }
 
   /** The brightest people near a point, as lights for the city's walls (max n). */
@@ -210,7 +229,7 @@ export class Folk {
       if (k < 0.3) continue;
       const d = p.pos.distanceTo(near);
       if (d > 60) continue;
-      out.push({ pos: p.pos.clone().setY(p.pos.y + 1.2), color: p.color.clone().multiplyScalar(0.35 * Math.min(k, 1.5)), radius: 5, d });
+      out.push({ pos: p.pos.clone().setY(p.pos.y + 1.2), color: p.color.clone().multiplyScalar(0.07 * Math.min(k, 1.5)), radius: 3, d });
     }
     out.sort((a, b) => a.d - b.d);
     return out.slice(0, n);

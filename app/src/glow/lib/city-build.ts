@@ -7,6 +7,45 @@
 import * as THREE from 'three';
 import { CITY_GLSL, FACADE_GLSL, type CityUniforms } from './city-glsl';
 
+// ---------------------------------------------------------------- merging
+
+/**
+ * Expand an instanced geometry into one static geometry (every instance attribute repeated per vertex, same
+ * names, so the same shaders work). SwiftShader (the cloud renderer) handles instanced draws instance by
+ * instance, which is slow for thousands of small instances; merged buffers are drawn in one go.
+ */
+export function mergeInstanced(g: THREE.InstancedBufferGeometry): THREE.BufferGeometry {
+  const n = g.instanceCount;
+  const out = new THREE.BufferGeometry();
+  const base = g.index;
+  const vCount = g.attributes.position!.count;
+  for (const [name, attr] of Object.entries(g.attributes)) {
+    const a = attr as THREE.BufferAttribute;
+    const isInst = (a as THREE.InstancedBufferAttribute).isInstancedBufferAttribute;
+    const sz = a.itemSize, src = a.array as Float32Array;
+    const dst = new Float32Array(n * vCount * sz);
+    if (isInst) {
+      for (let i = 0; i < n; i++) {
+        const off = i * vCount * sz;
+        for (let v = 0; v < vCount; v++) for (let c = 0; c < sz; c++) dst[off + v * sz + c] = src[i * sz + c]!;
+      }
+    } else {
+      for (let i = 0; i < n; i++) dst.set(src.subarray(0, vCount * sz), i * vCount * sz);
+    }
+    const ba = new THREE.BufferAttribute(dst, sz);
+    ba.onUpload(function (this: THREE.BufferAttribute) { (this as { array: unknown }).array = new Float32Array(0); });
+    out.setAttribute(name, ba);
+  }
+  if (base) {
+    const bi = base.array, m = bi.length;
+    const idx = n * vCount > 65535 ? new Uint32Array(n * m) : new Uint16Array(n * m);
+    for (let i = 0; i < n; i++) for (let k = 0; k < m; k++) idx[i * m + k] = bi[k]! + i * vCount;
+    out.setIndex(new THREE.BufferAttribute(idx, 1));
+  }
+  out.boundingSphere = g.boundingSphere?.clone() ?? null;
+  return out;
+}
+
 // ---------------------------------------------------------------- buildings
 
 /** A box without its bottom: x, z in [-0.5, 0.5], y in [0, 1]. */
@@ -60,8 +99,10 @@ export function buildingMaterial(U: CityUniforms) {
       varying vec3 vW, vN, vC, vS; varying vec4 vF0, vF1, vF2, vF3;
       void main() {
         vec3 N = normalize(vN), V = normalize(vW - cameraPosition);
-        float p = power(vW.xz);
-        vec3 c;
+        vec3 c; float p = 1.0;
+        c = N * 0.1 + 0.1;
+        for (int dbg = 0; dbg < (uDebug > 0.5 ? 0 : 1); dbg++) {
+        p = power(vW.xz);
         if (N.y > 0.5) c = roofShade(vW, vC, vS, vF0, vF2, p);
         else if (vF0.y > 6.5) {
           // bulkheads and mechanical floors: painted brick / louvres, a lit door on some
@@ -81,6 +122,7 @@ export function buildingMaterial(U: CityUniforms) {
         } else {
           float wa;
           c = facade(vW, N, V, vC, vS, vF0, vF1, vF2, vF3, p, wa);
+        }
         }
         c = cityFog(c, vW, p);
         gl_FragColor = vec4(c, 1.0);
@@ -116,11 +158,25 @@ export function buildingBatch(list: BInst[], mat: THREE.Material, origin: THREE.
   const hMax = list.reduce((m, b) => Math.max(m, b.y0 + b.h), 0);
   g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, hMax / 2, 0), Math.sqrt(r2) + hMax / 2 + 1);
   g.boundingBox = new THREE.Box3(new THREE.Vector3(-1e4, 0, -1e4), new THREE.Vector3(1e4, hMax, 1e4));
-  const m = new THREE.Mesh(g, mat);
+  const m = new THREE.Mesh(MERGE ? mergeInstanced(g) : g, mat);
   m.position.copy(origin);
   m.matrixAutoUpdate = false;
   m.updateMatrix();
   return m;
+}
+
+/** merge instances into static buffers (see mergeInstanced) */
+export const MERGE = true;
+
+/** A depth-only copy of a building batch drawn first, so each pixel of the facades is shaded once. */
+export function depthPrepass(m: THREE.Mesh, mat: THREE.ShaderMaterial) {
+  const d = new THREE.ShaderMaterial({ vertexShader: mat.vertexShader, fragmentShader: 'void main(){ gl_FragColor = vec4(0.0); }', colorWrite: false });
+  const pm = new THREE.Mesh(m.geometry, d);
+  pm.position.copy(m.position);
+  pm.matrixAutoUpdate = false;
+  pm.updateMatrix();
+  pm.renderOrder = -5;
+  return pm;
 }
 
 // ---------------------------------------------------------------- rings (parapets, cornices)

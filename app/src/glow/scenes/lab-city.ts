@@ -24,7 +24,8 @@ export default class LabCity extends Scene {
     const S = this.st;
     this.city = new City({ seed: 11, half: 1700, centre: [80, -950], downtownR: 520, clouds: 800 });
     S.add(this.city, this.dots);
-    (window as unknown as { __labCity: LabCity }).__labCity = this;
+    (window as unknown as { __labCity: LabCity; __THREE: unknown }).__labCity = this;
+    (window as unknown as { __THREE: unknown }).__THREE = THREE;
     // stats: instanced vertices per kind of mesh
     const st: Record<string, [number, number, number]> = {};
     this.city.traverse((o) => {

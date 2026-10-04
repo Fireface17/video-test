@@ -60,7 +60,7 @@ export function passengerMaterial(ghost: THREE.Color, glow: THREE.Color) {
         vec3 g = color * (0.05 + 0.3 * pow(rim, 1.5) + 0.8 * pow(rim, 4.0));
         vec3 wn = normalize(vWN);
         vec3 d = phone.xyz - vW; float dd = dot(d, d);
-        float pl = phone.w * 0.05 / (0.025 + dd) * (max(dot(wn, d * inversesqrt(max(dd, 1e-5))), 0.0) * 0.9 + 0.1);
+        float pl = phone.w * 0.03 / (0.02 + dd) * (max(dot(wn, d * inversesqrt(max(dd, 1e-5))), 0.0) * 0.9 + 0.1);
         g += phoneC * pl * (0.35 + 0.65 * f);
         g += fill * (0.3 + 0.7 * rim);
         // the person of light

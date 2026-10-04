@@ -609,7 +609,23 @@ export function truckGeometry() {
 
 export interface Vehicle { dir: 1 | -1; x: number; u0: number; v: number; truck: boolean; tint: THREE.Color; len: number }
 /** Our own path (to keep the traffic out of our lane) and the stretch of road that must be empty at the end. */
-export interface Route { s: (t: number) => number; x: (t: number) => number; active: (t: number) => boolean; t0: number; t1: number; quiet: [number, number] }
+/** A view that must stay clear of traffic: from `eye(t)` to each of `targets` during [t0, t1]. */
+export interface View { t0: number; t1: number; eye: (t: number) => THREE.Vector3; targets: THREE.Vector3[] }
+export interface Route { s: (t: number) => number; x: (t: number) => number; active: (t: number) => boolean; t0: number; t1: number; quiet: [number, number]; views?: View[] }
+
+/** Does the segment a→b pass through the box (centre c, half-size h)? (slab test) */
+function segBox(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, h: THREE.Vector3) {
+  let t0 = 0, t1 = 1;
+  for (const k of ['x', 'y', 'z'] as const) {
+    const d = b[k] - a[k], lo = c[k] - h[k], hi = c[k] + h[k];
+    if (Math.abs(d) < 1e-9) { if (a[k] < lo || a[k] > hi) return false; continue; }
+    let u0 = (lo - a[k]) / d, u1 = (hi - a[k]) / d;
+    if (u0 > u1) [u0, u1] = [u1, u0];
+    t0 = Math.max(t0, u0); t1 = Math.min(t1, u1);
+    if (t0 > t1) return false;
+  }
+  return true;
+}
 
 export class Traffic extends THREE.Group {
   bodies: THREE.InstancedMesh;
@@ -642,12 +658,22 @@ export class Traffic extends THREE.Group {
     }
     // keep them out of our way: never in our lane near us, and away from the last stretch (it ends dark)
     const T = (v: Vehicle, t: number) => v.u0 + v.dir * v.v * (t - route.t0);
+    const c = new THREE.Vector3(), h = new THREE.Vector3();
     const clash = (v: Vehicle) => {
       for (let t = route.t0; t <= route.t1 + 0.4; t += 0.05) {
         const gap = T(v, t) - route.s(t);
-        if (t >= route.quiet[0] && t <= route.quiet[1] && gap > -60 && gap < 900) return true;
+        if (t >= route.quiet[0] && t <= route.quiet[1] && gap > -600 && gap < 1600) return true;
         if (v.dir < 0 || !route.active(t)) continue;
         if (Math.abs(gap) < v.len / 2 + 22 && Math.abs(v.x - route.x(t)) < 2.9) return true;
+      }
+      // keep the lines of sight to the words clear
+      for (const vw of route.views ?? []) {
+        for (let t = vw.t0; t <= vw.t1; t += 0.05) {
+          const u = T(v, t);
+          c.set(v.x, v.truck ? 2.1 : 0.8, -u); h.set(v.truck ? 1.4 : 1.05, v.truck ? 2.2 : 0.85, v.len / 2 + 0.5);
+          const e = vw.eye(t);
+          for (const tg of vw.targets) if (segBox(e, tg, c, h)) return true;
+        }
       }
       return false;
     };

@@ -44,7 +44,7 @@ vec3 cabPoint(vec3 P, vec3 N, vec3 L0, vec3 col, float r0) {
 }
 vec3 cabLight(vec3 P, vec3 N, vec3 V, float shine, out vec3 spec) {
   vec3 c = cAmb * (0.55 + 0.45 * N.y);
-  c += cabPoint(P, N, cHandA, cHandCol, 0.16) + cabPoint(P, N, cHandB, cHandCol, 0.16);
+  c += cabPoint(P, N, cHandA, cHandCol, 0.24) + cabPoint(P, N, cHandB, cHandCol, 0.24);
   c += cabPoint(P, N, cDashPos, cDash, 0.12);
   c += cFrontCol * max(dot(N, cFrontDir), 0.0) + cTopCol * max(dot(N, cTopDir), 0.0);
   spec = vec3(0.0);
@@ -219,71 +219,80 @@ export class Cabin extends THREE.Group {
     WIPER.pivots.forEach(([px, py], i) => {
       const pivot = new THREE.Group();
       const L = WIPER.len[i]!;
-      const arm = new THREE.Mesh(merge([boxAt(L * 0.55, 0.012, 0.012, L * 0.3, 0, 0.012), boxAt(0.035, 0.035, 0.03, 0, 0, 0.012)]), wiperMat);
-      const blade = new THREE.Mesh(boxAt(L * 0.82, 0.018, 0.016, L * 0.58, 0.004, 0.006), wiperMat);
+      const arm = new THREE.Mesh(merge([boxAt(L * 0.55, 0.012, 0.012, L * 0.3, 0, -0.016), boxAt(0.035, 0.035, 0.03, 0, 0, -0.016)]), wiperMat);
+      const blade = new THREE.Mesh(boxAt(L * 0.82, 0.018, 0.016, L * 0.58, 0.004, -0.01), wiperMat);
       pivot.add(arm, blade);
       const holder = new THREE.Group();
       holder.matrixAutoUpdate = false;
-      holder.matrix.copy(this.glassToCar).multiply(new THREE.Matrix4().makeTranslation(px, py, 0.004));
+      holder.matrix.copy(this.glassToCar).multiply(new THREE.Matrix4().makeTranslation(px, py, -0.004));
       holder.add(pivot);
       this.add(holder);
       this.wipers.push(pivot);
     });
 
-    // ---- body: roof lining, A-pillars, dashboard, binnacle, centre console, doors, seats
-    const dark = cabMat(C('#14161a', 0.8), 0.15);
-    const darker = cabMat(C('#0c0d10', 0.8), 0.1);
+    // ---- body: roof lining, A-pillars, dashboard, binnacle, centre stack, doors, seats
+    const plastic = cabMat(C('#3a3d44'), 0.04);
+    const soft = cabMat(C('#2a2c31'), 0.02);
+    const trim = cabMat(C('#1c1d21'), 0.08);
     const roof = new THREE.Mesh(merge([
       boxAt(2.0, 0.04, 1.4, 0.37, 0.28, 0.1),
       rod(GL_TL.clone().add(new THREE.Vector3(-0.02, 0.03, 0)), GL_TR.clone().add(new THREE.Vector3(0.02, 0.03, 0)), 0.05, 0.05, 6),
-    ]), darker);
+    ]), trim);
     const pillars = new THREE.Mesh(merge([
       rod(GL_BL.clone().add(new THREE.Vector3(-0.03, -0.02, 0)), GL_TL.clone().add(new THREE.Vector3(-0.03, 0.04, 0.02)), 0.055, 0.045, 8),
       rod(GL_BR.clone().add(new THREE.Vector3(0.03, -0.02, 0)), GL_TR.clone().add(new THREE.Vector3(0.03, 0.04, 0.02)), 0.055, 0.045, 8),
-    ]), darker);
-    // the dash top: a long rounded slab under the glass, falling toward the cabin
+    ]), trim);
+    // the dash: a soft top under the glass, a rounded front edge, the face falling to the footwell
     const dash = new THREE.Mesh(merge([
-      boxAt(1.9, 0.05, 0.5, 0.37, -0.255, -0.62, 0, 0, -0.08),
-      boxAt(1.9, 0.32, 0.06, 0.37, -0.42, -0.38, 0, 0, 0.25),
-      boxAt(0.36, 0.42, 0.42, 0.42, -0.62, -0.42), // centre stack
-      boxAt(0.3, 0.12, 0.9, 0.42, -0.62, 0.15),     // centre console
-    ]), dark);
-    // instrument binnacle (a hood over the cluster)
-    const binn = new THREE.Mesh(merge([boxAt(0.5, 0.025, 0.2, 0, -0.205, -0.66, 0, 0, -0.12), boxAt(0.5, 0.09, 0.02, 0, -0.245, -0.565)]), darker);
-    // the passenger seat (cushion, back, headrest) and the driver's door panel
-    const seatMat = cabMat(C('#1b1c22', 0.9), 0.05);
+      new RoundedBoxGeometry(2.0, 0.07, 0.46, 3, 0.03).rotateX(-0.06).translate(0.37, -0.262, -0.68),
+      new RoundedBoxGeometry(2.0, 0.34, 0.1, 3, 0.04).rotateX(0.22).translate(0.37, -0.44, -0.47),
+    ]), soft);
+    // instrument binnacle: a visor over the cluster, with cheeks
+    const binn = new THREE.Mesh(merge([
+      new RoundedBoxGeometry(0.52, 0.03, 0.15, 3, 0.012).rotateX(-0.12).translate(0, -0.152, -0.68),
+      boxAt(0.02, 0.09, 0.14, -0.25, -0.2, -0.68), boxAt(0.02, 0.09, 0.14, 0.25, -0.2, -0.68),
+      boxAt(0.5, 0.12, 0.02, 0, -0.235, -0.735), // the cluster's back panel
+    ]), plastic);
+    // centre stack with two vents and the gear selector on the console
+    const stack = new THREE.Mesh(merge([
+      boxAt(0.32, 0.36, 0.08, 0.42, -0.48, -0.5, 0, 0, 0.18),
+      boxAt(0.26, 0.12, 0.6, 0.42, -0.62, -0.12),
+      new THREE.CylinderGeometry(0.018, 0.022, 0.1, 10).translate(0.42, -0.52, -0.18),
+      new THREE.SphereGeometry(0.03, 12, 8).translate(0.42, -0.46, -0.18),
+    ]), plastic);
+    const vents = new THREE.Mesh(merge([boxAt(0.11, 0.05, 0.012, 0.35, -0.33, -0.535, 0, 0, 0.18), boxAt(0.11, 0.05, 0.012, 0.49, -0.33, -0.535, 0, 0, 0.18), boxAt(0.12, 0.05, 0.012, -0.36, -0.29, -0.585, 0.2, 0, 0.1)]), trim);
+    // the passenger seat (cushion, back, headrest) and the door panels
+    const seatMat = cabMat(C('#3a3c44'), 0.02);
     const seat = new THREE.Mesh(merge([
-      new RoundedBoxGeometry(0.52, 0.13, 0.52, 3, 0.05).translate(0.76, -0.66, -0.05),
+      new RoundedBoxGeometry(0.52, 0.13, 0.56, 3, 0.05).translate(0.76, -0.66, -0.1),
       new RoundedBoxGeometry(0.52, 0.66, 0.13, 3, 0.05).rotateX(-0.22).translate(0.76, -0.32, 0.25),
       new RoundedBoxGeometry(0.28, 0.2, 0.1, 3, 0.04).translate(0.76, 0.1, 0.32),
     ]), seatMat);
-    const doors = new THREE.Mesh(merge([boxAt(0.06, 0.4, 1.2, -0.62, -0.45, -0.1), boxAt(0.06, 0.4, 1.2, 1.36, -0.45, -0.1)]), dark);
-    this.add(roof, pillars, dash, binn, seat, doors);
+    const doors = new THREE.Mesh(merge([boxAt(0.06, 0.4, 1.2, -0.62, -0.45, -0.1), boxAt(0.06, 0.4, 1.2, 1.36, -0.45, -0.1)]), soft);
+    this.add(roof, pillars, dash, binn, stack, vents, seat, doors);
 
-    // ---- the instrument cluster: two dials with dim backlit graphics and orange needles
+    // ---- the instrument cluster: two dials with dim backlit graphics and orange needles, facing his eyes
     const dialTex = canvasTex(dialCanvas(), { aniso: 8 });
     this.dialMat = new THREE.MeshBasicMaterial({ map: dialTex, color: C('#ffffff', 0.3) });
-    for (const [x, kind] of [[-0.105, 0], [0.105, 1]] as const) {
-      const d = new THREE.Mesh(new THREE.CircleGeometry(0.07, 48), this.dialMat);
+    for (const [x, kind] of [[-0.11, 0], [0.11, 1]] as const) {
+      const d = new THREE.Mesh(new THREE.CircleGeometry(0.068, 48), this.dialMat);
       const uvs = d.geometry.getAttribute('uv') as THREE.BufferAttribute;
       for (let i = 0; i < uvs.count; i++) uvs.setX(i, uvs.getX(i) * 0.5 + 0.5 * kind);
-      d.position.set(x, -0.27, -0.6);
-      d.rotation.x = -0.12;
+      d.position.set(x, -0.232, -0.725);
+      d.rotation.x = -0.3;
       this.add(d);
       const needle = new THREE.Mesh(boxAt(0.058, 0.0035, 0.002, 0.024, 0, 0.002), new THREE.MeshBasicMaterial({ color: C('#ff5a1e', 1.6) }));
       const piv = new THREE.Group();
-      piv.position.copy(d.position).add(new THREE.Vector3(0, 0, 0.003));
-      piv.rotation.x = -0.12;
+      piv.position.copy(d.position).add(new THREE.Vector3(0, 0.001, 0.003));
+      piv.rotation.x = -0.3;
       piv.add(needle);
       this.add(piv);
       this.needles.push({ m: needle, a0: 225 * DEG, a1: -45 * DEG });
-      // (the needle mesh is rotated in its pivot group)
-      needle.position.set(0, 0, 0);
     }
 
     // ---- the dash-top display: radio (amber dot matrix, two rows)
     const disp = new THREE.Group();
-    const frame = new THREE.Mesh(new RoundedBoxGeometry(0.21, 0.09, 0.02, 3, 0.008), darker);
+    const frame = new THREE.Mesh(new RoundedBoxGeometry(0.21, 0.09, 0.02, 3, 0.008), trim);
     disp.add(frame);
     for (let i = 0; i < 2; i++) {
       const r = new LedRow(10, 0.018, C('#ffb347', 1.6), ledGlyphs());
@@ -293,9 +302,9 @@ export class Cabin extends THREE.Group {
       this.radio.push(r);
     }
     this.radio[0]!.setText('FM 101.7  ');
-    disp.position.set(0.42, -0.19, -0.67);
-    disp.rotation.x = -0.28;
-    disp.rotation.y = -0.18;
+    disp.position.set(0.42, -0.19, -0.68);
+    disp.rotation.x = -0.25;
+    disp.rotation.y = -0.22;
     this.add(disp);
 
     // ---- the phone on the passenger seat: 0%, the empty battery blinking
@@ -314,14 +323,14 @@ export class Cabin extends THREE.Group {
     this.phoneLight.rotation.x = -Math.PI / 2;
     this.phoneLight.position.y = -0.002;
     ph.add(body, scr, this.phoneLight);
-    ph.position.set(0.66, -0.587, -0.14);
-    ph.rotation.set(0.0, 0.5, 0.0);
+    ph.position.set(0.6, -0.587, -0.3);
+    ph.rotation.set(0.0, 0.62, 0.0);
     this.add(ph);
 
     // ---- the rear-view mirror (housing, stem, glass showing the view behind, flipped)
-    const housing = new THREE.Mesh(new RoundedBoxGeometry(0.27, 0.085, 0.045, 4, 0.028), darker);
+    const housing = new THREE.Mesh(new RoundedBoxGeometry(0.27, 0.085, 0.045, 4, 0.028), trim);
     housing.position.z = -0.02;
-    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.012, 0.12, 8), darker);
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.012, 0.12, 8), trim);
     stem.position.set(0, 0.075, -0.03);
     this.mirrorU = { tex: { value: mirrorTex }, k: { value: 1 }, sweep: { value: 0 } };
     const mg = new THREE.Mesh(new THREE.PlaneGeometry(0.245, 0.066), new THREE.ShaderMaterial({
@@ -343,12 +352,13 @@ export class Cabin extends THREE.Group {
     }));
     mg.position.z = 0.004;
     this.mirror.add(housing, stem, mg);
-    this.mirror.position.set(0.37, 0.115, -0.5);
+    this.mirror.position.set(0.35, 0.085, -0.5);
     this.mirror.rotation.set(0.06, -0.33, 0.012, 'YXZ');
     this.add(this.mirror);
 
     // ---- the bonnet, seen through the glass
     this.hood = new Hood(skyU);
+    this.hood.position.x = 0.37;
     this.add(this.hood);
   }
 
@@ -362,7 +372,7 @@ export class Cabin extends THREE.Group {
     for (const m of fig.meshes) if (/Head|Eye|Teeth|Beard|Hair/.test(m.name)) { m.visible = false; hideGeo.add(m.geometry); }
     fig.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && hideGeo.has(m.geometry)) { m.visible = false; this.hidden.push(m); } });
     fig.rotation.y = Math.PI; // facing -z
-    fig.setSpine(-0.18, 0, 0.12, 0);
+    fig.setSpine(-0.05, 0, 0.1, 0);
     fig.setLeg(0, new THREE.Vector3(0.08, -0.15, 1).normalize(), new THREE.Vector3(0.02, -1, 0.3).normalize());
     fig.setLeg(1, new THREE.Vector3(-0.08, -0.15, 1).normalize(), new THREE.Vector3(-0.02, -1, 0.3).normalize());
     this.add(fig);
@@ -376,16 +386,29 @@ export class Cabin extends THREE.Group {
   }
 
   private buildWheel() {
+    // place the wheel so that his hands at ten and two hold it with the elbows a little bent
+    const fig = this.fig;
+    fig.updateMatrixWorld(true);
+    const sh = this.worldToLocal(fig.bone('RightArm').getWorldPosition(new THREE.Vector3()));
+    const arm = fig.upper + fig.fore;
+    let best = -0.4, err = 1e9;
+    for (let z = -0.28; z > -0.62; z -= 0.005) {
+      this.wheelC.set(0, -0.3, z);
+      const g = this.rimPoint(30 * DEG);
+      const e = Math.abs(g.distanceTo(sh) - 0.86 * arm);
+      if (e < err) { err = e; best = z; }
+    }
+    this.wheelC.set(0, -0.3, best);
     const g = this.wheel;
     const R = this.wheelR;
-    const leather = cabMat(C('#121214', 0.9), 0.55);
+    const leather = cabMat(C('#4a4c52'), 0.5);
     const rim = new THREE.Mesh(new THREE.TorusGeometry(R, 0.017, 12, 64), leather);
     const spokes = new THREE.Mesh(merge([
-      boxAt(R * 1.75, 0.03, 0.022, 0, -0.01, 0.005),
-      boxAt(0.04, R * 0.9, 0.022, 0, -R * 0.5, 0.005),
-      new THREE.CylinderGeometry(0.06, 0.07, 0.05, 24).rotateX(Math.PI / 2).translate(0, 0, 0.012),
+      boxAt(R * 1.7, 0.035, 0.024, 0, -0.012, 0.004),
+      boxAt(0.05, R * 0.9, 0.024, 0, -R * 0.5, 0.004),
+      new RoundedBoxGeometry(0.15, 0.11, 0.05, 3, 0.02).translate(0, -0.01, 0.014),
     ]), leather);
-    const column = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.3, 12).rotateX(Math.PI / 2).translate(0, 0, -0.16), cabMat(C('#0b0b0d'), 0.2));
+    const column = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.3, 12).rotateX(Math.PI / 2).translate(0, 0, -0.16), cabMat(C('#1c1d21'), 0.1));
     g.add(rim, spokes, column);
     g.position.copy(this.wheelC);
     g.rotation.x = this.wheelTilt; // the top of the rim away from him
@@ -443,7 +466,7 @@ export class Cabin extends THREE.Group {
       fig.updateMatrixWorld(true);
       CU.cHandA.value.copy(fig.hand(0));
       CU.cHandB.value.copy(fig.hand(1));
-      CU.cHandCol.value.copy(C('#5fd8ff', 0.11 * s.hand));
+      CU.cHandCol.value.copy(C('#5fd8ff', 1.3 * s.hand));
     }
   }
 }

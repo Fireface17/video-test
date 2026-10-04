@@ -19,7 +19,9 @@ export function cityKitMat(city: City) {
 
 /** One kit placed in the city at (x, y, z), turned by yaw (local +x → world (cos yaw, 0, −sin yaw)). */
 export function placeKit(city: City, k: KitBuilder, x: number, y: number, z: number, yaw = 0, light = 1) {
-  return kitBatch(k.geometry(), [{ x, y, z, yaw, sx: 1, sy: 1, sz: 1, col: [1, 1, 1], k: light }], cityKitMat(city), new THREE.Vector3(x, 0, z), 6);
+  const m = kitBatch(k.geometry(), [{ x, y, z, yaw, sx: 1, sy: 1, sz: 1, col: [1, 1, 1], k: light }], cityKitMat(city), new THREE.Vector3(x, 0, z), 6);
+  m.frustumCulled = false;
+  return m;
 }
 
 /** A yellow cab, nose toward local +x (4.7 m long), wheels on y = 0. */
@@ -104,8 +106,8 @@ export class BrokenWindow extends THREE.Group {
     const cx = 0, cy = h * 0.52, hole: [number, number][] = [];
     const N = 22;
     for (let i = 0; i < N; i++) {
-      const a = (i / N) * Math.PI * 2, rr = (i % 2 ? 0.55 : 0.85) * (0.75 + r() * 0.4);
-      hole.push([cx + Math.cos(a) * rr * w * 0.36, cy + Math.sin(a) * rr * h * 0.36]);
+      const a = (i / N) * Math.PI * 2, rr = (0.45 + 0.55 * r()) * (i % 3 === 0 ? 1.15 : 0.85);
+      hole.push([cx + Math.cos(a) * rr * w * 0.42, cy + Math.sin(a) * rr * h * 0.4]);
     }
     const W = (u: number, v: number): number[] => [base.x + tx.x * u + n.x * 0.03, base.y + v, base.z + tx.z * u + n.z * 0.03];
     for (let i = 0; i < N; i++) {
@@ -117,7 +119,17 @@ export class BrokenWindow extends THREE.Group {
     }
     k.box(base.x + n.x * 0.04, base.y + h + 0.04, base.z + n.z * 0.04, Math.abs(tx.x) * w + Math.abs(n.x) * 0.1 + 0.08, 0.08, Math.abs(tx.z) * w + Math.abs(n.z) * 0.1 + 0.08, frame);
     k.box(base.x + n.x * 0.04, base.y - 0.04, base.z + n.z * 0.04, Math.abs(tx.x) * w + Math.abs(n.x) * 0.1 + 0.08, 0.08, Math.abs(tx.z) * w + Math.abs(n.z) * 0.1 + 0.08, frame);
-    this.add(kitBatch(k.geometry(), [{ x: 0, y: 0, z: 0, yaw: 0, sx: 1, sy: 1, sz: 1, col: [1, 1, 1], k: 1 }], cityKitMat(city), new THREE.Vector3(0, 0, 0), 8));
+    // behind the glass, the empty shop: dark walls, a little street light on its floor
+    const inC = [0.012, 0.012, 0.014, M.ALB];
+    const B = (u: number, v: number, dn: number): number[] => [base.x + tx.x * u - n.x * dn, base.y + v, base.z + tx.z * u - n.z * dn];
+    k.poly4(B(-w / 2, 0, 0.0), B(w / 2, 0, 0.0), B(w / 2, 0, 3), B(-w / 2, 0, 3), [0.05, 0.045, 0.04, M.ALB]);
+    k.poly4(B(-w / 2, h, 3), B(w / 2, h, 3), B(w / 2, 0, 3), B(-w / 2, 0, 3), inC);
+    k.poly4(B(-w / 2, h, 0), B(-w / 2, h, 3), B(-w / 2, 0, 3), B(-w / 2, 0, 0), inC);
+    k.poly4(B(w / 2, h, 3), B(w / 2, h, 0), B(w / 2, 0, 0), B(w / 2, 0, 3), inC);
+    k.poly4(B(-w / 2, h, 0), B(w / 2, h, 0), B(w / 2, h, 3), B(-w / 2, h, 3), inC);
+    const mesh = kitBatch(k.geometry(), [{ x: 0, y: 0, z: 0, yaw: 0, sx: 1, sy: 1, sz: 1, col: [1, 1, 1], k: 1 }], cityKitMat(city), new THREE.Vector3(0, 0, 0), 8);
+    mesh.frustumCulled = false;
+    this.add(mesh);
     // shards: thin triangles of glass (catching the light), later stars
     const tri = new THREE.BufferGeometry();
     tri.setAttribute('position', new THREE.Float32BufferAttribute([0, 0.5, 0, -0.35, -0.4, 0, 0.42, -0.3, 0], 3));
@@ -125,7 +137,7 @@ export class BrokenWindow extends THREE.Group {
     this.shards = new THREE.InstancedMesh(tri, new THREE.MeshBasicMaterial({ color: new THREE.Color(0.16, 0.18, 0.22), side: THREE.DoubleSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), count);
     this.starMat = new THREE.MeshBasicMaterial({ color: color.clone() });
     this.stars = new THREE.InstancedMesh(starGeometry(0.15, 0.04), this.starMat, count);
-    this.halos = new GlowPoints(count, 0.5);
+    this.halos = new GlowPoints(count, 0.06);
     this.shards.frustumCulled = this.stars.frustumCulled = false;
     this.add(this.shards, this.stars, this.halos);
     for (let i = 0; i < count; i++) {
@@ -166,7 +178,7 @@ export class BrokenWindow extends THREE.Group {
       this._m.compose(p, this._q, this._s.setScalar(it.s * 0.9 * ks + 1e-4));
       this.stars.setMatrixAt(i, this._m);
       const tw = 0.7 + 0.3 * Math.sin(t * 7 + i * 2.3);
-      this.halos.set(i, p.x, p.y, p.z, this.color, (0.15 * up * (1 - ks) + 0.9 * ks) * tw, 0.4 + it.s * 8);
+      this.halos.set(i, p.x, p.y, p.z, this.color, (0.1 * up * (1 - ks) + 0.8 * ks) * tw, 0.6 + it.s * 6);
     });
     this.shards.instanceMatrix.needsUpdate = this.stars.instanceMatrix.needsUpdate = true;
     this.halos.commit();

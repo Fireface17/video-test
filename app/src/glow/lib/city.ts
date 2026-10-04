@@ -16,7 +16,7 @@ import { GlowPoints } from './points';
 import { CityPlan, F, Grid, GRID, ST, faceNormal, type Building, type Tier } from './city-plan';
 import { cityUniforms, type CityUniforms } from './city-glsl';
 import {
-  KitBuilder, M, antennaGeometry, balconyGeometry, buildingBatch, buildingMaterial, fireEscapeGeometry, kitBatch, kitMaterial, ringBatch, ringGeometry, ringMaterial, roofBoxGeometry, waterTowerGeometry,
+  KitBuilder, M, antennaGeometry, balconyGeometry, buildingBatch, depthPrepass, buildingMaterial, fireEscapeGeometry, kitBatch, kitMaterial, ringBatch, ringGeometry, ringMaterial, roofBoxGeometry, waterTowerGeometry,
   type BInst, type KInst, type RInst,
 } from './city-build';
 import { bakeLightMap, cobraGeometry, groundMaterial, lampColor, lightAt, parkLampGeometry, slabMaterial, slabMesh, type LightMapInfo } from './city-street';
@@ -226,12 +226,15 @@ export class City extends THREE.Group {
   overpass: { x: number; y: number; z0: number; z1: number; lanes: number[] } | null = null;
   /** Multipliers for the lamps' glow and the shop signs (e.g. pulses on the kicks). */
   lampGain = 1;
+  /** Draw the wet-street reflections (when the camera is low enough). */
+  mirrorOn = true;
   private lampSeeds: number[] = [];
   private lampBase: Float32Array;
   private beaconSpots: [number, number, number, number][] = [];
   private mirror?: Mirror;
   /** the distance-drawn groups of small things (hidden from the mirror pass) */
   lods: THREE.Object3D[] = [];
+  prepass: THREE.Mesh[] = [];
   midTiles!: TileSet<unknown>;
   nearTiles!: TileSet<unknown>;
   private o: CityOpts;
@@ -292,7 +295,8 @@ export class City extends THREE.Group {
       water: waterTowerGeometry(), roofBox: roofBoxGeometry(), ant: antennaGeometry(), fe: fireEscapeGeometry(), bal: balconyGeometry(), cobra: cobraGeometry(), park: parkLampGeometry(),
     };
     const rad: Record<string, number> = { water: 8, roofBox: 3, ant: 1, fe: 4, bal: 2, cobra: 10, park: 5 };
-    for (const [k, list] of big) this.add(buildingBatch(list, this.mat, bigO.get(k)!));
+    for (const [k, list] of big) { const m = buildingBatch(list, this.mat, bigO.get(k)!); this.add(m); this.prepass.push(depthPrepass(m, this.mat)); }
+    this.add(...this.prepass);
     this.lods = [];
     const make = (kind: string, list: unknown[], origin: THREE.Vector3) => {
       if (kind === 'cornice') return ringBatch(geoRingC, list as RInst[], ringMat, origin);
@@ -398,7 +402,7 @@ export class City extends THREE.Group {
     // ---- the wet ground's reflections ----
     if (o.mirror !== false) {
       this.mirror = new Mirror(this, mirrorHide);
-      this.ground.onBeforeRender = (renderer, scene, camera) => this.mirror!.update(renderer, scene, camera as THREE.PerspectiveCamera);
+      this.ground.onBeforeRender = (renderer, scene, camera) => { if (this.mirrorOn) this.mirror!.update(renderer, scene, camera as THREE.PerspectiveCamera); else this.U.uMirrorOn.value = 0; };
     }
   }
 

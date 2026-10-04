@@ -120,11 +120,11 @@ export default class Highway extends Scene {
     T.l2 = beatBefore(L2.start);
     T.sun = nearestBeat(L2.words[3]!.start);
     T.sank = L2.words[7]!.start;
-    T.dead = beatAfter(T.sank + 0.3);
     T.l3 = beatBefore(L3.start);
+    T.dead = T.l3 - 0.14; // (the screen is dead a moment before the cut: night all around it)
     T.pylon = nextDown(L3.words[2]!.start - 0.1);
     T.out = Math.min(this.downs.find((x) => x > L3.words[4]!.start + 0.2) ?? this.S1 - 0.4, this.S1 - 0.3);
-    T.stall = T.out + 0.07;
+    T.stall = T.out + 0.05;
 
     // ---- the drive: speed and lane keys (eased between keys: no sudden changes)
     this.buildKeys();
@@ -134,7 +134,7 @@ export default class Highway extends Scene {
     this.sky = new Sky(this.tex.clouds);
     this.city = new City({ x: CITY.x, z: CITY.z, seed: 4242, hills: true, facing: 0 });
     // the city we left behind (seen in the mirror): the blackout runs through it toward us
-    this.cityBack = new City({ x: 260, z: 2300, seed: 777, n: 300, core: 0.9, spread: 0.7, facing: 0 });
+    this.cityBack = new City({ x: 240, z: 1750, seed: 777, n: 320, core: 0.85, spread: 0.6, facing: Math.PI * 0.5, lit: 1.8 });
     this.refl = new Reflection();
     const atlasWords = L0.words.map((w) => w.w);
     const atlas = wordAtlas(atlasWords);
@@ -154,7 +154,7 @@ export default class Highway extends Scene {
     // ---- travel (the car), then everything placed along it
     this.buildTravel();
     this.buildRows(atlas.slots);
-    this.gantryU = [this.sAt(T.gauge) + 30, this.sAt(T.l1) + 190];
+    this.gantryU = [this.sAt(T.gauge) + 30, this.sAt(T.l2) + 25];
 
     this.gauge = new Gauge();
 
@@ -178,9 +178,9 @@ export default class Highway extends Scene {
       this.land.exclude.push({ x, u, r: 26 });
     });
 
-    // the station: the pylon by the right shoulder, ~21 m ahead of us when the blackout catches up
+    // the station: the pylon by the right shoulder, ~30 m ahead of us when the blackout catches up
     this.station = new Station();
-    this.stationU = this.sAt(T.out) + 21;
+    this.stationU = this.sAt(T.out) + 30;
     this.station.position.set(18.2, 0, -this.stationU);
     this.station.rotation.y = 0.35;
     this.scene.add(this.station);
@@ -195,7 +195,7 @@ export default class Highway extends Scene {
     this.pic = new ScreenPicture(L2);
     await this.pic.build();
     this.screen = new GiantScreen(this.pic);
-    this.scrU = this.sAt(T.l2) + 380;
+    this.scrU = this.sAt(T.l2) + 340;
     this.screen.position.set(0, 0, -this.scrU);
     this.scene.add(this.screen);
     this.land.exclude.push({ x: 0, u: this.scrU, r: 110 });
@@ -205,6 +205,15 @@ export default class Highway extends Scene {
       s: (t) => this.sAt(t), x: (t) => this.carX(t), t0: this.W0, t1: this.W1,
       active: (t) => this.shotAt(t) !== 'gauge' && this.shotAt(t) !== 'pylon',
       quiet: [T.out - 0.1, this.W1],
+      views: [
+        ...this.boards.map((b, i) => ({
+          t0: i === 0 ? T.l1 : b.focus[0] - 0.3, t1: i === 2 ? T.l2 : b.focus[1] + 0.3, eye: (t: number) => new THREE.Vector3(this.carX(t), 1.05, -this.sAt(t)),
+          targets: [-5, 0, 5].map((dx) => new THREE.Vector3(b.x + dx * Math.cos(b.b.rotation.y), 6.3, -b.u + dx * Math.sin(b.b.rotation.y) * -1)),
+        })),
+        { t0: T.l2, t1: T.sun, eye: (t: number) => this.eyeAt(t), targets: [-50, 0, 50].map((dx) => new THREE.Vector3(dx, SCR.y0 + SCR.h * 0.56, -this.scrU)) },
+        { t0: T.sun, t1: T.l3, eye: (t: number) => new THREE.Vector3(this.carX(t) + 0.25, 1.9, -this.sAt(t)), targets: [-55, 0, 55].map((dx) => new THREE.Vector3(dx, SCR.y0 + SCR.h * 0.45, -this.scrU)) },
+        { t0: T.l3, t1: T.pylon, eye: (t: number) => new THREE.Vector3(this.carX(t), 1.25, -this.sAt(t)), targets: [new THREE.Vector3(6.4, 6.6, -this.vmsU)] },
+      ],
     });
     this.scene.add(this.traffic);
 
@@ -215,8 +224,8 @@ export default class Highway extends Scene {
     this.bridge.position.z = -this.bridgeU;
     this.signs = new RoadSigns([
       { u: this.sAt(19.2) + 70, x: 17.2, lines: ['Exit 24', 'Airport  1 mi'], color: '#0d5a33', w: 6.5, h: 3.2, exit: '24' },
-      { u: this.sAt(23.0) + 60, x: 17.6, lines: ['Exit 25', 'East  ½ mi'], color: '#0d5a33', w: 6, h: 3.0, exit: '25' },
-      { u: this.stationU - 160, x: 17.6, lines: ['SERVICES', 'Fuel · Food · 24 h'], color: '#1d3f8f', w: 7, h: 3.4 },
+      { u: this.sAt(T.l2) + 90, x: 17.6, lines: ['Exit 25', 'East  ½ mi'], color: '#0d5a33', w: 6, h: 3.0, exit: '25' },
+      { u: this.stationU - 95, x: 17.6, lines: ['SERVICES', 'Fuel · Food · 24 h'], color: '#1d3f8f', w: 7, h: 3.4 },
     ], this.sAt(this.W0) - 50, this.sAt(this.W1) + 600);
     this.scene.add(this.rain, this.steam, this.moths, this.power, this.bridge, this.signs);
     this.land.exclude.push({ x: -50, u: this.scrU - 140, r: 30 }, { x: 0, u: this.bridgeU, r: 70 });
@@ -342,13 +351,13 @@ export default class Highway extends Scene {
 
   /** The blackout: distance behind the car where the power is dead (negative: it has passed us). */
   private blackBehind(t: number) {
-    const T = this.T, hit = T.out + 0.05;
+    const T = this.T, hit = T.out + 0.03;
     if (t < hit) {
       const p = clamp((t - (T.l2 - 0.3)) / (hit - (T.l2 - 0.3)));
       return t < T.l2 - 0.3 ? 1e5 : 1500 * Math.pow(1 - p, 1.7);
     }
     const d = t - hit;
-    return -(d * 700 + d * d * 2600);
+    return -(d * 900 + d * d * 8000);
   }
 
   /** Blackout of the city behind: a block or two dies on every beat from the mirror shot on. */
@@ -366,9 +375,9 @@ export default class Highway extends Scene {
     const on = prog(t, T.l2 - 0.4, T.l2 + 0.1, ease.inOutQuad);
     const dawn = 0.12 + 0.3 * prog(t, w[0]!.start - 0.05, w[0]!.start + 0.4, ease.outQuad) + 0.58 * prog(t, w[2]!.start - 0.1, w[4]!.start + 0.2, ease.inOutCubic);
     const rise = -0.16 + 0.12 * prog(t, w[2]!.start - 0.05, w[3]!.start, ease.outQuad) + 0.21 * prog(t, w[3]!.start, w[4]!.start + 0.35, ease.inOutCubic) + 0.04 * prog(t, w[4]!.start + 0.35, T.sank, ease.linear);
-    const sink = 0.42 * prog(t, T.sank + 0.05, T.dead, ease.inQuad);
-    const glitch = clamp(prog(t, T.sank, T.sank + 0.12, ease.outQuad) * 0.35 + 0.65 * prog(t, T.sank + 0.18, T.dead - 0.1, ease.inQuad));
-    const off = prog(t, T.dead - 0.22, T.dead + 0.02, ease.linear);
+    const sink = 0.42 * prog(t, T.sank + 0.15, T.dead, ease.inQuad);
+    const glitch = clamp(prog(t, T.sank + 0.1, T.sank + 0.22, ease.outQuad) * 0.3 + 0.7 * prog(t, T.sank + 0.3, T.dead - 0.12, ease.inQuad));
+    const off = prog(t, T.dead - 0.26, T.dead, ease.linear);
     const stuck = off >= 1 ? Math.max(0, 1 - (t - T.dead) / 0.9) : off > 0.5 ? 1 : 0;
     const bright = on * (0.55 + 0.45 * dawn);
     const light = on * dawn * (1 - off) * (1 - 0.35 * glitch);
@@ -425,18 +434,18 @@ export default class Highway extends Scene {
       case 'mirror': {
         const p = prog(t, T.l2, T.sun, ease.inOutQuad);
         const pos = this.eyeAt(t).add(new THREE.Vector3(0.0, 0.004 * sway(3, 9), 0.02));
-        return { pos, yaw: (5 - 1.5 * p) * DEG + 0.006 * sway(0.4, 10), pitch: (-6.5 + 1.0 * p) * DEG, roll: 0.004 * sway(0.5, 11), fov: lerp(52, 49, p) };
+        return { pos, yaw: (5 - 1.0 * p) * DEG + 0.006 * sway(0.4, 10), pitch: (-8.5 + 0.8 * p) * DEG, roll: 0.004 * sway(0.5, 11), fov: lerp(49, 47, p) };
       }
       case 'sun': {
-        // from the roof: a long lens into the sunrise, slowly widening until the screen's edges show
+        // from the roof: a long lens into the sunrise over the road, slowly widening as the screen dies
         const p = prog(t, T.sun, T.dead + 0.1, ease.inOutCubic);
         const p2 = prog(t, T.dead, T.l3 + 0.3, ease.outQuad);
-        const pos = new THREE.Vector3(this.carX(t) + 0.25, 1.75 + 0.5 * p + 0.004 * sway(3, 12), -s);
-        const tgt = new THREE.Vector3(0, SCR.y0 + SCR.h * lerp(0.36, 0.42, p), -this.scrU);
+        const pos = new THREE.Vector3(this.carX(t) + 0.25, 1.75 + 0.45 * p + 0.004 * sway(3, 12), -s);
+        const tgt = new THREE.Vector3(0, SCR.y0 + SCR.h * lerp(0.44, 0.43, p), -this.scrU);
         const d = tgt.clone().sub(pos);
         const yaw = Math.atan2(d.x, -d.z) + 0.004 * sway(0.4, 13);
-        const pitch = Math.atan2(d.y, Math.hypot(d.x, d.z)) - lerp(2.2, 1.4, p) * DEG;
-        return { pos, yaw, pitch, roll: 0.003 * sway(0.4, 14), fov: lerp(15.5, 23, p) + 1.2 * p2 };
+        const pitch = Math.atan2(d.y, Math.hypot(d.x, d.z)) - lerp(1.6, 1.2, p) * DEG;
+        return { pos, yaw, pitch, roll: 0.003 * sway(0.4, 14), fov: lerp(14, 24, p) + 1.5 * p2 };
       }
       case 'station': {
         // braking toward the services: a long lens on the message sign ahead, easing as we come closer
@@ -459,11 +468,13 @@ export default class Highway extends Scene {
         return { pos, yaw: Math.atan2(d.x, -d.z), pitch: Math.atan2(d.y, Math.hypot(d.x, d.z)), roll: 0.03 + 0.006 * sway(0.4, 18), fov: lerp(30, 25, p) - breath };
       }
       case 'dark': {
-        // inside: his eyes turned toward the station; the stall pitches the car (and us) forward a touch
+        // inside: his eyes turned to the station as we pass it; the stall pitches the car (and us) forward
         const p = prog(t, T.out, this.W1, ease.inOutQuad);
         const pos = this.eyeAt(t);
-        const lurch = 0.6 * DEG * (springStep(t - T.stall, 1.6, 0.75));
-        return { pos, yaw: (23 - 3 * p) * DEG + 0.004 * sway(0.4, 19), pitch: (-7.5 - 0.5 * p) * DEG - lurch, roll: 0.004 * sway(0.4, 20), fov: 60 };
+        // (a smooth bump: the car dips as the engine dies, then settles)
+        const tau = t - T.stall;
+        const lurch = 0.7 * DEG * smoothstep(0, 0.18, tau) * (1 - smoothstep(0.18, 0.7, tau));
+        return { pos, yaw: (38 + 4 * p) * DEG + 0.004 * sway(0.4, 19), pitch: (-15.5 - 0.5 * p) * DEG - lurch, roll: 0.004 * sway(0.4, 20), fov: 66 };
       }
       default:
         return { pos: new THREE.Vector3(ROAD.laneX(1), 1.2, -s), yaw: 0, pitch: 0, roll: 0, fov: 50 };
@@ -508,14 +519,14 @@ export default class Highway extends Scene {
       if (t > t0 + dur) return 0;
       return hash(Math.floor(t * 40), seed) > 0.45 ? 1 : 0.08;
     };
-    const cityAheadK = after ? -0.05 + 1.25 * prog(t, T.out + 0.12, T.out + 0.42, ease.inQuad) : -1;
+    const cityAheadK = after ? -0.05 + 1.25 * prog(t, T.out + 0.08, T.out + 0.26, ease.inQuad) : -1;
     const cityK = 1 - 0.45 * clamp((this.backCityK(t) + 0.2) / 1.4) * 0.6 - 0.55 * clamp(cityAheadK + 0.05);
     const carPower = 1 - smoothstep(T.stall - 0.01, T.stall + 0.06, t);
 
     // ---- world state
     this.sky.update(pos, t, { scrDir, scrK: scrVisible ? ss.light : 0, cityK, cloudDrift: t });
     this.city.blackout(cityAheadK);
-    this.city.update(t, 0, HU.uHazeLo.value);
+    this.city.update(t, 0, HU.uHazeLo.value, cityAheadK > 0.55 ? 0 : cityAheadK > 0.35 ? (hash(Math.floor(t * 40), 31) > 0.5 ? 1 : 0) : 1);
     this.cityBack.blackout(this.backCityK(t));
     this.cityBack.update(t, 0, HU.uHazeLo.value);
     HU.uTime.value = t;
@@ -531,7 +542,7 @@ export default class Highway extends Scene {
     this.land.power(dB > 5e4 ? -1e9 : frontU, t);
     this.gantries.forEach((g, i) => (g.position.z = -this.gantryU[i]!));
     this.power.update(t);
-    this.bridge.update(t);
+    this.bridge.update(t, this.bridgeU < frontU ? 0 : this.bridgeU < frontU + 30 ? (hash(Math.floor(t * 22), 7) > 0.45 ? 1 : 0) : 1);
     this.bridge.visible = Math.abs(this.bridgeU - camU) < 900;
 
     // ---- the first line on the road
@@ -556,9 +567,9 @@ export default class Highway extends Scene {
       this.station.updateMatrixWorld(true);
       this.updateStation(t);
       const brown = t > T.out - 0.3 && t < T.out ? 1 - 0.25 * (hash(Math.floor(t * 30), 5) > 0.7 ? 1 : 0) : 1; // a brown-out shiver
-      const leds = flickOut(T.out + 0.04, 0.16, 11);
-      stPow = flickOut(T.out + 0.12, 0.12, 12);
-      this.station.power({ box: brown * flickOut(T.out + 0.08, 0.1, 13), leds: brown * leds, canopy: brown * stPow, pumps: flickOut(T.out + 0.14, 0.1, 14), shop: flickOut(T.out + 0.18, 0.08, 15) });
+      const leds = flickOut(T.out + 0.03, 0.13, 11);
+      stPow = flickOut(T.out + 0.07, 0.1, 12);
+      this.station.power({ box: brown * flickOut(T.out + 0.05, 0.09, 13), leds: brown * leds, canopy: brown * stPow, pumps: flickOut(T.out + 0.09, 0.07, 14), shop: flickOut(T.out + 0.11, 0.06, 15) });
       this.station.pool(brown * stPow);
     } else HU.uPoolCol.value.setRGB(0, 0, 0);
 
@@ -567,7 +578,7 @@ export default class Highway extends Scene {
     if (this.vms.visible) {
       const w = this.L[3]!.words;
       const starts = [0, 4, 8];
-      const vOn = flickOut(T.out + 0.02, 0.1, 16);
+      const vOn = flickOut(T.out + 0.01, 0.08, 16);
       Array.from('AND I’D PAY').forEach((_, i) => {
         const wi = i < 3 ? 0 : i < 7 ? 1 : 2;
         const ci = i - starts[wi]!;
@@ -579,7 +590,7 @@ export default class Highway extends Scene {
     // ---- the giant screen and its picture
     this.screen.visible = scrVisible;
     if (scrVisible) {
-      const arcK = prog(t, T.sun + 0.02, T.sun + 0.6, ease.linear);
+      const arcK = t >= T.sun ? 1 : 0; // (the layout changes on the cut)
       this.pic.update(t, ss.sunY, ss.dawn, ss.bright, arcK, T.sun, 1);
       this.pic.render(renderer);
       this.screen.update(t, { glitch: ss.glitch, off: ss.off, stuck: ss.stuck, seed: frameIdx(t) }, t > T.out + 0.2 ? 0 : 1);
@@ -593,22 +604,22 @@ export default class Highway extends Scene {
       this.cabin.updateMatrixWorld(true);
       // light in the car: the sky and the city's glow, the streetlight overhead as we pass, the screen ahead
       const lampAhead = this.lampSweep(s, frontU);
-      CU.cAmb.value.copy(C('#1a2440', 0.06 * (0.4 + 0.6 * cityK)));
-      CU.cTopCol.value.copy(C('#ff9a40', 0.5 * lampAhead));
+      CU.cAmb.value.copy(C('#22305a', 0.05 * (0.4 + 0.6 * cityK)));
+      CU.cTopCol.value.copy(C('#ff9a40', 0.12 * lampAhead));
       CU.cTopDir.value.set(-0.2, 0.75, -0.6).normalize();
-      CU.cFrontCol.value.copy(C('#ff9a52', 0.07 * ss.light * (scrVisible ? 1 : 0)));
+      CU.cFrontCol.value.copy(C('#ff9a52', 0.03 * ss.light * (scrVisible ? 1 : 0)));
       CU.cFrontDir.value.copy(scrDir);
       const wipe = this.wipeAt(t);
       const handK = shot === 'dark' ? lerp(0.95, 0.7, prog(t, T.stall, this.W1, ease.inOutQuad)) : 0.95;
       const dropLight = C('#ff9a40', 0.05 * lampAhead + 0.006).add(C('#ff9a52', 0.06 * ss.light * (scrVisible ? 1 : 0))).add(C('#5fd8ff', 0.012 * handK)).add(C('#fff4e6', 0.01 * carPower));
       this.cabin.update({
         t, tau: wipe.tau, w0: wipe.w0, w1: wipe.w1, speed: v,
-        dash: shot === 'dark' ? flickOut(T.stall, 0.12, 21) : 1,
+        dash: shot === 'dark' ? flickOut(T.stall, 0.09, 21) : 1,
         kmh: v * 3.6 * (shot === 'dark' ? 1 - prog(t, T.stall, T.stall + 0.5, ease.inOutCubic) : 1),
         rpm: (shot === 'dark' ? 2100 * (1 - prog(t, T.stall - 0.02, T.stall + 0.3, ease.inOutCubic)) : 2400 + 40 * Math.sin(t * 9)),
         fuel: 0,
-        radio: shot === 'dark' ? flickOut(T.stall + 0.02, 0.1, 22) : 1,
-        phone: 1,
+        radio: shot === 'dark' ? flickOut(T.stall + 0.02, 0.08, 22) : 1,
+        phone: shot === 'dark' ? flickOut(T.stall + 0.06, 0.08, 23) : 1,
         hand: handK,
         dropLight, dropSpec: C('#ffd2a0', 0.2 * lampAhead + 0.02).add(C('#9fe6ff', 0.05 * handK)),
         grip: this.downs.reduce((a, d) => a + pulse(t, d, 0.18) * smoothstep(d - 0.05, d, t), 0),
@@ -625,12 +636,10 @@ export default class Highway extends Scene {
     if (shot === 'boards') for (const b of this.boards) if (Math.abs(b.u - camU) < 160) for (const p of b.b.floodSpots()) moth.push({ p, n: 6, r: 0.7, k: 2.2 });
     if ((shot === 'pylon' || shot === 'station' || shot === 'dark') && this.station.visible) {
       const sp = this.station.mothSpots();
-      moth.push({ p: sp[0]!, n: 14, r: 1.1, k: 1.6 * flickOut(T.out + 0.08, 0.1, 13) }, { p: sp[1]!, n: 10, r: 0.9, k: 1.4 * stPow }, { p: sp[2]!, n: 8, r: 0.9, k: 1.4 * stPow });
+      moth.push({ p: sp[0]!, n: 14, r: 1.1, k: 1.6 * flickOut(T.out + 0.05, 0.09, 13) }, { p: sp[1]!, n: 10, r: 0.9, k: 1.4 * stPow }, { p: sp[2]!, n: 8, r: 0.9, k: 1.4 * stPow });
     }
     this.moths.update(t, moth);
 
-    // DEBUG
-    for (const o of DBG_HIDE(this)) o.visible = false;
     // ---- passes: the wet road's reflection, the rear-view mirror, the frame
     const hideStars = this.sky.stars.visible;
     if (inside) {
@@ -665,23 +674,6 @@ export default class Highway extends Scene {
     renderer.setClearColor(0x000000, 1);
     renderer.clear(true, true, true);
     renderer.render(this.scene, this.cam);
-    {
-      const bad: string[] = [];
-      const chk = (name: string, v: unknown) => { const arr = (v as { toArray?: () => number[] }).toArray ? (v as { toArray: () => number[] }).toArray() : typeof v === 'number' ? [v] : []; if (arr.some((x) => !Number.isFinite(x))) bad.push(name); };
-      chk('campos', this.cam.position); chk('camrot', this.cam.quaternion); chk('fov', this.cam.fov);
-      for (const [k, u] of Object.entries(HU)) chk('HU.' + k, u.value);
-      for (const [k, u] of Object.entries(CU)) chk('CU.' + k, u.value);
-      for (const [k, u] of Object.entries(this.sky.u)) chk('sky.' + k, u.value);
-      this.scene.traverse((o) => {
-        if (!Number.isFinite(o.matrixWorld.elements[12]!) || !Number.isFinite(o.matrixWorld.elements[0]!)) bad.push('obj:' + o.type + ':' + o.name);
-        const g = (o as THREE.Mesh).geometry as THREE.BufferGeometry | undefined;
-        if (g && g.attributes) for (const [k, a] of Object.entries(g.attributes)) { const arr = (a as THREE.BufferAttribute).array as ArrayLike<number>; for (let i = 0; i < arr.length; i++) if (!Number.isFinite(arr[i]!)) { bad.push('attr:' + o.type + ':' + o.constructor.name + ':' + k); break; } }
-        const im = o as THREE.InstancedMesh; if (im.isInstancedMesh) { const arr = im.instanceMatrix.array; for (let i = 0; i < arr.length; i++) if (!Number.isFinite(arr[i]!)) { bad.push('inst:' + o.constructor.name); break; } }
-        const m = (o as THREE.Mesh).material as THREE.ShaderMaterial | undefined;
-        if (m && (m as THREE.ShaderMaterial).uniforms) for (const [k, u] of Object.entries((m as THREE.ShaderMaterial).uniforms)) { const v = u.value; if (typeof v === 'number' && !Number.isFinite(v)) bad.push('uni:' + o.constructor.name + ':' + k); else if (v && (v as { toArray?: unknown }).toArray && !(v as THREE.Texture).isTexture) { try { const arr = (v as { toArray: () => number[] }).toArray(); if (arr.some((x) => !Number.isFinite(x))) bad.push('uni:' + o.constructor.name + ':' + k); } catch { /* */ } } else if (Array.isArray(v) || ArrayBuffer.isView(v)) { for (const x of v as ArrayLike<unknown>) { if (typeof x === 'number' && !Number.isFinite(x)) { bad.push('unia:' + o.constructor.name + ':' + k); break; } } } }
-      });
-      if (bad.length) console.error('NAN', t.toFixed(3), bad.slice(0, 20).join(','));
-    }
 
     // ---- a soft flare from the painted sun while the screen plays (it is bright enough to flare a lens)
     if (shot === 'sun' && ss.light > 0.05) {
@@ -694,7 +686,7 @@ export default class Highway extends Scene {
     let shake: [number, number] = [0, 0];
     for (const d of this.downs) {
       const k = pulse(t, d, 0.06) * (shot === 'boards' || shot === 'station' ? 0.5 : 0.25) * smoothstep(d - 0.01, d + 0.03, t);
-      if (k > 0.01) shake = [shake[0] + (hash(d, 1) - 0.5) * 6 * k, shake[1] + (hash(d, 2) - 0.5) * 6 * k];
+      if (k > 0.01) shake = [shake[0] + (hash(d, 1) - 0.5) * 3 * k, shake[1] + (hash(d, 2) - 0.5) * 3 * k];
     }
     const rush = clamp((v - 26) / 20, 0, 1) * (shot === 'dive' ? 1 : 0.4);
     const dark = shot === 'dark' ? prog(t, T.stall, T.stall + 0.4, ease.outQuad) : 0;
@@ -802,5 +794,4 @@ export default class Highway extends Scene {
   }
 }
 
-const DBG_HIDE = (h: Highway): THREE.Object3D[] => [h.power, h.bridge, h.signs, h.station, h.vms, h.screen, h.cabin];
 const glyph = (ch: string) => '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ.’ $'.indexOf(ch);

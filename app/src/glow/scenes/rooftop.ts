@@ -36,6 +36,7 @@ import { RoofWorld, type Glow } from './rooftop-world';
 import { bikeMesh, farPeople, litK, overShoulder, placeKit, raiseHand, tint, type FarPerson } from './rooftop-people';
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+const DBG = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('roofdbg') ?? '' : '';
 const GOLD = col('gold', 1.0);
 const LANTERN = new THREE.Color(1.0, 0.86, 0.62);
 
@@ -57,7 +58,7 @@ export default class Rooftop extends Scene {
   he!: RealFigure;
   idle!: Motion;
   star = new StarSticker(0.06);
-  crowd = new Crowd({ dust: [24, 220, 900], dustGain: 0.12 });
+  crowd = new Crowd({ dust: [24, 220, 900], dustGain: 0.2 });
   near: Near[] = [];
   far: FarPerson[] = [];
   L: Record<string, Line> = {};
@@ -70,13 +71,14 @@ export default class Rooftop extends Scene {
   lan: Lantern[] = [];
   lp!: GlowPoints;
   sun = new GlowPoints(4, 1);
-  spikes = new GlowLines(8, 0.08);
+  spikes = new GlowLines(8, 0.035);
   bike!: THREE.Mesh;
   /** shown in this shot (near people of light) */
   nearVis = 1;
   S0 = new THREE.Vector3();
   C1 = new THREE.Vector3(0, 82, -150);
   C3 = new THREE.Vector3(0, 52, -48);
+  TXT = new THREE.Vector3(-0.4, 19.5, -3.2);
   tGold = 39.77;
 
   override async init() {
@@ -120,8 +122,9 @@ export default class Rooftop extends Scene {
     this.rowB.position.set(0.9, -2.1, 0);
     this.rowB.rotation.z = -0.07;
     this.textGrp.add(this.rowA, this.rowB);
-    this.textGrp.position.set(0.3, set.heSpot.y + 4.4, -2.5);
-    this.textGrp.rotation.x = -0.12;
+    // (in the canyon over the street, tilted up toward his roof)
+    this.textGrp.position.copy(this.TXT);
+    this.textGrp.rotation.x = -0.55;
     S.add(this.textGrp, this.pen);
 
     this.buildLanterns();
@@ -139,7 +142,7 @@ export default class Rooftop extends Scene {
     // the echo of "felt low", rippling outward
     const fl = L.put!.words.at(-2)!.start, lo = L.put!.words.at(-1)!.start;
     const echo = [fl + 0.05 + (i % 7) * 0.03, lo + 0.12 + (i % 5) * 0.05, lo + 0.45 + (i % 4) * 0.06];
-    let k = litK(t, lit, 0.55 * d, echo, 0.9);
+    let k = litK(t, lit, 0.8 * d, echo, 0.9);
     // they give their light away to the lanterns (dimmer), and glow again in gold
     k *= 1 - 0.45 * smoothstep(33.9, 35.5, t) + 0.5 * smoothstep(this.tGold, this.tGold + 1.2, t);
     return k;
@@ -152,7 +155,7 @@ export default class Rooftop extends Scene {
     const tHands = put.words[2]!.start, tUp = put.words[3]!.start, tIf = put.words[4]!.start, tEver = put.words[6]!.start, tFelt = put.words[7]!.start;
     const echo = [tFelt + 0.05, put.words[8]!.start + 0.1, put.words[8]!.start + 0.45];
     const add = (name: string, o: { pos: THREE.Vector3; yaw: number; body: 0 | 1; color: THREE.Color; lit: number; k: number; clips: { clip: string; from: number; at?: number; speed?: number }[]; mirror?: boolean; offset?: number; pose?: (fig: RealFigure, t: number) => void }) => {
-      const p = cr.addPerson({ pos: o.pos, yaw: o.yaw, look: 'light', body: o.body, color: o.color, mirror: o.mirror, offset: o.offset, clips: o.clips, fade: 1.0, pose: o.pose, k: (t) => this.nearVis * litK(t, o.lit, o.k, echo) * (1 - 0.35 * smoothstep(33.9, 35.3, t)) });
+      const p = cr.addPerson({ pos: o.pos, yaw: o.yaw, look: 'light', body: o.body, color: o.color, mirror: o.mirror, offset: o.offset, clips: o.clips, fade: 1.0, pose: o.pose, k: (t) => this.nearVis * litK(t, o.lit, o.k * 1.4, echo) * (1 - 0.35 * smoothstep(33.9, 35.3, t)) });
       this.near.push({ name, p, lit: o.lit, color: o.color, chest: () => (p.fig ? p.fig.spinePoint(0, 0.3, 0.1) : o.pos.clone().add(V(0, 1.3, 0))) });
       return p;
     };
@@ -215,14 +218,14 @@ export default class Rooftop extends Scene {
   private buildLanterns() {
     const ton = this.L.ton!, turn = this.L.turn!, here = this.L.here!;
     const clean = (l: Line, n = 99) => l.words.slice(0, n).map((x) => x.w.replace(/[,.!?]/g, '').toUpperCase()).join(' ');
-    const A = sampleStrokeText(clean(ton), 'readable', 15, 1.25);
-    const B = sampleStrokeText(clean(turn), 'readable', 15, 1.25);
+    const A = sampleStrokeText(clean(ton), 'readable', 17, 1.3);
+    const B = sampleStrokeText(clean(turn), 'readable', 17, 1.3);
     const C = sampleStrokeText(clean(here, 3), 'readable', 7.5, 0.6);
     // the text planes face the cameras that read them (his roof, the crane, the aerial)
     const basis = (centre: THREE.Vector3, look: THREE.Vector3) => {
       const m = new THREE.Matrix4().lookAt(look, centre, V(0, 1, 0));
       const R = new THREE.Matrix4().extractRotation(m);
-      return (p: THREE.Vector2) => V(-p.x, p.y, 0).applyMatrix4(R).add(centre);
+      return (p: THREE.Vector2) => V(p.x, p.y, 0).applyMatrix4(R).add(centre);
     };
     const toA = basis(this.C1, V(4, 60, 40)), toC = basis(this.C3, V(2, 30, 16));
     const rank = (pts: THREE.Vector2[]) => pts.map((_, i) => i).sort((a, b) => pts[a]!.x - pts[b]!.x);
@@ -270,22 +273,22 @@ export default class Rooftop extends Scene {
     let shot = 'A';
     if (t < cB) {
       // A: over his shoulder, from his palms up to the line being written over the street
-      const k = ease.inOutCubic(prog(t, 30.75, 31.45));
-      pos.copy(H).add(V(0.62 - 0.1 * k, 1.42 + 0.25 * k, 1.05 + 0.5 * prog(t, 30.6, cB)));
-      tgt.copy(H).add(V(0.05, 0.95, -0.7)).lerp(V(0.6, H.y + 3.4, -2.5), k);
-      fov = lerp(42, 52, k);
+      const k = ease.inOutCubic(prog(t, 30.75, 31.5));
+      pos.copy(H).add(V(0.7 - 0.15 * k, 1.85 + 0.35 * k, 1.25 + 0.45 * prog(t, 30.6, cB)));
+      tgt.copy(H).add(V(-0.05, 1.0, -0.8)).lerp(this.TXT.clone().add(V(0.5, -0.6, 0)), k);
+      fov = lerp(40, 56, k);
     } else if (t < cC) {
       shot = 'B';
       const k = ease.inOutQuad(prog(t, cB, cC));
-      pos.copy(H).add(V(lerp(-3.6, -1.6, k), lerp(4.6, 5.3, k), lerp(7.2, 6.2, k)));
-      tgt.set(lerp(-2.5, -0.5, k), lerp(14.5, 15.5, k), -14);
-      fov = 54;
+      pos.copy(H).add(V(lerp(-3.0, -1.2, k), lerp(5.5, 6.3, k), lerp(6.5, 5.6, k)));
+      tgt.set(lerp(-2.5, 0.5, k), lerp(12.5, 13.5, k), -9.5);
+      fov = 62;
     } else if (t < cD) {
       shot = 'C';
-      const k = ease.inOutQuad(prog(t, cC, cD)), up = ease.inOutCubic(prog(t, cC + 0.6, cD));
-      pos.set(lerp(-10.5, -3.0, k), lerp(9.8, 11.5, k), lerp(-1.0, 0.0, k));
-      tgt.set(lerp(-5.5, 3.5, k), lerp(9.6, 15, k) + up * 26, -11 - up * 30);
-      fov = 50;
+      const k = ease.inOutQuad(prog(t, cC, cD)), up = ease.inOutCubic(prog(t, cC + 0.5, cD + 0.1));
+      pos.set(lerp(-4.2, 1.2, k), lerp(12.2, 12.9, k), lerp(-2.6, -2.0, k));
+      tgt.set(lerp(-2.0, 0.6, k), lerp(11.2, 12.0, k) + up * 18, -9.5 - up * 8);
+      fov = 46;
       roll = -0.02;
     } else if (t < cE) {
       shot = 'D';
@@ -437,8 +440,8 @@ export default class Rooftop extends Scene {
       if (l.free) {
         // a lantern from a neighbour: rises slowly, swaying, drifting with the breeze
         p = s0.clone().add(V(wob.x * 0.6 * age + age * 0.3, age * (1.6 + (l.seed % 1) * 0.8) + 0.2 * age * age, wob.z * 0.6 * age - age * 0.4));
-        size = 0.55 + (l.seed % 3) * 0.12;
-        bright = 1.3 * smoothstep(0, 0.5, age);
+        size = 0.24 + (l.seed % 3) * 0.05;
+        bright = 1.1 * smoothstep(0, 0.5, age);
         const k = toStar(l, i);
         if (k > 0) { p.lerp(star, k); bright *= 1 + k; }
       } else {
@@ -480,7 +483,7 @@ export default class Rooftop extends Scene {
     this.sun.set(1, star.x, star.y, star.z, sc, sK * (0.5 + swell), 14 + 30 * swell * swell);
     this.sun.commit(2);
     for (let k = 0; k < 6; k++) {
-      const a = (k / 6) * Math.PI + t * 0.15, len = sK * (2.5 + 2 * pulse(t, beat, 0.2) + 12 * swell * swell) * (k % 2 ? 0.6 : 1);
+      const a = (k / 6) * Math.PI + t * 0.15, len = sK * (1.1 + 0.8 * pulse(t, beat, 0.2) + 4 * swell * swell) * (k % 2 ? 0.55 : 1);
       const d = V(Math.cos(a), Math.sin(a), 0).applyQuaternion(cam.quaternion).multiplyScalar(len);
       this.spikes.set(k, star.clone().sub(d), star.clone().add(d), sc, sK * 1.2);
     }
@@ -492,12 +495,23 @@ export default class Rooftop extends Scene {
     if (penOn > 0) glows.push({ pos: pen, color: col('white', 0.5 * penOn), radius: 4 });
     for (const n of this.near) {
       const k = typeof n.p.k === 'number' ? n.p.k : n.p.k(t);
-      if (k > 0.01) glows.push({ pos: n.chest(), color: n.color.clone().lerp(GOLD, goldK * 0.8).multiplyScalar(0.28 * k), radius: 2.3 });
+      if (k > 0.01) glows.push({ pos: n.chest(), color: n.color.clone().lerp(GOLD, goldK * 0.8).multiplyScalar(0.4 * k), radius: 2.8 });
     }
     w.glows(glows);
     w.pigeonsFly = Infinity;
     w.update(t, cam, { wind: 0.6 });
 
+    if (DBG.includes('nocity')) w.city.visible = false;
+    if (DBG) {
+      const c = w.city as any;
+      if (DBG.includes('noground')) c.ground.visible = false;
+      if (DBG.includes('nolife')) c.life.visible = false;
+      if (DBG.includes('nosky') && c.sky) c.sky.visible = false;
+      if (DBG.includes('noclouds') && c.cloudMat) c.children.forEach((o: any) => { if (o.material === c.cloudMat) o.visible = false; });
+      if (DBG.includes('nobld')) c.children.forEach((o: any) => { if (o.isGroup && o !== c.life) o.visible = false; });
+    }
+    if (DBG.includes('nocrowd')) this.crowd.visible = false;
+    if (DBG.includes('noset')) w.set.visible = false;
     S.render(this.ctx.renderer, out);
     const flash = prog(t, burst - 0.22, burst + 0.05);
     return {

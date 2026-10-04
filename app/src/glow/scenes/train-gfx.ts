@@ -35,7 +35,8 @@ export const GLSL_LIGHT = /* glsl */ `
     vec3 L = uAmb;
     vec3 S = vec3(0.0);
     vec3 q = p - vec3(uCarX, uCarY, 0.0);
-    if (abs(q.z) < 1.43 && q.y > -0.2 && q.y < 2.4 && abs(q.x) < 9.05) {
+    bool inCar = abs(q.z) < 1.43 && q.y > -0.2 && q.y < 2.4 && abs(q.x) < 9.05;
+    if (inCar) {
       // the ceiling strips: two line lights along the car
       float xc = clamp(q.x, -8.85, 8.85);
       int fi = int(clamp(floor((xc + 9.0) / 1.8), 0.0, 9.0));
@@ -54,7 +55,8 @@ export const GLSL_LIGHT = /* glsl */ `
       vec4 P = uPts[i];
       vec3 d = P.xyz - p;
       float dd = dot(d, d), r2 = P.w * P.w;
-      float att = r2 / (r2 + dd) * clamp(1.0 - dd / (r2 * 36.0), 0.0, 1.0);
+      // (a negative radius marks a light outside the car: inside, only what comes in through the windows)
+      float att = r2 / (r2 + dd) * clamp(1.0 - dd / (r2 * 36.0), 0.0, 1.0) * (P.w < 0.0 && inCar ? 0.22 : 1.0);
       if (att <= 0.0) continue;
       vec3 l = d * inversesqrt(max(dd, 1e-5));
       L += uPtC[i] * att * (max(dot(n, l), 0.0) * 0.85 + 0.15);
@@ -210,24 +212,26 @@ export function glassMat(U: LightU) {
         float u = vW.x - uCarX + vW.z * 0.0;
         float y = vW.y;
         float c = 0.0;
-        // streaks: drops driven back by the wind, slanting down
+        // rain: drops driven back along the glass by the wind of the ride, each with a short tail
         for (int k = 0; k < 2; k++) {
-          float sc = k == 0 ? 26.0 : 41.0;
-          vec2 g = vec2(u * sc + uTime * uSpeed * sc * 0.12 + y * sc * 0.35, y * sc * 0.22);
+          float sc = k == 0 ? 18.0 : 31.0;
+          vec2 q = vec2(u + uTime * uSpeed * 0.035 + y * 0.6, y);
+          vec2 g = q * vec2(sc, sc * 0.5);
           vec2 id = floor(g);
           float h = hsh(id + float(k) * 17.0);
-          vec2 fr = fract(g) - vec2(0.5, 0.5 + 0.3 * (h - 0.5));
-          float drop = smoothstep(0.16, 0.0, length(fr * vec2(1.0, 2.6))) * step(0.55, h);
-          float tail = smoothstep(0.06, 0.0, abs(fr.y)) * smoothstep(0.5, -0.3, fr.x) * step(0.0, fr.x - 0.0) * step(0.8, h) * 0.0;
-          c += (drop * (0.6 + 0.8 * hsh(id + 5.0)) + tail) * (k == 0 ? 1.0 : 0.6);
+          vec2 fr = fract(g) - vec2(0.3 + 0.4 * hsh(id + 3.0), 0.5);
+          float along = fr.x, across = fr.y * 2.0;
+          float head = smoothstep(0.06, 0.0, length(vec2(along, across * 0.8)));
+          float tail = smoothstep(0.03, 0.0, abs(across)) * smoothstep(-0.02, 0.0, along) * smoothstep(0.32, 0.0, along) * 0.5;
+          c += (head + tail) * step(0.62, h) * (0.5 + 0.5 * hsh(id + 5.0)) * (k == 0 ? 1.0 : 0.6);
         }
         // still beads
         vec2 gb = vec2(u, y) * 70.0;
         vec2 ib = floor(gb);
         float hb = hsh(ib + 31.0);
-        float bead = smoothstep(0.22, 0.05, length(fract(gb) - 0.5 - 0.25 * (vec2(hsh(ib + 1.0), hsh(ib + 2.0)) - 0.5))) * step(0.82, hb);
-        c = c * uRain + bead * uRain * 0.5;
-        vec3 col = uOut * c * 0.55 + vec3(0.025, 0.035, 0.05) * (0.25 + 1.5 * f * f);
+        float bead = smoothstep(0.2, 0.05, length(fract(gb) - 0.5 - 0.25 * (vec2(hsh(ib + 1.0), hsh(ib + 2.0)) - 0.5))) * step(0.86, hb);
+        c = c * uRain + bead * uRain * 0.4;
+        vec3 col = uOut * c * 0.3 + vec3(0.02, 0.028, 0.04) * (0.25 + 1.5 * f * f);
         gl_FragColor = vec4(col * uK, 1.0);
       }`,
   });

@@ -319,6 +319,7 @@ export class PowerLine extends THREE.Group {
 export class Bridge extends THREE.Group {
   lamps: GlowPoints;
   car: GlowPoints;
+  lampXs: number[] = [];
   constructor(conc: THREE.Texture) {
     super();
     const mat = litMat({
@@ -336,8 +337,14 @@ export class Bridge extends THREE.Group {
       for (const z of [-4, 0, 4]) parts.push(boxAt(1.1, deckY - 0.4, 1.1, x, (deckY - 0.4) / 2, z));
       parts.push(boxAt(1.6, 0.9, wid - 1, x, deckY - 0.85, 0));
     }
-    // embankments where it meets the land
-    for (const s of [-1, 1]) parts.push(boxAt(30, deckY + th, wid + 6, s * (len / 2 + 10), (deckY + th) / 2 - 0.5, 0));
+    // it carries on as a viaduct into the dark: more spans on piers, stepping down
+    for (const s of [-1, 1]) {
+      for (let k = 0; k < 3; k++) {
+        const x0 = s * (len / 2 + k * 40), y = deckY - k * 1.6;
+        parts.push(boxAt(40, th, wid, x0 + s * 20, y + th / 2, 0));
+        parts.push(boxAt(1.4, y - 0.2, 6, x0 + s * 40, (y - 0.2) / 2, 0));
+      }
+    }
     this.add(new THREE.Mesh(merge(parts), mat));
     // lamps on the parapet (sodium, like the highway's) and their posts
     const posts: THREE.BufferGeometry[] = [];
@@ -349,11 +356,17 @@ export class Bridge extends THREE.Group {
       this.lamps.set(n++, x, deckY + th + 6.0, wid / 2 - 2.0, C('#ff9a40'), 1.6, 1.4);
     }
     this.lamps.commit();
+    this.lampXs = [];
+    for (let x = -45; x <= 45; x += 22.5) this.lampXs.push(x);
     this.add(new THREE.Mesh(merge(posts), litMat({ color: C('#7a828e', 0.4), rough: 0.5, metal: 0.6, spec: 0.7 })));
     this.car = new GlowPoints(6, 1);
     this.add(this.lamps, this.car);
   }
-  update(t: number) {
+  /** `on`: the grid's power at the bridge (its lamps die with the city). */
+  update(t: number, on = 1) {
+    const deckY = 6.4, th = 1.5, wid = 13;
+    this.lampXs.forEach((x, i) => this.lamps.set(i, x, deckY + th + 6.0, wid / 2 - 2.0, C('#ff9a40'), 1.6 * on, 1.4));
+    this.lamps.commit();
     // a car crossing from left to right, a van the other way
     const y = 6.4 + 1.5 + 0.7;
     const x1 = -70 + wrap(t * 17, 140), x2 = 70 - wrap(t * 14 + 50, 140);
