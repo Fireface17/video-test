@@ -22,7 +22,7 @@ const DEG = Math.PI / 180;
 const TAU = Math.PI * 2;
 const TEXT_DIST = 4.0; // the lyric line floats this far in front of the camera
 const TEXT_SIZE = 0.125;
-const N_STARS = 3200, STAR_R0 = 4.5, STAR_R1 = 80, STAR_Z0 = -215, STAR_LEN = 265; // flying-frame z in [-215, 50]
+const N_STARS = 4600, STAR_R0 = 4.5, STAR_R1 = 80, STAR_Z0 = -215, STAR_LEN = 265; // flying-frame z in [-215, 50]
 const N_FAR = 1500;
 const SPARK_DT = 0.03, SPARK_LIFE = 1.15, SPARK_DRAG = 7; // sparks shed by the bodies drift back at 7 m/s
 const N_SPARK = 2 * Math.ceil(SPARK_LIFE / SPARK_DT + 2) + 24;
@@ -135,18 +135,25 @@ export default class Fall extends Scene {
     const add = (x: number, y: number, z: number, size: number, color: THREE.Color, alpha: number, group: number) =>
       specs.push({ x, y, z, size, rot: rnd() * TAU, color, alpha, cell: Math.floor(rnd() * 4), group, seed: rnd() });
     const hue = (k: number) => (k < 0.5 ? col('blue') : k < 0.85 ? col('violet') : col('pink'));
-    // far backdrop: big soft clouds of colour well off the route, all along it
-    for (let z = 90; z > -total - 330; z -= 24)
-      for (let k = 0; k < 2; k++) {
-        const a = rnd() * TAU, r = 75 + rnd() * 80;
-        add(Math.cos(a) * r, Math.sin(a) * r * 0.8, z + rnd() * 20, 60 + rnd() * 70, hue(rnd()).multiplyScalar(0.05 + 0.06 * rnd()), 0.3 + 0.15 * rnd(), BACKDROP);
+    // far backdrop: big soft clouds of colour well off the route, all along it (in clumps, so the sky has
+    // shapes: a few large glows with smaller knots around them)
+    for (let z = 90; z > -total - 330; z -= 30) {
+      const a0 = rnd() * TAU, r0 = 70 + rnd() * 70, h0 = rnd();
+      for (let k = 0; k < 5; k++) {
+        const a = a0 + (rnd() - 0.5) * 0.7, r = r0 + (rnd() - 0.5) * 30;
+        const big = k === 0;
+        add(Math.cos(a) * r, Math.sin(a) * r * 0.8, z + (rnd() - 0.5) * 30, big ? 80 + rnd() * 50 : 25 + rnd() * 35,
+          hue(clamp(h0 + (rnd() - 0.5) * 0.3)).multiplyScalar(big ? 0.06 + 0.05 * rnd() : 0.08 + 0.1 * rnd()), big ? 0.35 : 0.3 + 0.2 * rnd(), BACKDROP);
       }
+    }
     // "Through the colors": a many-coloured nebula across the route
     const zc = -this.travel((this.T.through + this.T.blue) / 2), len = this.travel(this.T.blue) - this.travel(this.T.through) + 20;
-    for (let i = 0; i < 170; i++) {
-      const a = rnd() * TAU, r = 1.5 + Math.pow(rnd(), 0.8) * 24;
-      const c = [col('violet'), col('pink'), col('blue'), col('cyan', 0.7), col('violet'), col('pink')][Math.floor(rnd() * 6)]!.multiplyScalar(0.1 + 0.22 * rnd());
-      add(Math.cos(a) * r, Math.sin(a) * r * 0.85, zc + (rnd() - 0.5) * len, 6 + rnd() * 11, c, 0.25 + 0.3 * rnd(), COLORS);
+    for (let i = 0; i < 240; i++) {
+      const a = rnd() * TAU, r = 1.2 + Math.pow(rnd(), 1.1) * 22;
+      // colour drifts along the nebula: violet and pink first, blue at the far end
+      const zz = (rnd() - 0.5) * len, u = zz / len + 0.5;
+      const c = (rnd() < 0.5 - 0.4 * u ? col('pink') : rnd() < 0.6 ? col('violet') : rnd() < 0.7 ? col('blue') : col('cyan', 0.75)).multiplyScalar(0.12 + 0.24 * rnd());
+      add(Math.cos(a) * r, Math.sin(a) * r * 0.85, zc - zz, 3.5 + rnd() * 9, c, 0.22 + 0.3 * rnd(), COLORS);
     }
     // "and the blue": a vast blue beyond it
     for (let i = 0; i < 46; i++) {
@@ -169,7 +176,7 @@ export default class Fall extends Scene {
     this.starSeed = new Float32Array(N_STARS * 5);
     const sr = mulberry32(5);
     for (let i = 0; i < N_STARS; i++) {
-      const a = sr() * TAU, r = STAR_R0 + Math.pow(sr(), 1.5) * (STAR_R1 - STAR_R0);
+      const a = sr() * TAU, r = STAR_R0 + Math.pow(sr(), 2.2) * (STAR_R1 - STAR_R0);
       this.starSeed.set([Math.cos(a) * r, Math.sin(a) * r, sr() * STAR_LEN, 0.5 + Math.pow(sr(), 6) * 3, sr()], i * 5);
     }
     S.add(this.stars);
@@ -242,8 +249,9 @@ export default class Fall extends Scene {
     // the pair sits in the upper part of the frame, the lyrics have the lower third
     const FWD = { x: 0, y: 0, z: -1 };
     aim(this.st.cam, pos, target, 0, FWD);
-    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.st.cam.quaternion);
-    target.addScaledVector(up, -0.2 * pos.distanceTo(target) * Math.tan((FOV / 2) * DEG));
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.st.cam.quaternion), right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.st.cam.quaternion);
+    const hh = pos.distanceTo(target) * Math.tan((FOV / 2) * DEG);
+    target.addScaledVector(up, -0.24 * hh).addScaledVector(right, -0.1 * hh);
     // rolled so the flight runs diagonally up and to the right
     const roll = K([-0.5, -0.5, -0.48, -0.45, -0.42, -0.4, -0.4, -0.42, -0.4, -0.38]);
     aim(this.st.cam, pos, target, roll, FWD);
@@ -292,7 +300,7 @@ export default class Fall extends Scene {
       // flying: head toward -z, front (belly) toward -y, so local +X is world -x; small pitch / yaw / bank
       fig.quaternion.setFromEuler(new THREE.Euler(0.06 * nz(0.3, 40) + 0.35 * late, 0.06 * nz(0.25, 50) - s * 0.04 * holdK, 0.06 * nz(0.22, 60) - 0.4 * late, 'YXZ')).multiply(FLYING);
       // gliding: back arched a little, head up looking ahead
-      fig.setSpine(-0.12 + 0.04 * nz(0.45, 70), s * 0.04 * holdK, -0.5 + 0.06 * nz(0.38, 80), s * 0.18 * meK);
+      fig.setSpine(-0.08 + 0.05 * nz(0.45, 70), s * 0.04 * holdK, -0.12 + 0.08 * nz(0.38, 80), s * 0.22 * meK);
       // legs trail behind, soft knees, a slow flutter
       for (const k of [0, 1]) {
         const ls = k === 0 ? -1 : 1;
@@ -358,10 +366,12 @@ export default class Fall extends Scene {
     const sunDir = new THREE.Vector3(0.1, 0.24, -1).normalize();
     const sunK = smoothstep(T.g1 - 0.2, T.g1 + 2.5, t) * 0.25 + 0.75 * prog(t, T.g2 - 0.6, T.e, ease.inOutQuad);
     const su = (this.sky.material as THREE.ShaderMaterial).uniforms;
-    const deep = col('night').lerp(col('blue', 0.06), blue);
+    // (the warm sky arrives late, through a dark amber rather than a purple mix of blue and gold)
+    const w2 = warm * warm, amber = col('ember', 0.05).lerp(col('gold', 0.07), w2);
+    const deep = col('night').lerp(col('blue', 0.06), blue).multiplyScalar(1 - 0.85 * smoothstep(0.1, 0.6, warm)).add(amber.clone().multiplyScalar(smoothstep(0.2, 1, warm)));
     (su.top!.value as THREE.Color).copy(deep);
     (su.bottom!.value as THREE.Color).copy(deep);
-    (su.horizon!.value as THREE.Color).copy(col('dusk', 0.7).lerp(col('blue', 0.1), blue)).lerp(col('ember', 0.12), warm * warm);
+    (su.horizon!.value as THREE.Color).copy(col('dusk', 0.7).lerp(col('blue', 0.1), blue)).multiplyScalar(1 - 0.85 * smoothstep(0.1, 0.6, warm)).add(col('ember', 0.16).lerp(col('gold', 0.2), w2).multiplyScalar(smoothstep(0.2, 1, warm)));
     (su.glowDir!.value as THREE.Vector3).copy(sunDir);
     (su.glow!.value as THREE.Color).copy(col('gold', 1.4)).multiplyScalar(sunK * 0.9);
     this.st.bg.copy(deep);
@@ -389,7 +399,7 @@ export default class Fall extends Scene {
       } else if (s.group === COLORS) {
         k = 1 + 0.3 * pad;
       } else {
-        c = s.color.clone().lerp(col('ember', 0.08), warm * 0.8);
+        c = s.color.clone().lerp(col('gold', 0.13).lerp(col('ember', 0.13), 0.35), smoothstep(0.15, 0.9, warm));
       }
       o.r = c.r * k; o.g = c.g * k; o.b = c.b * k; o.a = a;
     }, 420);
@@ -458,7 +468,7 @@ export default class Fall extends Scene {
       ly.neon.visible = vis;
       if (!vis) continue;
       const age = t - appear;
-      const p = new THREE.Vector3((0.36 - 0.01 * age) * halfW + noise1(t * 0.3, 200 + ly.line.i) * 0.01, (-0.74 + 0.035 * age) * halfH, -TEXT_DIST).applyQuaternion(cb.q).add(cb.pos);
+      const p = new THREE.Vector3((-0.44 - 0.01 * age) * halfW + noise1(t * 0.3, 200 + ly.line.i) * 0.01, (-0.74 + 0.035 * age) * halfH, -TEXT_DIST).applyQuaternion(cb.q).add(cb.pos);
       ly.neon.position.copy(p);
       ly.neon.quaternion.copy(cb.q).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, noise1(t * 0.17, 220 + ly.line.i) * 0.06, noise1(t * 0.23, 230 + ly.line.i) * 0.01)));
       const fadeOut = ly.last ? 1 : 1 - smoothstep(ly.t1 + 0.15, gone, t);

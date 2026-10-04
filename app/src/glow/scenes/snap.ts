@@ -22,6 +22,7 @@ import { GlowPoints } from '../lib/points';
 import { figureGeometry } from '../lib/shapes';
 import { PenLine, TrailBatch } from './snap-trail';
 import { FIST_WRIST, HeroStick, Limb, StickSwarm, fistGeometry, lightUniforms, silhouetteMaterial, writerBodyGeometry } from './snap-stick';
+import { FogSheets } from './snap-fog';
 
 const STICK_L = 0.27; // hero stick length (m)
 const STICK_R = 0.0125;
@@ -78,6 +79,7 @@ export default class Snap extends Scene {
   sparks!: GlowPoints;
   dust!: GlowPoints;
   dustSeed: { x: number; y: number; z: number; p: number }[] = [];
+  fog!: FogSheets;
   handOffset = new THREE.Vector3(0.1, -0.19, 0.035);
   // n = 1
   frames: THREE.Vector3[] = [];
@@ -99,7 +101,8 @@ export default class Snap extends Scene {
     const { params, audio, start, end } = this.ctx;
     this.n = params.n === 2 ? 2 : 1;
     this.beats = audio.beats.filter((b) => b >= start - 0.01 && b <= end + 0.01);
-    this.snapT = end - (this.n === 2 ? 0.24 : 0.2);
+    // the crack lands an 8th or so before the next entry's light transition takes the frame over
+    this.snapT = end - 0.3;
     const S = this.st.scene;
     const fogCol = col('dusk', this.n === 1 ? 0.55 : 0.8);
     this.st.bg.copy(fogCol);
@@ -123,6 +126,10 @@ export default class Snap extends Scene {
     for (let i = 0; i < this.dust.n; i++) this.dustSeed.push({ x: dr(), y: dr(), z: dr(), p: dr() });
     S.add(this.head, this.sparks, this.dust);
 
+    this.fog = this.n === 1
+      ? new FogSheets(this.L, { depths: [0.18, -0.55, -1.5, -3.0], size: [2.6, 1.8], scale: 0.42, base: 0.15, gain: 0.05, fill: 0.12 })
+      : new FogSheets(this.L, { depths: [-1.5, -4, -7.5, -12], size: [9, 5], scale: 0.16, base: 1.6, gain: 0.42, fill: 0.3 });
+    S.add(this.fog);
     if (this.n === 1) this.initN1();
     else this.initN2();
   }
@@ -198,7 +205,7 @@ export default class Snap extends Scene {
     });
 
     // released lanterns: small dim sticks let go on the beats of "Tonight we let it all go"
-    const N = 34;
+    const N = 28;
     this.lanterns = new StickSwarm(N, 0.15, 0.0085, this.L, { gripY: 0, radial: 10 });
     this.lantGlow = new GlowPoints(N, 1, { fogDensity: 0.2 });
     S.add(this.lanterns, this.lantGlow);
@@ -212,8 +219,8 @@ export default class Snap extends Scene {
       if (front && Math.abs(x) < 0.3) x = Math.sign(x || 1) * (0.3 + r() * 0.15);
       this.lant.push({
         x, z, y0: this.frames[1]!.y - 0.36 - r() * 0.3 - Math.abs(z) * 0.2,
-        t0: audio.timeOfBeat(b0 + Math.floor(i / 3) * 0.5 + (i % 3) * 0.13 + r() * 0.06),
-        v: 0.3 + r() * 0.22, s: 0.85 + r() * 0.4, rx: (r() * 2 - 1) * 0.7, rz: (r() * 2 - 1) * 0.9, spin: (r() * 2 - 1) * 1.2,
+        t0: audio.timeOfBeat(b0 + Math.floor(i / 2) * 0.5 + (i % 2) * 0.17 + r() * 0.06),
+        v: 0.26 + r() * 0.2, s: 0.85 + r() * 0.45, rx: (r() * 2 - 1) * 0.3, rz: (r() * 2 - 1) * 0.4, spin: (r() * 2 - 1) * 0.6,
         c: col(STICKS[Math.floor(r() * 4)]!), dim: 0.08 + r() * 0.14, seed: r(),
       });
     }
@@ -236,7 +243,7 @@ export default class Snap extends Scene {
 
     // the line, written above the heads in the upper left of the final framing, by a front-row figure
     const L22 = lyrics.get('Oh, here we go, here we go');
-    const w = this.makeLine(L22, [[0, 1, 2, 3], [4, 5, 6]], col('cyan'), { endBy: this.snapT - 0.03, size: 0.15 });
+    const w = this.makeLine(L22, [[0, 1, 2, 3], [4, 5, 6]], col('cyan'), { endBy: this.snapT - 0.03, size: 0.18 });
     aim(cam, this.camB.pos, this.camB.tgt);
     const zText = -0.3;
     const at = (sx: number, sy: number) => {
@@ -395,12 +402,10 @@ export default class Snap extends Scene {
     this.head.set(0, pen.x, pen.y, pen.z, [1, 1, 1], 2.4 * k * fl, 0.011 * sz);
     this.head.set(1, pen.x, pen.y, pen.z, c, 1.6 * k * fl, 0.03 * sz);
     this.head.set(2, pen.x, pen.y, pen.z, c, 0.22 * k, 0.11 * sz);
-    const fc = this.L.uFillCol.value, fp = this.L.uFillPos.value;
     this.head.set(3, pen.x, pen.y, pen.z - 0.05, c, 0.035 * k, 0.55 * sz);
-    this.head.set(4, fp.x, fp.y, fp.z - 0.1, [fc.r, fc.g, fc.b], 0.16, 1.1 * sz);
     // sputter: particles born at fixed times along the pen path
     const rate = 70, life = 0.42, n0 = Math.floor((t - life) * rate), n1 = Math.floor(t * rate);
-    let j = 5;
+    let j = 4;
     for (let nn = n0; nn <= n1 && j < this.head.n; nn++) {
       const tb = nn / rate, age = t - tb;
       if (age < 0) continue;
@@ -570,7 +575,7 @@ export default class Snap extends Scene {
       const x = l.x + noise1(t * 0.3 + l.seed * 20, 4) * 0.1 + Math.sin(a * 0.8 + l.seed * 6) * 0.03;
       const y = l.y0 + rise;
       const z = l.z + noise1(t * 0.25 + l.seed * 20, 9) * 0.1;
-      _q.setFromEuler(new THREE.Euler(l.rx + Math.sin(a * 0.9 + l.seed * 5) * 0.2, a * l.spin, l.rz + a * l.spin * 0.35));
+      _q.setFromEuler(new THREE.Euler(l.rx + Math.sin(a * 0.9 + l.seed * 5) * 0.15, a * l.spin, l.rz + Math.sin(a * 0.7 + l.seed * 3) * 0.2));
       _m.compose(_w.set(x, y, z), _q, _v.setScalar(l.s));
       const flick = 0.85 + 0.3 * audio.hit('kick', t, 0.12) * (l.seed > 0.5 ? 1 : 0.4);
       const on = l.dim * flick * Math.min(1, a / 0.3 + 0.2) * (1 - smoothstep(3, 6, a));
@@ -583,8 +588,9 @@ export default class Snap extends Scene {
     this.lantGlow!.commit();
     lan.u.uTime.value = t;
 
-    // ---- dust
+    // ---- dust and fog
     this.drawDust(t, new THREE.Vector3(pos.x, pos.y, 0), 3.2, 2.2, 3.2, 0.05);
+    this.fog.update(t, _v.set(pos.x, pos.y, 0));
 
     return this.snapPost(t, sn);
   }
@@ -615,7 +621,7 @@ export default class Snap extends Scene {
     const rate = b >= 16 ? 2 : 1;
     const wi = Math.floor(b * rate);
     const waves = [wi, wi - 1].map((k) => t - audio.timeOfBeat(b0 + k / rate)).filter((age) => age >= 0 && age < 0.6);
-    const amp = (0.03 + 0.22 * build * build) * (sn > 0 ? 0 : 1);
+    const amp = (0.04 + 0.32 * build * build) * (sn > 0 ? 0 : 1);
 
     // ---- camera: low behind the crowd, creeping forward and up until the line, then pushing on beats
     const cam = this.st.cam;
@@ -710,6 +716,7 @@ export default class Snap extends Scene {
     this.sparks.commit();
 
     this.drawDust(t, new THREE.Vector3(0, 2.2, -2.5), 7, 3.5, 8, 0.06 + 0.06 * build);
+    this.fog.update(t, _v.set(pos.x * 0.5, 2.2, 0));
     const roll = snare * build * build * 2.5;
     return this.snapPost(t, sn, {
       bloom: 0.95 + (sn > 0 ? 0.15 : 0),

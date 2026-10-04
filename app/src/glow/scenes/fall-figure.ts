@@ -110,32 +110,31 @@ export class GlowFigure extends THREE.Group {
     const mat = (this.mat = figureMaterial(color));
     const M = (g: THREE.BufferGeometry) => new THREE.Mesh(g, mat);
     const F = GlowFigure;
-    // pelvis + torso (lathed, flattened front to back)
-    this.add(M(ball(0.125, 1.08, 0.78, 0.74)));
+    // hips and torso: two lathed, front-to-back flattened shells overlapping at the waist (the upper one
+    // bends with the spine), so the body reads as one smooth shape
+    const lathe = (pts: number[][]) => {
+      const g = new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r!, y!)), 20);
+      g.deleteAttribute('uv');
+      g.scale(1, 1, 0.66);
+      return g;
+    };
+    this.add(M(lathe([[0.0, -0.17], [0.06, -0.165], [0.108, -0.13], [0.134, -0.06], [0.13, 0.02], [0.12, 0.1], [0.1, 0.15], [0.0, 0.16]])));
     this.add(this.spine);
-    const prof = [
-      [0.0, -0.06], [0.1, -0.05], [0.128, 0.02], [0.118, 0.12], [0.11, 0.2], [0.13, 0.3], [0.152, 0.39],
-      [0.158, 0.45], [0.145, 0.5], [0.1, 0.545], [0.04, 0.565], [0.0, 0.57],
-    ].map(([r, y]) => new THREE.Vector2(r!, y!));
-    const torso = new THREE.LatheGeometry(prof, 18);
-    torso.deleteAttribute('uv');
-    torso.scale(1, 1, 0.66);
-    this.spine.add(M(torso));
+    this.spine.add(M(lathe([[0.0, -0.02], [0.1, -0.01], [0.119, 0.06], [0.113, 0.16], [0.124, 0.28], [0.15, 0.38], [0.158, 0.45], [0.146, 0.5], [0.1, 0.545], [0.045, 0.565], [0.0, 0.57]])));
     // neck + head
     this.neck.position.set(0, 0.55, 0);
     this.spine.add(this.neck);
-    const neckG = limb(0.042, 0.045, 0.07);
+    const neckG = limb(0.04, 0.043, 0.08);
     neckG.rotateZ(Math.PI); // pointing up
     this.neck.add(M(neckG));
-    const head = M(ball(0.108, 0.9, 1.1, 0.98, 16, 12));
-    head.position.set(0, 0.18, 0.01);
+    const head = M(ball(0.115, 0.88, 1.1, 0.98, 18, 14));
+    head.position.set(0, 0.2, 0.012);
     this.neck.add(head);
     // arms (hand = a ball at the end of the forearm)
     for (const s of [-1, 1]) {
       const sh = new THREE.Group();
       sh.position.set(0.172 * s, 0.47, 0);
       this.spine.add(sh);
-      sh.add(M(ball(0.06, 1, 1, 1, 10, 8)));
       sh.add(M(limb(0.052, 0.04, F.UPPER)));
       const el = new THREE.Group();
       el.position.set(0, -F.UPPER, 0);

@@ -141,8 +141,8 @@ void main() {
   vec3 fill = fillLight(n, v, vWP, 24.0);
   float sheen = pow(max(dot(reflect(-v, n), normalize(vec3(-0.45, 0.75, 0.5))), 0.0), 36.0) * 0.16
               + pow(max(dot(reflect(-v, n), normalize(vec3(0.6, 0.2, 0.75))), 0.0), 18.0) * 0.035;
-  vec3 col = vec3(0.75, 0.8, 1.0) * sheen + tint * (0.5 + 0.5 * fres) + uLightCol * att * (diff * 0.03 * (vCol + 0.2) + spec * 0.9) + uRimCol * fres * rimL + fill * (0.25 + 0.75 * fres);
-  float a = 0.30 + 0.55 * fres + 0.4 * dot(fill, vec3(0.33)) + sheen * 2.0;
+  vec3 col = vec3(0.75, 0.8, 1.0) * sheen + tint * (0.5 + 0.5 * fres) + uLightCol * att * (diff * 0.03 * (vCol + 0.2) + spec * 0.9) + uRimCol * fres * rimL + fill * (0.1 + 0.6 * fres);
+  float a = 0.34 + 0.55 * fres + 0.25 * dot(fill, vec3(0.33)) + sheen * 2.0;
   // the liquid scatters a little of the pen light (translucency): faint colour where the light is close
   col += vCol * uLightCol * att * 0.012 * (0.4 + ndv);
   // stress: before the snap, light leaks around the bend centre
