@@ -10,6 +10,7 @@ import { clamp, ease, lerp, prog } from '../../engine/util';
 import { Stage, aim } from '../lib/stage';
 import { GlowPoints } from '../lib/points';
 import { City, type Anchor } from '../lib/city';
+import { Landmarks } from '../lib/landmarks';
 
 interface Shot { a: number; b: number; pos: (k: number) => THREE.Vector3; at: (k: number) => THREE.Vector3; fov?: number; setup?: (t: number, k: number) => void }
 
@@ -20,11 +21,18 @@ export default class LabCity extends Scene {
   anchors: Anchor[] = [];
   shots: Shot[] = [];
   opened = [false, false];
+  lm!: Landmarks;
 
   override async init() {
     const S = this.st;
-    this.city = new City({ seed: 11, half: 1700, centre: [80, -950], downtownR: 520, clouds: 800 });
+    this.city = new City({ seed: 11, half: 1700, centre: [80, -950], downtownR: 520, clouds: 800, clear: [[-250, -1150, 70], [500, -1480, 40], [760, -2050, 50]] });
     S.add(this.city, this.dots);
+    this.city.setMoon(new THREE.Vector3(-0.42, 0.3, -0.86));
+    // the Empire State, the Chrysler and One WTC, on blocks of the grid
+    this.lm = new Landmarks(this.city);
+    const put = (o: THREE.Object3D, x: number, z: number, ry: number) => { const r = this.city.roofNear(x, z)!; o.position.set((r.x0 + r.x1) / 2, 0, (r.z0 + r.z1) / 2); o.rotation.y = ry; };
+    put(this.lm.esb, -250, -1150, 0); put(this.lm.chrysler, 375 + 125, -1480, 0); put(this.lm.wtc, 760, -2050, 0);
+    S.add(this.lm);
     (window as unknown as { __labCity: LabCity; __THREE: unknown }).__labCity = this;
     (window as unknown as { __THREE: unknown }).__THREE = THREE;
     // stats: instanced vertices per kind of mesh
@@ -99,6 +107,7 @@ export default class LabCity extends Scene {
     cam.updateProjectionMatrix();
     aim(cam, sh.pos(ease.inOutQuad(k)), sh.at(k));
     this.city.update(t, cam.position);
+    this.lm.update(t, new THREE.Color(0.9, 0.88, 0.8));
     S.render(this.ctx.renderer, out);
     void prog;
     return { bloom: 0.85, bloomThreshold: 0.8, bloomRadius: 0.8, halation: 0.1, vignette: 0.4, grain: 0.04, ca: 0.6 };

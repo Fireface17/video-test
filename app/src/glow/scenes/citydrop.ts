@@ -250,7 +250,7 @@ export default class CityDrop extends Scene {
 
     this.camera(bi, u, t);
     this.lifts.update(t, S.cam.position);
-    this.spiral.update(t, smoothstep(this.T.lift + 1.6, this.T.lift + 3.6, t) * 0.5, this.lifts.spin);
+    this.spiral.update(t, smoothstep(this.T.lift + 1.6, this.T.lift + 3.6, t) * 0.3, this.lifts.spin);
     this.crowd.update(t, S.cam);
     // the people light the walls around them (the nearest)
     const gl = this.dancers.map((d) => ({ d: d.chest.distanceToSquared(S.cam.position), pos: d.chest, color: d.p.color.clone().multiplyScalar(0.09), radius: 3 })).sort((a, b) => a.d - b.d).slice(0, 12);
@@ -258,7 +258,7 @@ export default class CityDrop extends Scene {
     this.city.update(t, S.cam.position);
     shiftRender(this.ctx.renderer, S.scene, S.cam, this.world, this.city, out, S.bg);
     const hit = pulse(t, B[0]!, 0.25);
-    return { bloom: 0.95, bloomThreshold: 0.75, bloomRadius: 0.85, halation: 0.14, vignette: 0.42, grain: 0.05, ca: 0.8 + 1.5 * hit, flash: 0.35 * hit, shake: [0.004 * f.a.kick, 0.004 * f.a.kick] as [number, number] };
+    return { bloom: 0.95, bloomThreshold: 0.75, bloomRadius: 0.85, halation: 0.14, vignette: 0.42, grain: 0.05, ca: 0.8 + 1.5 * hit, flash: 0.12 * hit, shake: [0.004 * f.a.kick, 0.004 * f.a.kick] as [number, number] };
   }
 
   private camera(bi: number, u: number, t: number) {
@@ -277,8 +277,8 @@ export default class CityDrop extends Scene {
       }
       case 1: {
         // across the street at the second floor, along the fire escapes full of dancers
-        pos = V(-408 - 22 * e, 6.8 + 2.2 * e, 513.5);
-        tgt = V(-424 - 22 * e, 9.5, 504.5);
+        pos = V(-408 - 22 * e, 9.5 + 1.5 * e, 517.5);
+        tgt = V(-424 - 22 * e, 9.0, 504.5);
         fov = 54;
         break;
       }

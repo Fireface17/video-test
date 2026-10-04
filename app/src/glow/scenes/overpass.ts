@@ -54,6 +54,8 @@ export default class Overpass extends Scene {
   F = V(-1, 0, 0);
   R = V(0, 0, -1);
   yaw0 = -Math.PI / 2;
+  /** The edge's coping, above the walkway (m). */
+  coping = 0.25;
 
   override async init() {
     const { audio, start } = this.ctx;
@@ -72,11 +74,12 @@ export default class Overpass extends Scene {
     this.world.add(this.city);
     // (the moon low in the west over the city; the sun still under the eastern horizon behind them)
     this.city.setMoon(V(-0.75, 0.22, 0.45));
-    const ov = this.city.overpass as ({ y: number; walk?: [number, number] }) | null;
-    if (ov) { this.deckY = ov.y; this.railX = ov.walk?.[0] ?? 1135; }
+    const ov = this.city.overpass as ({ y: number; walk?: [number, number]; coping?: number }) | null;
+    if (ov) { this.deckY = ov.y; this.railX = ov.walk?.[0] ?? 1135; this.coping = Math.max(0.1, Math.min(0.5, (ov.coping ?? ov.y + 0.25) - ov.y)); }
     this.spot.set(this.railX + 0.75, this.deckY, 121);
-    // (until the city's overpass has its walkway: our own strip of it, with the gap in the railing)
-    this.world.add(placeKit(this.city, walkwayKit(this.railX, this.deckY, 60, 200, this.spot.z), 0, 0, 0));
+    // (the city's overpass has the walkway, its coping and a gap in the railing at z 119.5–122.5; walkwayKit is
+    // the stand-in for a city without it)
+    if (!ov?.walk) this.world.add(placeKit(this.city, walkwayKit(this.railX, this.deckY, 60, 200, this.spot.z), 0, 0, 0));
     for (const z of [103, 139]) this.lampPos.push(V(this.railX + 3.0, this.deckY + 6.6, z));
     this.world.add(this.lamps);
     // their handprints, still glowing down there along the street they ran
@@ -129,7 +132,7 @@ export default class Overpass extends Scene {
     const lookK = u(T.look, T.look + 0.7) * (1 - u(T.hop - 0.25, T.hop + 0.1));
     const gap = 0.55 - 0.12 * turn + 0.05 * u(T.hands, T.hands + 0.5);
     const hop = clamp((t - T.hop + 0.12) / 0.86);
-    const lift = hop > 0 ? Math.sin(Math.PI * Math.min(1, hop / 0.82)) * 0.3 + 0.25 * smoothstep(0.35, 0.8, hop) : 0;
+    const lift = hop > 0 ? Math.sin(Math.PI * Math.min(1, hop / 0.82)) * 0.3 + this.coping * smoothstep(0.35, 0.8, hop) : 0;
     const fwd = smoothstep(0.1, 0.8, hop) * 0.6;
     he.position.copy(this.P(-gap, fwd, he.hipHeight + lift));
     she.position.copy(this.P(gap, fwd, she.hipHeight + lift));

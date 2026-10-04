@@ -18,10 +18,12 @@ export function skyMaterial(U: CityUniforms) {
       void main() {
         vec3 d = normalize(vD);
         float y = d.y;
-        // night: deep blue overhead, the city's sodium glow low down (less when the power is out)
-        vec3 hor = skyHor + uHazeCol * uGlowK * 0.9;
-        vec3 c = y > 0.0 ? mix(hor, skyTop, pow(clamp(y, 0.0, 1.0), 0.42)) : hor * 0.7;
-        c += uHazeCol * uGlowK * 0.5 * exp(-max(y, 0.0) * 14.0);
+        // night: deep navy overhead, the city's sodium glow low down (less when the power is out); the horizon is
+        // exactly the haze colour, so distant buildings melt into it
+        vec3 hz = hazeColor(uGlowK);
+        vec3 hor = mix(skyHor, hz, 0.85);
+        vec3 c = y > 0.0 ? mix(hor, skyTop, pow(clamp(y * 1.25, 0.0, 1.0), 0.38)) : hz;
+        c += uHazeCol * uGlowK * 0.35 * exp(-max(y, 0.0) * 22.0);
         // stars, more of them in the blackout
         vec3 q = d * 380.0;
         vec3 cell = floor(q);
@@ -71,10 +73,10 @@ export function cloudMaterial(U: CityUniforms) {
         float a = smoothstep(0.38, 0.72, d);
         float dist = length(vW.xz - cameraPosition.xz);
         // lit from below by the city (orange), the moon on the thin edges; at dawn pink and gold
-        vec3 under = uHazeCol * uGlowK * 1.6 * (0.4 + 0.8 * d) + uMoonCol * 0.8 * (1.0 - a);
+        vec3 under = uHazeCol * uGlowK * 0.9 * (0.35 + 0.8 * d) + uMoonCol * 0.6 * (1.0 - a) + skyTop;
         vec3 c = mix(under, mix(vec3(0.75, 0.45, 0.4), vec3(1.0, 0.7, 0.45), d), uDawn);
         c = mix(c, vec3(1.0, 0.7, 0.25) * 0.12 * (0.4 + d), gold * 0.6);
-        a *= smoothstep(14000.0, 3000.0, dist) * 0.7;
+        a *= smoothstep(14000.0, 3000.0, dist) * 0.6;
         gl_FragColor = vec4(c, a);
       }`,
   });
@@ -106,10 +108,12 @@ export function skylineMaterial(U: CityUniforms, o: { ring: boolean; tall: numbe
         float lit = step(h12(vec2(floor(u / 3.2), floor(y / 3.4)) + SEED), 0.28 * (0.6 + 0.8 * h11(id)));
         float p = power(vW.xz);
         vec3 wc = mix(vec3(1.0, 0.66, 0.36), vec3(0.8, 0.88, 1.0), h11(id * 3.3));
-        vec3 c = vec3(0.01, 0.01, 0.013) + uHazeCol * uGlowK * 0.15 + wc * win * lit * 0.5 * p;
+        vec3 hz = hazeColor(p);
+        vec3 c = hz * (0.45 + 0.35 * smoothstep(60.0, 0.0, y)) + wc * win * lit * 0.9 * p;
         c += vec3(1.0, 0.1, 0.05) * step(hgt - 1.0, y) * step(0.7, h11(id * 9.1)) * step(0.5, fract(uTime * 0.5 + h11(id))) * 2.0 * step(80.0, hgt);
         c = mix(c, vec3(0.3, 0.25, 0.25) * 0.25 + vec3(0.04, 0.03, 0.04) * win * lit, uDawn);
-        c = cityFog(c, vW, p);
+        vec2 fk = fogK(vW);
+        c = mix(c, hz, clamp(fk.x, 0.0, 0.6));
         gl_FragColor = vec4(c, 1.0);
       }`,
   });

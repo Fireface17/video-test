@@ -445,7 +445,8 @@ function carLightMaterial(U: CityUniforms, tu: Record<string, THREE.IUniform>) {
         vC *= fk.y * (1.0 - 0.7 * fk.x);
         float px = 0.35 * projectionMatrix[1][1] * pxScale / max(d, 1e-3);
         float m = clamp(px, 1.5, 60.0);
-        vC *= min(1.0, (px * px) / (m * m)) * smoothstep(0.5, 2.0, d);
+        // (far away a car is still a visible spark: streams of headlights along the avenues)
+        vC *= max(min(1.0, (px * px) / (m * m)), 0.3) * smoothstep(0.5, 2.0, d);
         gl_PointSize = m;
         gl_Position = projectionMatrix * mv;
         if (vis < 0.5) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);

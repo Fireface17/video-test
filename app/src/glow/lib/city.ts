@@ -238,7 +238,7 @@ export class City extends THREE.Group {
     }, this.grid);
     const plan = this.plan, g = this.grid;
     this.boxes = plan.boxes();
-    this.U = cityUniforms({ fog: o.fog ?? 0.0006, fogColor: o.fogColor ?? new THREE.Color(0.016, 0.018, 0.045) });
+    this.U = cityUniforms({ fog: o.fog ?? 0.0005, fogColor: o.fogColor ?? new THREE.Color(0.016, 0.018, 0.045) });
     const U = this.U;
     // power mask over the blocks
     const [i0, i1] = plan.iRange, [j0, j1] = plan.jRange;

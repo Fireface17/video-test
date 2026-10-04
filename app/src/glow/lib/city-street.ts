@@ -133,7 +133,7 @@ export function groundMaterial(U: CityUniforms, gridGlsl: string, riverX: number
         float px = max(fwidth(xz.x), fwidth(xz.y));
         float aw = clamp(px * 0.8, 0.02, 0.5);
         float p = power(vW.xz);
-        vec3 alb = vec3(0.07, 0.07, 0.075);
+        vec3 alb = vec3(0.085, 0.085, 0.09);
         // ---- markings: lane lines on the avenues, a double yellow on the wide streets, crosswalks, stop lines
         float avBlock = onAv * (1.0 - onSt), stBlock = onSt * (1.0 - onAv);
         float mk = avBlock * smoothstep(0.08 + aw, 0.08, abs(mod(dx + 1.6, 3.2) - 1.6)) * step(fract(xz.y / 12.0), 0.25) * step(adx, 6.0);
@@ -176,6 +176,9 @@ export function groundMaterial(U: CityUniforms, gridGlsl: string, riverX: number
         vec3 N = vec3(0.0, 1.0, 0.0);
         vec3 L = ambient(N) + streetLight(vW.xz, 0.0, p) + sunLight(vW, N) + peopleGlow(vW, N);
         vec3 c = alb * (1.0 - 0.45 * wet) * L;
+        // the glare of the lamps and the shine of the wet road seen from afar: streets read as lines of light
+        float farK = smoothstep(80.0, 600.0, length(vW - cameraPosition));
+        c += streetLight(vW.xz, 0.0, p) * road * (0.025 + 0.06 * farK);
         vec3 V = normalize(vW - cameraPosition);
         float fres = 0.04 + 0.96 * pow(1.0 - clamp(-V.y, 0.0, 1.0), 5.0);
         c += wetReflection(vW, ripple, rough, p) * wet * fres * mix(0.55, 1.0, mirrorK) * (1.0 - mk * 0.5);

@@ -24,13 +24,13 @@ export function cityUniforms(o: { fog: number; fogColor: THREE.Color }) {
     wake: { value: 1 }, wakeFrom: { value: new THREE.Vector3() }, wakeR: { value: 1e9 }, wakeSoft: { value: 120 },
     gold: { value: 0 }, goldFrom: { value: new THREE.Vector3() }, goldR: { value: 1e9 }, gain: { value: 1 }, t: { value: 0 },
     fogD: { value: o.fog }, fogC: { value: o.fogColor.clone() },
-    skyTop: { value: new THREE.Color(0.002, 0.003, 0.009) }, skyHor: { value: new THREE.Color(0.03, 0.022, 0.026) },
+    skyTop: { value: new THREE.Color(0.0018, 0.0026, 0.0085) }, skyHor: { value: new THREE.Color(0.012, 0.012, 0.02) },
     // light
     uLightMap: { value: null as THREE.Texture | null }, uLMRect: { value: new THREE.Vector4(0, 0, 1, 1) },
     uMoonDir: { value: new THREE.Vector3(-0.35, 0.42, -0.84).normalize() }, uMoonCol: { value: new THREE.Color(0.05, 0.058, 0.08) },
-    uSkyAmb: { value: new THREE.Color(0.012, 0.014, 0.024) }, uGlowAmb: { value: new THREE.Color(0.05, 0.03, 0.02) },
-    uHazeCol: { value: new THREE.Color(0.075, 0.048, 0.036) }, uHazeNight: { value: new THREE.Color(0.006, 0.008, 0.016) },
-    uHazeD: { value: 0.00075 }, uHazeH: { value: 70 },
+    uSkyAmb: { value: new THREE.Color(0.008, 0.01, 0.018) }, uGlowAmb: { value: new THREE.Color(0.03, 0.019, 0.013) },
+    uHazeCol: { value: new THREE.Color(0.062, 0.036, 0.026) }, uHazeNight: { value: new THREE.Color(0.005, 0.007, 0.014) },
+    uHazeD: { value: 0.00055 }, uHazeH: { value: 85 },
     // wet ground reflections (filled by City's mirror)
     uMirror: { value: null as THREE.Texture | null }, uMirrorMat: { value: new THREE.Matrix4() }, uMirrorOn: { value: 0 },
     // windows cut open for people inside (x, y, z centre; w) and (half x, half y, half z)
@@ -130,7 +130,7 @@ export const CITY_GLSL = /* glsl */ `
     float integ = abs(dy) > 0.05 ? uHazeH * (e0 - e1) / dy : e0;
     return vec2(1.0 - exp(-uHazeD * d * max(integ, 0.0)), exp(-fogD * fogD * d * d));
   }
-  vec3 applyFog(vec3 c, vec2 fk, float p) { return mix(fogC, mix(c, hazeColor(p), clamp(fk.x, 0.0, 1.0)), fk.y); }
+  vec3 applyFog(vec3 c, vec2 fk, float p) { vec3 h = hazeColor(p); return mix(mix(h, fogC, 0.25), mix(c, h, clamp(fk.x, 0.0, 1.0)), fk.y); }
   vec3 cityFog(vec3 c, vec3 W, float p) { return applyFog(c, fogK(W), p); }
   // the sky in a direction (for reflections)
   vec3 skyRefl(vec3 R) {
