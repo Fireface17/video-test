@@ -101,7 +101,7 @@ interface SWord { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; t0: number; w:
 export class ScreenPicture {
   scene = new THREE.Scene();
   cam = new THREE.OrthographicCamera(-ASPECT / 2, ASPECT / 2, 1, 0, -1, 1);
-  rt = makeRT(832, Math.round(832 / ASPECT));
+  rt = makeRT(640, Math.round(640 / ASPECT));
   u = { uSunY: { value: -0.2 }, uBright: { value: 1 }, uTime: { value: 0 }, uDawn: { value: 0 } };
   words: SWord[] = [];
   R = 0.8;

@@ -63,7 +63,7 @@ export function makeTimeline(ly: Lyrics, au: AudioData): TimelineEntry[] {
     // the drop hits: punch through the chorus's flash into the living city (people dance on balconies and roofs)
     E('drop1a', 'citydrop', b.drop1, b.drop1mid, X('zoom', 0.5, { centre: [0.5, 0.5], color: lin('#fff1dc', 1.3) })),
     // the people's lights stream up into the sky: punch up through them into the galaxy they make
-    E('drop1', 'cosmos', b.drop1mid, b.verse2, { params: { n: 1 }, ...X('zoom', 0.7, { centre: [0.5, 0.78], color: lin('cyan', 1.2) }) }),
+    E('drop1', 'cosmos', b.drop1mid, b.verse2, { params: { n: 1 }, ...X('zoom', 0.7, { centre: [0.5, 0.55], color: lin('cyan', 1.2) }) }),
     // verse 2 and the build: a night train of ghosts on their phones; they light up and pour out into the street
     E('train', 'train', b.verse2, b.chorus2, X('glitch', 0.4, { seed: 7 })),
     // out of the station and running: a whip pan on the downbeat into the street
@@ -72,8 +72,8 @@ export function makeTimeline(ly: Lyrics, au: AudioData): TimelineEntry[] {
     E('break2', 'overpass', b.break2, b.bridge, X('light', 0.7, { color: lin('#bcd4ff', 0.9) })),
     // up and through, into space
     E('bridge', 'fall', b.bridge, b.chorus3, X('zoom', 0.9, { centre: [0.5, 0.62], color: lin('blue', 1.2) })),
-    // a golden star opens onto the final chorus
-    E('chorus3', 'space-chorus', b.chorus3, b.drop3, { params: { n: 3 }, ...X('iris', 0.75, { color: lin('gold', 1.6), centre: [0.5, 0.5], seed: 0.3 }) }),
+    // a golden star opens onto the final chorus: dawn on the rooftop, the whole city takes hands
+    E('chorus3', 'dawn', b.chorus3, b.drop3, X('iris', 0.75, { color: lin('gold', 1.6), centre: [0.5, 0.5], seed: 0.3 })),
     E('drop3', 'cosmos', b.drop3, b.outro, { params: { n: 3 }, ...X('shatter', 0.9, { color: lin('gold', 1.4), centre: [0.5, 0.42] }) }),
     // stars to stars
     E('outro', 'ceiling', b.outro, b.end, { params: { mode: 'outro' }, ...X('crossfade', 1.2) }),

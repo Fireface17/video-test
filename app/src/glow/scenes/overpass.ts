@@ -74,6 +74,12 @@ export default class Overpass extends Scene {
     this.world.add(this.city);
     // (the moon low in the west over the city; the sun still under the eastern horizon behind them)
     this.city.setMoon(V(-0.75, 0.22, 0.45));
+    // the blue hour: a deep blue sky paling toward the river, the haze cooler than the night's sodium glow
+    const U = this.city.U;
+    U.skyTop.value.setRGB(0.004, 0.009, 0.032);
+    U.skyHor.value.setRGB(0.045, 0.06, 0.12);
+    U.uHazeCol.value.setRGB(0.05, 0.055, 0.09);
+    U.uHazeNight.value.setRGB(0.015, 0.022, 0.05);
     const ov = this.city.overpass as ({ y: number; walk?: [number, number]; coping?: number }) | null;
     if (ov) { this.deckY = ov.y; this.railX = ov.walk?.[0] ?? 1135; this.coping = Math.max(0.1, Math.min(0.5, (ov.coping ?? ov.y + 0.25) - ov.y)); }
     this.spot.set(this.railX + 0.75, this.deckY, 121);
@@ -227,9 +233,9 @@ export default class Overpass extends Scene {
     if (t < bar(2)) {
       // wide along the walkway: the two at the railing, the street they ran along going away below them
       const k = ease.inOutQuad(clamp((t - this.ctx.start) / (bar(2) - this.ctx.start)));
-      pos = this.P(-8.5 + 2.5 * k, -1.9, 1.9 - 0.3 * k, ground);
-      tgt = this.P(0.6, 6, -1.2, ground);
-      fov = 50 - 4 * k;
+      pos = this.P(-6.5 + 2 * k, -1.3, 1.75 - 0.2 * k, ground);
+      tgt = this.P(0.8, 4.5, 0.2, ground);
+      fov = 46 - 4 * k;
     } else if (t < bar(3)) {
       // close on the hands: the star, from the walkway side, the city's lights behind
       const k = ease.inOutQuad(clamp((t - bar(2)) / (bar(3) - bar(2))));
@@ -240,10 +246,11 @@ export default class Overpass extends Scene {
     } else if (t < bar(4)) {
       // close: the lantern, from beyond the railing, the river and the paling sky behind
       const k = ease.inOutQuad(clamp((t - bar(3)) / (bar(4) - bar(3))));
+      // (from above, between them: the hands, the lantern, the street far below beyond the railing)
       const h = mid.clone().addScaledVector(this.F, 0.26).setY(this.deckY + 1.1);
-      pos = h.clone().addScaledVector(this.F, 1.3 - 0.15 * k).addScaledVector(this.R, -0.4 + 0.25 * k).add(V(0, 0.1, 0));
-      tgt = h.clone().add(V(0, -0.08, 0));
-      fov = 27 - 3 * k;
+      pos = h.clone().addScaledVector(this.F, -0.6 + 0.1 * k).addScaledVector(this.R, 0.12).add(V(0, 0.8 - 0.1 * k, 0));
+      tgt = h.clone().addScaledVector(this.F, 0.3).add(V(0, -0.3, 0));
+      fov = 36 - 3 * k;
     } else if (t < bar(6)) {
       // together at the railing, the camera circling slowly from behind them round to their side
       const k = ease.inOutCubic(clamp((t - bar(4)) / (bar(6) - bar(4))));

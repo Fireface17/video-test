@@ -141,7 +141,7 @@ export function plantMaterial(U: CityUniforms) {
         vec3 T = vec3(N.z, 0.0, -N.x);
         float u = dot(vW.xz - vC.xz, T.xz), v = vW.y - vC.y;
         vec3 alb = vF2.rgb * (0.85 + 0.3 * h12(floor(vec2(u, v) * 2.0) + vF0.x)) * (1.0 - step(0.5, vF1.x) * step(0.5, fract(v * 3.0)) * 0.5);
-        vec3 c = alb * (ambient(N) * 1.2 + streetLight(vW.xz + N.xz * 2.0, vW.y, vP) * 0.4 + sunLight(vW, N));
+        vec3 c = alb * (ambient(N) * 1.2 + streetLight(vW.xz + N.xz * 2.0, vW.y, vP) * 0.4 + sunLit(N, 1.0));
         float doorFace = step(0.5, vF1.y) * step(0.5, abs(N.z)) * step(0.0, N.z * (h11(vF0.x) - 0.5)) * step(abs(N.y), 0.5);
         float door = doorFace * step(abs(u), 0.45) * step(v, 2.1);
         float lit = step(0.35, vP) * step(0.3, h11(vF0.x * 3.0));

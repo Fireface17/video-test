@@ -24,13 +24,13 @@ export function cityUniforms(o: { fog: number; fogColor: THREE.Color }) {
     wake: { value: 1 }, wakeFrom: { value: new THREE.Vector3() }, wakeR: { value: 1e9 }, wakeSoft: { value: 120 },
     gold: { value: 0 }, goldFrom: { value: new THREE.Vector3() }, goldR: { value: 1e9 }, gain: { value: 1 }, t: { value: 0 },
     fogD: { value: o.fog }, fogC: { value: o.fogColor.clone() },
-    skyTop: { value: new THREE.Color(0.0018, 0.0026, 0.0085) }, skyHor: { value: new THREE.Color(0.012, 0.012, 0.02) },
+    skyTop: { value: new THREE.Color(0.0011, 0.0016, 0.0062) }, skyHor: { value: new THREE.Color(0.01, 0.009, 0.02) },
     // light
     uLightMap: { value: null as THREE.Texture | null }, uLMRect: { value: new THREE.Vector4(0, 0, 1, 1) },
     uMoonDir: { value: new THREE.Vector3(-0.35, 0.42, -0.84).normalize() }, uMoonCol: { value: new THREE.Color(0.05, 0.058, 0.08) },
     uSkyAmb: { value: new THREE.Color(0.008, 0.01, 0.018) }, uGlowAmb: { value: new THREE.Color(0.03, 0.019, 0.013) },
-    uHazeCol: { value: new THREE.Color(0.062, 0.036, 0.026) }, uHazeNight: { value: new THREE.Color(0.005, 0.007, 0.014) },
-    uHazeD: { value: 0.00055 }, uHazeH: { value: 85 },
+    uHazeCol: { value: new THREE.Color(0.072, 0.034, 0.016) }, uHazeNight: { value: new THREE.Color(0.005, 0.007, 0.014) },
+    uHazeD: { value: 0.00042 }, uHazeH: { value: 80 },
     // wet ground reflections (filled by City's mirror)
     uMirror: { value: null as THREE.Texture | null }, uMirrorMat: { value: new THREE.Matrix4() }, uMirrorOn: { value: 0 },
     // windows cut open for people inside (x, y, z centre; w) and (half x, half y, half z)
@@ -43,7 +43,7 @@ export function cityUniforms(o: { fog: number; fogColor: THREE.Color }) {
     uPGlowN: { value: 0 }, uPGlowNi: { value: 0 },
     // dawn: a low warm sun, mist, the lights going out
     uFlash: { value: new THREE.Vector2(0, 0) },
-    uDawn: { value: 0 }, uSunDir: { value: new THREE.Vector3(0.75, 0.16, -0.64).normalize() }, uSunCol: { value: new THREE.Color(1.0, 0.62, 0.32) },
+    uDawn: { value: 0 }, uSunDir: { value: new THREE.Vector3(0.75, 0.16, -0.64).normalize() }, uSunCol: { value: new THREE.Color(1.0, 0.56, 0.26) },
   };
 }
 export type CityUniforms = ReturnType<typeof cityUniforms>;
@@ -97,14 +97,16 @@ export const CITY_GLSL = /* glsl */ `
     float up = N.y * 0.5 + 0.5;
     vec3 c = (uSkyAmb + uGlowAmb * uGlowK * (1.0 - uDawn)) * (0.3 + 0.7 * up);
     c += uMoonCol * max(dot(N, uMoonDir), 0.0) * (1.0 - uDawn);
-    c += uDawn * mix(vec3(0.05, 0.05, 0.075), vec3(0.11, 0.1, 0.13), up);
+    c += uDawn * mix(vec3(0.035, 0.04, 0.065), vec3(0.09, 0.09, 0.12), up);
     return c;
   }
-  // the low sun at dawn: streets in the blocks' shadow, upper floors and roofs lit
+  // the low sun at dawn: streets in the blocks' shadow, upper floors and roofs lit. The shadow height varies
+  // slowly over the city (compute it per vertex: sunShadowH), the rest per pixel (sunLit).
+  float sunShadowH(vec2 xz) { return 8.0 + 144.0 * vnoise(xz * 0.008 + 3.0) * vnoise(xz * 0.002 + 1.0); }
+  vec3 sunLit(vec3 N, float lit) { return uSunCol * (uDawn * 1.6 * max(dot(N, uSunDir), 0.0) * lit); }
   vec3 sunLight(vec3 W, vec3 N) {
-    float sh = 25.0 + 120.0 * vnoise(W.xz * 0.006 + 3.0);
-    float lit = max(step(0.5, N.y), smoothstep(sh - 12.0, sh + 12.0, W.y));
-    return uSunCol * (uDawn * 0.9 * max(dot(N, uSunDir), 0.0) * lit);
+    float sh = sunShadowH(W.xz);
+    return sunLit(N, max(step(0.5, N.y), smoothstep(sh - 8.0, sh + 8.0, W.y)));
   }
   // light from the glowing people near a point
   vec3 peopleGlow(vec3 W, vec3 N) {
@@ -119,7 +121,7 @@ export const CITY_GLSL = /* glsl */ `
   }
   vec3 hazeColor(float p) {
     vec3 h = mix(uHazeNight, uHazeCol, mix(uGlowK, p, 0.4)) * (1.0 + gold * vec3(0.5, 0.15, -0.6));
-    return mix(h, vec3(0.42, 0.3, 0.26), uDawn);
+    return mix(h, vec3(0.3, 0.2, 0.17), uDawn);
   }
   // how much haze between the camera and W (exponential in height, integrated along the ray), and the distance fog
   vec2 fogK(vec3 W) {
@@ -134,7 +136,9 @@ export const CITY_GLSL = /* glsl */ `
   vec3 cityFog(vec3 c, vec3 W, float p) { return applyFog(c, fogK(W), p); }
   // the sky in a direction (for reflections)
   vec3 skyRefl(vec3 R) {
-    return mix(skyHor, skyTop, clamp(R.y * 1.8, 0.0, 1.0)) + uHazeCol * uGlowK * 0.5 * exp(-max(R.y, 0.0) * 7.0) + uMoonCol * pow(max(dot(R, uMoonDir), 0.0), 24.0) * 0.4;
+    vec3 night = mix(skyHor, skyTop, clamp(R.y * 1.8, 0.0, 1.0)) + uHazeCol * uGlowK * 0.5 * exp(-max(R.y, 0.0) * 7.0) + uMoonCol * pow(max(dot(R, uMoonDir), 0.0), 24.0) * 0.4;
+    vec3 dawn = mix(vec3(0.55, 0.38, 0.3), vec3(0.3, 0.38, 0.55), clamp(R.y * 1.5, 0.0, 1.0)) + uSunCol * pow(max(dot(R, uSunDir), 0.0), 12.0) * 1.2;
+    return mix(night, dawn, uDawn);
   }
   // what a glass pane reflects: the sky with the city's glow on the horizon, the moon, the lit neighbours
   vec3 envRefl(vec3 R, float jit) {
@@ -158,7 +162,7 @@ export const FACADE_VS = /* glsl */ `
   varying vec4 vFace;  // face width, has windows, has shops, face id
   varying vec4 vGrid;  // corner pier, number of bays, bay width, floors
   varying vec4 vUVP;   // u along the face (m from its left corner), tier y0, tier top, units per apartment
-  varying vec2 vPG;    // power, gold
+  varying vec3 vPG;    // power, gold, the height of the dawn shadow here
   void facadeVertex(vec3 W, vec3 N, vec3 C, vec3 S, vec4 F0, vec4 F1, vec4 F3) {
     vec3 T = vec3(N.z, 0.0, -N.x);
     float faceW = abs(T.x) * S.x + abs(T.z) * S.z;
@@ -174,7 +178,7 @@ export const FACADE_VS = /* glsl */ `
     vFace = vec4(faceW, hasWin, hasShop, faceId);
     vGrid = vec4(pier, nb, avail / nb, max(1.0, floor((F3.y - F0.w) / F0.z)));
     vUVP = vec4(dot(W.xz - C.xz, T.xz) + faceW * 0.5, C.y, C.y + S.y, 2.0 + floor(h11(F0.x * 5.5 + faceId) * 2.0));
-    vPG = vec2(power(W.xz), goldAt(W.xz));
+    vPG = vec3(power(W.xz), goldAt(W.xz), sunShadowH(W.xz));
   }
 `;
 
@@ -183,7 +187,7 @@ export const FACADE_VS = /* glsl */ `
  * AC units, flat rooms), 2 (far: lit windows and their average); FAC_GLASS 1 for curtain walls.
  */
 export const FACADE_GLSL = /* glsl */ `
-  varying vec4 vFace, vGrid, vUVP; varying vec2 vPG;
+  varying vec4 vFace, vGrid, vUVP; varying vec3 vPG;
   #ifndef FAC_LOD
   #define FAC_LOD 1
   #endif
@@ -272,7 +276,8 @@ export const FACADE_GLSL = /* glsl */ `
     #if FAC_LOD < 2
       float flick = step(0.45, h12(vec2(roomSeed * 91.0, floor(uTime * 17.0))));
       float on = occ * step(0.0, dp) * mix(flick, 1.0, smoothstep(0.03, 0.09, dp));
-      float startle = occ * step(0.0, dp) * exp(-max(dp, 0.0) * 30.0);
+      // a light coming on flares for a moment: the front of a returning wave sparkles
+      float startle = occ * step(0.0, dp) * exp(-max(dp, 0.0) * 14.0);
     #else
       float on = occ * step(0.0, dp), startle = 0.0;
     #endif
@@ -281,10 +286,10 @@ export const FACADE_GLSL = /* glsl */ `
     vec3 Lc;
     float tv = 0.0;
     if (office > 0.5) Lc = mix(vec3(0.82, 0.92, 0.9), vec3(1.0, 0.6, 0.3), step(0.8, k)) * (0.55 + 0.2 * fract(roomSeed * 4.1));
-    else if (k < 0.42 + 0.25 * warmth) Lc = vec3(1.0, 0.6, 0.3) * (0.55 + 0.6 * fract(roomSeed * 4.1));
-    else if (k < 0.66) Lc = vec3(0.78, 0.86, 1.0) * (0.45 + 0.4 * fract(roomSeed * 4.1));
-    else if (k < 0.8) { Lc = vec3(0.35, 0.5, 1.0) * 0.16 * (0.7 + 0.3 * sin(uTime * 9.0 + roomSeed * 30.0) * sin(uTime * 4.3 + roomSeed * 11.0)); tv = 1.0; }
-    else if (k < 0.93) Lc = vec3(0.85, 1.0, 0.86) * 0.6;
+    else if (k < 0.5 + 0.2 * warmth) Lc = vec3(1.0, 0.6, 0.3) * (0.55 + 0.6 * fract(roomSeed * 4.1));
+    else if (k < 0.72) Lc = vec3(0.85, 0.86, 0.9) * (0.45 + 0.4 * fract(roomSeed * 4.1));
+    else if (k < 0.82) { Lc = vec3(0.35, 0.5, 1.0) * 0.16 * (0.7 + 0.3 * sin(uTime * 9.0 + roomSeed * 30.0) * sin(uTime * 4.3 + roomSeed * 11.0)); tv = 1.0; }
+    else if (k < 0.97) Lc = vec3(0.95, 0.95, 0.8) * 0.6;
     else Lc = mix(vec3(0.75, 0.3, 1.0), vec3(1.0, 0.25, 0.35), fract(roomSeed * 9.1)) * 0.5;
     #if FAC_GLASS == 0 && FAC_LOD < 2
       // stairwells: one column of small windows, dim fluorescent on every floor
@@ -297,10 +302,10 @@ export const FACADE_GLSL = /* glsl */ `
       float candle = 0.0; vec3 candleC = vec3(0.0);
     #endif
     Lc = mix(Lc, vec3(1.0, 0.7, 0.25) * (0.8 + 0.4 * fract(roomSeed * 2.0)), gl * 0.85);
-    vec3 Lroom = Lc * (1.0 + startle * 1.5) * on * gain + candleC * candle;
+    vec3 Lroom = Lc * (1.0 + startle * 2.2) * on * gain + candleC * candle;
     // ---- light on the wall ----
     vec3 street = streetLight(W.xz + N.xz * 2.0, v, p);
-    vec3 Lw = ambient(N) + street * 0.55 + sunLight(W, N);
+    vec3 Lw = ambient(N) + street * 0.55 + sunLit(N, smoothstep(vPG.z - 8.0, vPG.z + 8.0, v));
     #if FAC_LOD == 0
       vec3 pg = peopleGlow(W, N);
       Lw += pg;
@@ -394,10 +399,11 @@ export const FACADE_GLSL = /* glsl */ `
         float cur = (1.0 - office) * step(0.55, fract(roomSeed * 11.0));
         float side = fract(roomSeed * 12.0) < 0.5 ? wq.x / ow : 1.0 - wq.x / ow;
         float cover = cur * step(side, 0.2 + 0.6 * fract(roomSeed * 13.0));
-        vec3 fabric = mix(vec3(0.95, 0.6, 0.35), mix(vec3(0.75, 0.8, 0.95), vec3(0.9, 0.85, 0.7), fract(roomSeed * 15.0)), fract(roomSeed * 14.0));
+        vec3 fabric = mix(vec3(0.95, 0.7, 0.45), mix(vec3(0.85, 0.85, 0.88), vec3(0.95, 0.88, 0.72), fract(roomSeed * 15.0)), fract(roomSeed * 14.0));
         inside = mix(inside, fabric * Lroom * 0.55 * (0.75 + 0.25 * sin(wq.x * 40.0 + roomSeed * 6.0)), cover);
         float blinds = step(0.82, fract(roomSeed * 16.0)) * (1.0 - cover) * step(oh * (1.0 - fract(roomSeed * 17.0) * 0.8), oh - wq.y);
-        inside = mix(inside, mix(inside, Lroom * 0.32, smoothstep(0.35, 0.65, fract(wq.y * 12.0))), blinds);
+        float slat = mix(smoothstep(0.35, 0.65, fract(wq.y * 12.0)), 0.5, smoothstep(0.2, 0.5, fwidth(wq.y * 12.0)));
+        inside = mix(inside, mix(inside, Lroom * 0.32, slat), blinds);
         float ac = step(0.8, fract(roomSeed * 19.0)) * step(style, 1.1 + step(abs(style - 5.0), 0.1) * 9.0) * (1.0 - gWin) * step(abs(wq.x - ow * 0.5), ow * 0.36) * step(wq.y, oh * 0.32);
         vec3 acC = vec3(0.45, 0.43, 0.4) * (Lw + Lroom * 0.15) * (0.85 + 0.15 * step(0.5, fract(wq.x * 30.0)));
         float fr = clamp(max(step(abs(wq.y - oh * 0.52), 0.035), max(step(wq.x, 0.05) + step(ow - 0.05, wq.x), step(wq.y, 0.05) + step(oh - 0.05, wq.y))), 0.0, 1.0) * smoothstep(0.2, 0.08, px);
@@ -444,6 +450,6 @@ export const ROOF_GLSL = /* glsl */ `
     vec2 e = S.xz * 0.5 - abs(q);
     alb *= 0.75 + 0.25 * smoothstep(0.0, 1.6, min(e.x, e.y));
     vec3 N = vec3(0.0, 1.0, 0.0);
-    return alb * (ambient(N) * 1.3 + sunLight(W, N) + peopleGlow(W, N) + streetLight(W.xz, W.y, p) * 0.05);
+    return alb * (ambient(N) * 1.3 + sunLit(N, 1.0) + peopleGlow(W, N) + streetLight(W.xz, W.y, p) * 0.05);
   }
 `;

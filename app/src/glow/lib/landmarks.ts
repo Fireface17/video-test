@@ -36,7 +36,7 @@ function towerMaterial(city: City, B: [number, number, number, number], flood: {
         vF0 = lF0; vF1 = lF1; vF2 = lF2; vF3 = vec4(15.0, top, 0.0, lF2.w);
         // the grid is laid out in the tower's own frame; power and gold where the tower stands
         facadeVertex(position, nl, aPos, aSize, vF0, vF1, vF3);
-        vPG = vec2(power(w.xz), goldAt(w.xz));
+        vPG = vec3(power(w.xz), goldAt(w.xz), sunShadowH(w.xz));
         gl_Position = projectionMatrix * viewMatrix * w;
       }`,
     fragmentShader: /* glsl */ `

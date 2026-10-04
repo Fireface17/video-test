@@ -173,7 +173,7 @@ export class Car extends THREE.Group {
       const n = Math.max(1, Math.round((x1 - x0) / 1.05));
       for (let k = 0; k < n; k++) {
         const cx = x0 + ((k + 0.5) * (x1 - x0)) / n;
-        if (s > 0 && cx > -1.5 && cx < 1.9) continue; // the line map hangs there
+        if (s > 0 && cx > -1.5 && cx < 1.85) continue; // the line map hangs there
         const g = new THREE.PlaneGeometry(0.92, 0.27);
         const id = Math.floor(hash(ai++, 3) * 6);
         const uv = g.attributes.uv as THREE.BufferAttribute;

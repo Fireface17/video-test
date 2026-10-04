@@ -57,7 +57,7 @@ const SH = [2, 3], EL = [4, 5], HA = [6, 7]; // star-joint indices of the left /
 const _X = new THREE.Vector3(1, 0, 0), _Y = new THREE.Vector3(0, 1, 0);
 
 /** Two-bone IK in joint space: shoulder S, lengths L1 L2, hand target T, elbow toward `pole`; writes E and H. */
-function ik(S: THREE.Vector3, L1: number, L2: number, T: THREE.Vector3, pole: THREE.Vector3, E: THREE.Vector3, H: THREE.Vector3) {
+export function ik(S: THREE.Vector3, L1: number, L2: number, T: THREE.Vector3, pole: THREE.Vector3, E: THREE.Vector3, H: THREE.Vector3) {
   const D = _d.subVectors(T, S);
   let dl = D.length();
   if (dl < 1e-5) { D.copy(pole); dl = 1e-5; }

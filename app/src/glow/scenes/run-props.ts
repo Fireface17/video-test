@@ -154,7 +154,7 @@ export class BrokenWindow extends THREE.Group {
       const a = (i / N) * Math.PI * 2, rr = (0.45 + 0.55 * r()) * (i % 3 === 0 ? 1.15 : 0.85);
       hole.push([cx + Math.cos(a) * rr * w * 0.42, cy + Math.sin(a) * rr * h * 0.4]);
     }
-    const W = (u: number, v: number): number[] => [base.x + tx.x * u + n.x * 0.03, base.y + v, base.z + tx.z * u + n.z * 0.03];
+    const W = (u: number, v: number): number[] => [base.x + tx.x * u + n.x * 0.14, base.y + v, base.z + tx.z * u + n.z * 0.14];
     for (let i = 0; i < N; i++) {
       const [u0, v0] = hole[i]!, [u1, v1] = hole[(i + 1) % N]!;
       // project each hole vertex out to the frame rectangle

@@ -328,6 +328,17 @@ function propGeometry(kind: number) {
   return k.geometry();
 }
 
+/** A sidewalk shed: unit length along x, out from the facade along +z; green panels, posts, lights underneath. */
+function shedGeometry() {
+  const k = new KitBuilder(), green = [0.05, 0.13, 0.08, M.ALB], steel = [0.12, 0.13, 0.12, M.ALB];
+  k.box(0, 3.15, 1.2, 1, 0.14, 2.45, green);
+  k.quad(0, 3.5, 2.43, 1, 0.75, green);
+  k.box(0, 3.85, 1.2, 1, 0.05, 2.45, [0.09, 0.09, 0.1, M.ALB]);
+  for (const x of [-0.5, 0]) { k.box(x, 1.55, 2.3, 0.025, 3.1, 0.08, steel); k.box(x, 1.55, 0.15, 0.025, 3.1, 0.08, steel); }
+  k.quad(0, 3.07, 1.2, 0.9, 0.12, [0.85, 0.92, 1.0, M.LAMP], 0, Math.PI / 2);
+  return k.geometry();
+}
+
 function stackGeometry() {
   const k = new KitBuilder();
   k.cyl(0, 1.2, 0, 0.32, 0.36, 2.4, 8, [1.0, 0.35, 0.05, M.STRIPES], true);
@@ -603,20 +614,99 @@ export class CityLife extends THREE.Group {
       near.add('signal', s.x, s.z, { x: s.x, y: 0.15, z: s.z, yaw: s.corner ? Math.PI : 0, sx: 1, sy: 1, sz: 1, col: [1, 1, 1], k: 0.5 + fract(off * 0.37) * 0.49, x4: [off, 0, 0, 0] });
     }
     for (const s of plan.steam) if (s.stack) near.add('stack', s.x, s.z, { x: s.x, y: 0, z: s.z, yaw: 0, sx: 1, sy: 1, sz: 1, col: [1, 1, 1], k: 0 });
+    for (const sh of plan.sheds) near.add('shed', sh.x, sh.z, { x: sh.x, y: 0.15, z: sh.z, yaw: Math.atan2(sh.nx, sh.nz), sx: sh.w, sy: 1, sz: 1, col: [1, 1, 1], k: 0.5 + sh.seed * 0.49 });
     const kitM = kitMaterial(U), kitM2 = kitMaterial(U, { side: THREE.DoubleSide });
     const geos: Record<string, THREE.BufferGeometry> = {
-      awning: awningGeometry(), car0: carGeometry(0), car1: carGeometry(1), car3: carGeometry(3), tree: treeGeometry(), signal: signalGeometry(), stack: stackGeometry(),
+      awning: awningGeometry(), shed: shedGeometry(), car0: carGeometry(0), car1: carGeometry(1), car3: carGeometry(3), tree: treeGeometry(), signal: signalGeometry(), stack: stackGeometry(),
     };
     for (const k of [0, 2, 3, 4, 5, 6, 7, 8]) geos['prop' + k] = propGeometry(k);
     const dists: Record<string, number> = { awning: 520, tree: 520, signal: 650 };
     const make = (kind: string, list: KInst[], origin: THREE.Vector3) => {
       const geo = geos[kind];
       if (!geo) return null;
-      return kitBatch(geo, list, kind === 'awning' || kind === 'tree' || kind.startsWith('prop') || kind.startsWith('car') ? kitM2 : kitM, origin, kind === 'signal' ? 8 : 6);
+      return kitBatch(geo, list, kind === 'awning' || kind === 'shed' || kind === 'tree' || kind.startsWith('prop') || kind.startsWith('car') ? kitM2 : kitM, origin, kind === 'signal' ? 8 : 6);
     };
     near.build(this, 430 * lod, make, this.lods);
     void mid; void dists;
-    this.mirrorHide.push(...this.lods);
+
+    // ---- laundry lines and wires (catenaries), the clothes on them, pigeons, moths round the lamps ----
+    {
+      const LP: number[] = [], seg = 10;
+      for (const ln of plan.lines) {
+        const P = (t: number) => [ln.a[0] + (ln.b[0] - ln.a[0]) * t, ln.a[1] + (ln.b[1] - ln.a[1]) * t - ln.sag * 4 * t * (1 - t), ln.a[2] + (ln.b[2] - ln.a[2]) * t];
+        for (let i = 0; i < seg; i++) LP.push(...P(i / seg), ...P((i + 1) / seg));
+      }
+      const lg = new THREE.BufferGeometry();
+      lg.setAttribute('position', new THREE.Float32BufferAttribute(LP, 3));
+      const lines = new THREE.LineSegments(lg, new THREE.ShaderMaterial({
+        uniforms: U as unknown as Record<string, THREE.IUniform>,
+        vertexShader: `varying vec3 vC; varying vec2 vFk; varying float vP;
+          ${CITY_GLSL}
+          void main() { vec4 w = modelMatrix * vec4(position, 1.0); vP = power(w.xz);
+            vC = vec3(0.012) + streetLight(w.xz, w.y, vP) * 0.08 + uMoonCol * 0.3 + sunLight(w.xyz, vec3(0.0, 1.0, 0.0)) * 0.1; vFk = fogK(w.xyz);
+            gl_Position = projectionMatrix * viewMatrix * w; }`,
+        fragmentShader: `varying vec3 vC; varying vec2 vFk; varying float vP;
+          ${CITY_GLSL}
+          void main() { gl_FragColor = vec4(applyFog(vC, vFk, vP), 1.0); }`,
+      }));
+      lines.frustumCulled = false;
+      this.add(lines);
+      this.mirrorHide.push(lines);
+      // clothes pegged on the laundry lines
+      const cl: KInst[] = [];
+      const cols: [number, number, number][] = [[0.6, 0.6, 0.58], [0.5, 0.1, 0.08], [0.1, 0.2, 0.45], [0.55, 0.5, 0.2], [0.15, 0.35, 0.2], [0.6, 0.35, 0.45], [0.05, 0.05, 0.06], [0.45, 0.45, 0.5]];
+      for (const ln of plan.lines) {
+        if (ln.kind !== 0) continue;
+        const n = 3 + Math.floor(fract(ln.seed * 7.7) * 9);
+        for (let k = 0; k < n; k++) {
+          const t = 0.08 + 0.84 * fract(ln.seed * 13.1 + k * 0.618);
+          const x = ln.a[0] + (ln.b[0] - ln.a[0]) * t, y = ln.a[1] + (ln.b[1] - ln.a[1]) * t - ln.sag * 4 * t * (1 - t), z = ln.a[2] + (ln.b[2] - ln.a[2]) * t;
+          const big = fract(ln.seed * 31.3 + k * 0.37);
+          cl.push({ x, y, z, yaw: Math.PI / 2 + (fract(k * 0.77) - 0.5) * 0.3, sx: 0.35 + big * 0.6, sy: 0.4 + big * 0.5, sz: 1, col: cols[Math.floor(fract(ln.seed * 5.3 + k * 0.29) * 8)]!, k: 0 });
+        }
+      }
+      const cloth = new KitBuilder().quad(0, -0.5, 0, 1, 1, [1, 1, 1, M.TINT]).geometry();
+      const ct = new TileSet<KInst>(250, 240);
+      for (const c of cl) ct.add('c', c.x, c.z, c);
+      ct.build(this, 500 * lod, (_k, list, origin) => kitBatch(cloth, list, kitM2, origin, 2), this.lods);
+      // pigeons on the wires
+      const bt = new TileSet<KInst>(250, 240);
+      for (const [x, y, z, yaw] of plan.birds) bt.add('b', x, z, { x, y, z, yaw, sx: 1, sy: 1, sz: 1, col: [0.06, 0.06, 0.07], k: 0 });
+      const bird = new KitBuilder().box(0, 0.09, 0, 0.12, 0.13, 0.26, [1, 1, 1, M.TINT]).box(0, 0.2, 0.11, 0.07, 0.07, 0.08, [1, 1, 1, M.TINT]).box(0, 0.07, -0.17, 0.08, 0.03, 0.14, [1, 1, 1, M.TINT]).geometry();
+      bt.build(this, 300 * lod, (_k, list, origin) => kitBatch(bird, list, kitM, origin, 1), this.lods);
+      // moths round the street lamps
+      const mp: number[] = [], ma: number[] = [];
+      plan.lamps.forEach((l, i) => {
+        if (l.kind === 3) return;
+        const hx = l.kind === 0 ? l.x + l.ax * 1.95 : l.x, hz = l.kind === 0 ? l.z + l.az * 1.95 : l.z, hy = l.kind === 0 ? l.h * 0.94 : l.h;
+        for (let k = 0; k < 3; k++) { mp.push(hx, hy - 0.4, hz); ma.push(fract(i * 0.37 + k * 0.29), 0.5 + fract(i * 0.71 + k * 0.53) * 1.4, k, 0); }
+      });
+      const mg = new THREE.BufferGeometry();
+      mg.setAttribute('position', new THREE.Float32BufferAttribute(mp, 3));
+      mg.setAttribute('aM', new THREE.Float32BufferAttribute(ma, 4));
+      const moths = new THREE.Points(mg, new THREE.ShaderMaterial({
+        uniforms: { ...(U as unknown as Record<string, THREE.IUniform>), pxScale: { value: (1080 * SCALE) / 2 } },
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+        vertexShader: `attribute vec4 aM; uniform float pxScale; varying vec3 vC;
+          ${CITY_GLSL}
+          void main() {
+            float a = uTime * (2.0 + 3.0 * aM.x) + aM.x * 40.0, r = aM.y * (0.7 + 0.3 * sin(uTime * 1.7 + aM.z));
+            vec3 wp = position + vec3(cos(a) * r, sin(uTime * 3.1 + aM.x * 20.0) * 0.35 - 0.2, sin(a * 1.3) * r);
+            vec4 mv = viewMatrix * modelMatrix * vec4(wp, 1.0);
+            float d = -mv.z, p = power(position.xz);
+            vC = vec3(1.0, 0.8, 0.55) * 0.9 * step(0.3, p) * (1.0 - uDawn) * smoothstep(80.0, 20.0, d);
+            float px = 0.05 * projectionMatrix[1][1] * pxScale / max(d, 1e-3);
+            float m = clamp(px, 1.0, 8.0);
+            vC *= min(1.0, (px * px) / (m * m));
+            gl_PointSize = m;
+            gl_Position = projectionMatrix * mv;
+          }`,
+        fragmentShader: `varying vec3 vC; void main() { vec2 p = gl_PointCoord * 2.0 - 1.0; float r2 = dot(p, p); if (r2 > 1.0) discard; gl_FragColor = vec4(vC * exp(-r2 * 3.0), 1.0); }`,
+      }));
+      moths.frustumCulled = false;
+      this.add(moths);
+      this.mirrorHide.push(moths);
+    }
 
     // ---- moving traffic ----
     const [X0, Z0, X1, Z1] = plan.o.bounds;
@@ -721,7 +811,7 @@ export class CityLife extends THREE.Group {
     const steam = new THREE.Points(stg, steamMaterial(U));
     steam.frustumCulled = false;
     this.add(steam);
-    this.mirrorHide.push(steam);
+    this.mirrorHide.push(steam, ...this.lods);
   }
 
   flash(k: number, seed: number) { this.city.U.uFlash.value.set(k, seed); }

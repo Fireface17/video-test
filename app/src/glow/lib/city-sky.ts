@@ -23,6 +23,7 @@ export function skyMaterial(U: CityUniforms) {
         vec3 hz = hazeColor(uGlowK);
         vec3 hor = mix(skyHor, hz, 0.85);
         vec3 c = y > 0.0 ? mix(hor, skyTop, pow(clamp(y * 1.25, 0.0, 1.0), 0.38)) : hz;
+        c += vec3(0.006, 0.002, 0.012) * exp(-abs(y - 0.18) * 8.0) * uGlowK;
         c += uHazeCol * uGlowK * 0.35 * exp(-max(y, 0.0) * 22.0);
         // stars, more of them in the blackout
         vec3 q = d * 380.0;
@@ -70,10 +71,10 @@ export function cloudMaterial(U: CityUniforms) {
       void main() {
         vec2 p = vW.xz / 1100.0 + vec2(uTime * 0.004, uTime * 0.0018);
         float d = fbm3(p + vec2(sin(p.y * 2.1 + 1.3), cos(p.x * 1.7 + 0.4)) * 0.45);
-        float a = smoothstep(0.38, 0.72, d);
+        float a = smoothstep(0.45, 0.78, d);
         float dist = length(vW.xz - cameraPosition.xz);
         // lit from below by the city (orange), the moon on the thin edges; at dawn pink and gold
-        vec3 under = uHazeCol * uGlowK * 0.9 * (0.35 + 0.8 * d) + uMoonCol * 0.6 * (1.0 - a) + skyTop;
+        vec3 under = uHazeCol * uGlowK * 0.6 * (0.35 + 0.8 * d) + uMoonCol * 0.6 * (1.0 - a) + skyTop;
         vec3 c = mix(under, mix(vec3(0.75, 0.45, 0.4), vec3(1.0, 0.7, 0.45), d), uDawn);
         c = mix(c, vec3(1.0, 0.7, 0.25) * 0.12 * (0.4 + d), gold * 0.6);
         a *= smoothstep(14000.0, 3000.0, dist) * 0.6;

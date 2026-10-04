@@ -143,7 +143,7 @@ export class RoofSet extends THREE.Group {
       if (b === this.his) this.hisGap.copy(gap); else this.herGap.copy(gap);
     }
     this.heSpot.set(GAP_X + 0.1, RoofSet.roofTop(this.his), this.his.z0 + 1.25);
-    this.sheSpot.set(GAP_X - 0.1, RoofSet.roofTop(this.hers), this.hers.z1 - 1.25);
+    this.sheSpot.set(GAP_X - 0.1, RoofSet.roofTop(this.hers), this.hers.z1 - 0.7);
 
     // ---- fire escapes under the gaps (two bays wide), and on the neighbours ----
     const fe: KInst[] = [];
@@ -274,6 +274,21 @@ export class RoofSet extends THREE.Group {
     this.add(kitBatch(antennaGeometry(), [{ x: bx - 0.6, y: hy + 3.1, z: bz + 0.8, yaw: 0, sx: 0.12, sy: 6.6, sz: 0.12, col: [1, 1, 1], k: 0 }], kit, new THREE.Vector3(bx, 0, bz), 2));
     this.add(kitBatch(roofBoxGeometry(), boxes, kit, new THREE.Vector3(0, 0, 0), 40));
     this.buildLaundry();
+  }
+
+  /** The windows of a building's street face as the city's facade lays them out (world; city Anchor shape). */
+  static windows(b: Bld): { kind: 'window'; pos: THREE.Vector3; facing: THREE.Vector3; building: number; floor: number; size: [number, number] }[] {
+    const fw = b.x1 - b.x0, pier = 0.55, avail = Math.max(fw - 2 * pier, 0.5);
+    const nb = Math.max(1, Math.floor(avail / b.bayW + 0.5)), bw = avail / nb;
+    const sub = b.pairs > 1.5 ? 2 : 1, ww = (Math.min(b.winW * sub, 0.96) * bw) / sub;
+    const fz = b.front < 0 ? b.z0 : b.z1, cx = (b.x0 + b.x1) / 2;
+    const f1 = Math.floor((b.h - 0.95 - b.gH) / b.fH - b.sill - b.winH + 1e-3);
+    const out: ReturnType<typeof RoofSet.windows> = [];
+    for (let f = 0; f <= f1; f++) for (let k = 0; k < nb; k++) for (let s = 0; s < sub; s++) {
+      const u = -fw / 2 + pier + (k + (s + 0.5) / sub) * bw;
+      out.push({ kind: 'window', pos: new THREE.Vector3(cx + u, b.gH + f * b.fH + b.sill * b.fH, fz), facing: new THREE.Vector3(0, 0, b.front), building: -1, floor: f + 1, size: [ww, b.winH * b.fH] });
+    }
+    return out;
   }
 
   /** Bay centres (world x) of a building's street face, as the city's facade lays them out. */

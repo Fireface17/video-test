@@ -78,7 +78,7 @@ function deckMaterial(U: CityUniforms, o: OverpassInfo) {
         // pools of the deck lamps (every 40 m on the east barrier), their sodium colour
         float dz = mod(xz.y + 20.0, 40.0) - 20.0, dxl = x - 20.0;
         vec3 pool = vec3(1.0, 0.55, 0.22) * (0.7 * exp(-(dz * dz + dxl * dxl) / 70.0) + 0.12 * exp(-(dz * dz + dxl * dxl) / 400.0)) * step(0.15, p);
-        vec3 L = ambient(N) + pool + sunLight(vW, N) + peopleGlow(vW, N);
+        vec3 L = ambient(N) + pool + sunLit(N, 1.0) + peopleGlow(vW, N);
         vec3 c = alb * L * (N.y > 0.5 ? 1.0 : 0.6);
         // wet: the sky and the lamps in it
         vec3 V = normalize(vW - cameraPosition);

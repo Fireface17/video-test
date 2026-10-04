@@ -252,30 +252,6 @@ export class Station extends THREE.Group {
     return vis / n;
   }
 
-  /**
-   * The station's power (0 dead .. 1 on), per part: the pylon's lightbox, its LED windows (marquee and
-   * prices), the canopy's LED panels, the pumps' screens, the shop window.
-   */
-  power(p: { box: number; leds: number; canopy: number; pumps: number; shop: number }) {
-    this.faceU.box!.value = p.box;
-    this.marquee.material.uniforms.k!.value *= p.leds;
-    for (const r of this.rows) r.material.uniforms.k!.value *= p.leds;
-    this.canopyMat.color.copy(C('#eaf4ff', 4 * p.canopy));
-    this.fasciaMat.color.copy(C('#d8261c', 1.2 * p.canopy));
-    this.pumpMat.color.copy(C('#bfe6ff', 1.4 * p.pumps));
-    this.shopMat.color.copy(C('#ffe2b8', 1.1 * p.shop));
-  }
-
-  /** World positions of the lamps the moths fly round: the pylon's lightbox and two canopy panels. */
-  mothSpots() {
-    this.updateMatrixWorld(true);
-    return [
-      this.pylon.localToWorld(new THREE.Vector3(0, this.panelY + 2.9, 0.9)),
-      this.localToWorld(new THREE.Vector3(24 - 17 + 3 + 5.6, 5.0, -30 - 9 + 9)),
-      this.localToWorld(new THREE.Vector3(24 - 17 + 3 + 11.2, 5.0, -30 - 9 + 3)),
-    ];
-  }
-
   /** Canopy pool for the shared lighting (world coordinates), scaled by k. */
   pool(k: number) {
     const p = new THREE.Vector3(24, 5.4, -30).applyMatrix4(this.matrixWorld);

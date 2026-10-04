@@ -230,7 +230,6 @@ export class CalendarBoard extends THREE.Group {
   lamps: THREE.Mesh;
   cones: THREE.Mesh;
   coneU = { k: { value: 1 } };
-  floodLocal: THREE.Vector3[] = [];
 
   constructor(public spec: BoardSpec) {
     super();
@@ -297,13 +296,6 @@ export class CalendarBoard extends THREE.Group {
           gl_FragColor = vec4(vec3(1.0, 0.9, 0.75) * 0.035 * f * pow(1.0 - vY, 1.5) * smoothstep(1.0, 0.9, 1.0 - vY) * k * smoothstep(2.0, 8.0, d), 1.0); }`,
     }));
     this.add(this.lamps, this.cones);
-    this.floodLocal = lampPos.map((p) => p.clone().add(new THREE.Vector3(0, 0.3, 0.15)));
-  }
-
-  /** World positions of the floodlights (the moths fly round them). */
-  floodSpots() {
-    this.updateMatrixWorld(true);
-    return this.floodLocal.map((p) => this.localToWorld(p.clone()));
   }
 
   update(t: number) {

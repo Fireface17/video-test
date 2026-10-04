@@ -88,7 +88,7 @@ export class Outside extends THREE.Group {
     this.city.position.copy(OFF);
     this.add(this.city);
     // the cheap stand-in seen from the train (the full city is drawn only in the street shots)
-    this.backdrop = new Backdrop(U, this.city);
+    this.backdrop = new Backdrop(U);
     this.add(this.backdrop);
     // sky and moon
     this.skyM = skyMat();
@@ -220,7 +220,7 @@ export class Outside extends THREE.Group {
  */
 export class Backdrop extends THREE.Group {
   mat: THREE.ShaderMaterial;
-  constructor(U: LightU, city: City) {
+  constructor(U: LightU) {
     super();
     const r = mulberry32(41);
     const inst: number[][] = [];
@@ -279,7 +279,6 @@ export class Backdrop extends THREE.Group {
     for (let i = 0; n < 400; i++) lamps.set(n++, -260 + r() * 600, 6, 50 + r() * 320, new THREE.Color(1, 0.6, 0.3), 0.8 + r() * 0.6, 1);
     lamps.commit();
     this.add(lamps);
-    void city;
   }
 
   /** The black tower: dark glass, a few lit windows. */
@@ -519,4 +518,3 @@ function riserMaterial(U: LightU, riser: { sharp: THREE.Texture; glow: THREE.Tex
   return m;
 }
 
-export { hash };

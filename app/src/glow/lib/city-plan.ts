@@ -90,6 +90,10 @@ export interface Tree { x: number; z: number; s: number; seed: number }
 export interface Prop { kind: number; x: number; z: number; rot: number; seed: number }
 export interface Parked { x: number; z: number; dx: number; dz: number; type: number; color: number; seed: number }
 export interface Steam { x: number; z: number; stack: boolean; seed: number }
+/** A line strung through the air: 0 laundry (across a rear yard, with clothes), 1 a wire along a street. */
+export interface AirLine { a: [number, number, number]; b: [number, number, number]; sag: number; kind: number; seed: number }
+/** A sidewalk shed (scaffolding over the pavement) along a building front: its centre on the facade, outward normal, length. */
+export interface Shed { x: number; z: number; nx: number; nz: number; w: number; seed: number }
 
 /** Shop kinds: what they look like at 3 am. */
 export const SHOP = {
@@ -155,6 +159,10 @@ export class CityPlan {
   props: Prop[] = [];
   parked: Parked[] = [];
   steam: Steam[] = [];
+  sheds: Shed[] = [];
+  lines: AirLine[] = [];
+  /** pigeons sitting on the wires: position, heading */
+  birds: [number, number, number, number][] = [];
   /** blocks that were generated: [i, j, kind (0 city, 1 park)] */
   blocks: [number, number, number][] = [];
   /** avenue / street index ranges that carry streets */
@@ -187,6 +195,61 @@ export class CityPlan {
       }
     }
     this.streets(mulberry32(o.seed * 31 + 7));
+    this.airLines(mulberry32(o.seed * 53 + 11));
+  }
+
+  /** Laundry lines across the rear yards between walk-ups; wires along the low-rise streets, pigeons on them. */
+  private airLines(r: () => number) {
+    const byBlock = new Map<string, Building[]>();
+    for (const b of this.buildings) {
+      if (b.style !== ST.WALKUP && b.style !== ST.LOFT) continue;
+      const k = b.block.join(',');
+      if (!byBlock.has(k)) byBlock.set(k, []);
+      byBlock.get(k)!.push(b);
+    }
+    for (const list of byBlock.values()) {
+      const A = list.filter((b) => b.front === F.N), B = list.filter((b) => b.front === F.S);
+      for (const a of A) {
+        if (r() > 0.45 * this.o.detail) continue;
+        const ax = a.x0 + 1.5 + r() * (a.x1 - a.x0 - 3);
+        const bb = B.find((b) => ax > b.x0 + 1 && ax < b.x1 - 1);
+        if (!bb) continue;
+        const n = 1 + Math.floor(r() * 2.5);
+        for (let k = 0; k < n; k++) {
+          const fa = 1 + Math.floor(r() * 3), fb = 1 + Math.floor(r() * 3);
+          const ya = a.gH + fa * a.fH + 0.9, yb = bb.gH + fb * bb.fH + 0.9;
+          if (ya > a.h - 1 || yb > bb.h - 1) continue;
+          const bx = ax + (r() - 0.5) * 3;
+          this.lines.push({ a: [ax + k * 0.6, ya, a.z1 + 0.05], b: [Math.min(Math.max(bx, bb.x0 + 0.5), bb.x1 - 0.5), yb, bb.z0 - 0.05], sag: 0.6 + r() * 0.6, kind: 0, seed: r() });
+        }
+      }
+    }
+    // wires between the street lamps of low-rise streets, a few pigeons
+    const lampsBySide = new Map<string, { x: number; z: number }[]>();
+    for (const l of this.lamps) {
+      if (l.kind !== 0 || l.az === 0 || this.tall(l.x, l.z) > 0.25) continue;
+      const k = `${Math.round(l.z)}`;
+      if (!lampsBySide.has(k)) lampsBySide.set(k, []);
+      lampsBySide.get(k)!.push({ x: l.x, z: l.z });
+    }
+    for (const row of lampsBySide.values()) {
+      row.sort((p, q) => p.x - q.x);
+      for (let i = 0; i + 1 < row.length; i++) {
+        const p = row[i]!, q = row[i + 1]!;
+        if (q.x - p.x > 45 || r() > 0.5 * this.o.detail) continue;
+        const y = 7.4 + r() * 0.3;
+        const ln: AirLine = { a: [p.x, y, p.z], b: [q.x, y, q.z], sag: 0.5 + r() * 0.4, kind: 1, seed: r() };
+        this.lines.push(ln);
+        if (r() < 0.35) {
+          const nb = 1 + Math.floor(r() * 4), t0 = 0.2 + r() * 0.5;
+          for (let k = 0; k < nb; k++) {
+            const t = t0 + k * (0.012 + r() * 0.01);
+            const x = p.x + (q.x - p.x) * t, yy = y - ln.sag * 4 * t * (1 - t);
+            this.birds.push([x, yy, p.z, r() < 0.5 ? 0 : Math.PI]);
+          }
+        }
+      }
+    }
   }
 
   /** 0 (low-rise neighbourhood) .. 1 (the heart of midtown) */
@@ -462,6 +525,11 @@ export class CityPlan {
       }
     }
     this.buildings.push(b);
+    // ---- a sidewalk shed in front of some (scaffolding for facade work: green, lit underneath) ----
+    if ((front === F.N || front === F.S) && st !== ST.GLASS && r() < 0.05 * this.o.detail) {
+      const [nx, nz] = faceNormal(front), t0 = tiers[0]!;
+      this.sheds.push({ x: t0.cx, z: t0.cz + nz * t0.d / 2, nx, nz, w: t0.w, seed: r() });
+    }
     // ---- shops ----
     if (b.shopFaces) {
       const t0 = tiers[0]!;

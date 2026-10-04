@@ -33,6 +33,7 @@ import { loadMotion, type Motion } from '../lib/motion';
 import { StarSticker, heColor, makeHeroes } from '../lib/heroes';
 import type { RealFigure } from '../lib/people';
 import { RoofWorld, type Glow } from './rooftop-world';
+import { RoofSet } from './rooftop-set';
 import { bikeMesh, farPeople, litK, overShoulder, placeKit, raiseHand, tint, type FarPerson } from './rooftop-people';
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
@@ -205,6 +206,17 @@ export default class Rooftop extends Scene {
       pos: edge ? edge.pos.clone().addScaledVector(edge.facing, -0.5) : V(-26, 16.4, -11), yaw: 0.2, body: 0, color: tint(7, 0.95), lit: tIf + 0.5, k: 0.85, offset: 6,
       clips: [{ clip: '79_71', from: 0 }, { clip: '79_69', from: tFelt - 0.2, at: 3.3, speed: 0.8 }],
     });
+    // two neighbours at their windows in her building (rooms dark: the blackout; their own light fills them)
+    const wins = RoofSet.windows(H).filter((a) => (a.floor === 2 && Math.abs(a.pos.x - 3.4) < 0.9) || (a.floor === 4 && Math.abs(a.pos.x + 3.6) < 0.9)).slice(0, 2);
+    wins.forEach((a, i) => {
+      this.w.openWindow(i, a, { light: new THREE.Color(0.02, 0.025, 0.04), depth: 3.4 });
+      const pos = a.pos.clone().setY(a.pos.y - H.sill * H.fH + 0.02).addScaledVector(a.facing, -0.5);
+      add(i ? 'window2' : 'window1', {
+        pos, yaw: 0, body: (1 - i) as 0 | 1, color: tint(i ? 0 : 5, 1.0), lit: (i ? tFelt : tEver) - 0.1, k: 0.85, offset: 2 + i * 3, mirror: i === 1,
+        clips: [{ clip: i ? '79_71' : '142_15', from: 0 }],
+        pose: (fig, t) => raiseHand(fig, i, ease2(t, (i ? tFelt + 0.1 : tEver + 0.15), 1.0), overShoulder(fig, i, 0.55, 0.15, 0.2)),
+      });
+    });
     const fe = this.w.anchors(18, -9, 3, ['fireEscape'], { seed: 1, minY: 9, maxY: 13.5 })[0];
     add('landing', {
       pos: fe ? fe.pos.clone() : V(18, 12.4, -8.9), yaw: -0.4, body: 1, color: tint(6, 0.95), lit: tEver - 0.1, k: 0.85, offset: 8, mirror: true,
@@ -249,9 +261,12 @@ export default class Rooftop extends Scene {
     }
     // free lanterns: from the people near the street, rising slowly (they join the star at the end)
     this.near.forEach((nr, k) => {
-      for (let j = 0; j < 7; j++) this.lan.push({ src: nr.chest, launch: 33.75 + k * 0.08 + j * 0.16 + r() * 0.1, seed: r() * 100, free: true, T: [null, null, null], at: [0, 0, 0], word: [0, 0, 0] });
+      for (let j = 0; j < 7; j++) this.lan.push({ src: nr.chest, launch: 33.55 + k * 0.05 + j * 0.12 + r() * 0.08, seed: r() * 100, free: true, T: [null, null, null], at: [0, 0, 0], word: [0, 0, 0] });
     });
     this.lp = new GlowPoints(this.lan.length, 1);
+    // (lights in the sky: never hidden behind the far towers the words hang in front of)
+    this.lp.material.depthTest = false;
+    this.lp.renderOrder = 4;
     this.st.add(this.lp);
   }
 
@@ -281,15 +296,16 @@ export default class Rooftop extends Scene {
       shot = 'B';
       const k = ease.inOutQuad(prog(t, cB, cC));
       pos.copy(H).add(V(lerp(-1.4, 0.4, k), lerp(3.9, 4.3, k), lerp(1.9, 1.5, k)));
-      tgt.set(lerp(-2.0, 0.5, k), lerp(11.0, 12.0, k), -9.5);
+      tgt.set(lerp(-2.0, 0.5, k), lerp(14.5, 15.0, k), -9.5);
       fov = 64;
     } else if (t < cD) {
       shot = 'C';
-      const k = ease.inOutQuad(prog(t, cC, cD)), up = ease.inOutCubic(prog(t, cC + 0.5, cD + 0.1));
+      const k = ease.inOutQuad(prog(t, cC, cD)), up = 0.35 * ease.inOutCubic(prog(t, cC + 0.5, cD + 0.1));
       // across the street at the third floor: the girl with her cat (left), the couple (right); then up with the lights
-      pos.set(lerp(0.6, 6.0, k), lerp(11.9, 12.3, k), lerp(-3.4, -3.0, k));
-      tgt.set(lerp(-0.4, 7.5, k), lerp(11.3, 11.0, k) + up * 7, -9.5 + up * 2.5);
-      fov = 60;
+      // the couple on their fire escape, close: their joined hands up; their light lifts off and rises
+      pos.set(lerp(5.6, 6.6, k), lerp(10.9, 11.4, k), lerp(-3.6, -4.0, k));
+      tgt.set(lerp(9.3, 9.8, k), lerp(11.0, 11.2, k) + up * 6, -9.0 + up * 3);
+      fov = 52;
       roll = -0.02;
     } else if (t < cE) {
       shot = 'D';
@@ -426,6 +442,7 @@ export default class Rooftop extends Scene {
 
     // ---------------- lanterns ----------------
     const lp = this.lp, star = this.S0;
+    lp.material.depthTest = shot === 'A' || shot === 'B' || shot === 'C';
     let li = 0;
     const tmp = V(0, 0, 0);
     const release = ease.inOutCubic(prog(t, ton.words.at(-1)!.start, ton.words.at(-1)!.start + 0.9));
@@ -440,9 +457,9 @@ export default class Rooftop extends Scene {
       let bright = 1, size = 2.0;
       if (l.free) {
         // a lantern from a neighbour: rises slowly, swaying, drifting with the breeze
-        p = s0.clone().add(V(wob.x * 0.6 * age + age * 0.3, age * (1.6 + (l.seed % 1) * 0.8) + 0.2 * age * age, wob.z * 0.6 * age - age * 0.4));
-        size = 0.32 + (l.seed % 3) * 0.06;
-        bright = 1.5 * smoothstep(0, 0.5, age);
+        p = s0.clone().add(V(wob.x * 0.6 * age + age * 0.3, 0.5 + age * (2.2 + (l.seed % 1) * 0.8) + 0.2 * age * age, wob.z * 0.6 * age - age * 0.4 + 0.3));
+        size = 0.38 + (l.seed % 3) * 0.08;
+        bright = 1.7 * smoothstep(0, 0.5, age);
         const k = toStar(l, i);
         if (k > 0) { p.lerp(star, k); bright *= 1 + k; }
       } else {

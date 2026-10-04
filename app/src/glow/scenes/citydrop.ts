@@ -269,7 +269,7 @@ export default class CityDrop extends Scene {
       case 0: {
         // the drop: diving down into the street from above the avenue, the first pulse racing ahead of us
         const k = ease.outCubic(u);
-        pos = V(-360, 70, 548).lerp(V(-405, 12, 523), k);
+        pos = V(-362, 46, 540).lerp(V(-405, 12, 523), k);
         tgt = V(-470, 0, 520).lerp(V(-560, 9, 518), k);
         fov = 62 - 10 * k;
         roll = 0.25 * (1 - k);

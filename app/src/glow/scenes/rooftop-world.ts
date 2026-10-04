@@ -101,6 +101,13 @@ export class RoofWorld extends THREE.Group {
   set dawn(k: number) { this.city.dawn = k; }
   setSun(dir: THREE.Vector3, c?: THREE.Color) { this.city.setSun(dir, c); }
 
+  /** Open a window (world anchor: sill centre on the facade, outward facing, size) with a room behind it, so a person can stand in it. */
+  openWindow(slot: number, a: { kind: string; pos: THREE.Vector3; facing: THREE.Vector3; building: number; floor: number; size: [number, number] } | null, o: { light?: THREE.Color; depth?: number; width?: number } = {}) {
+    const c = this.city as unknown as { openWindow?: (slot: number, a: Anchor | null, o: object) => unknown };
+    if (!c.openWindow) return;
+    c.openWindow(slot, a ? ({ ...a, pos: a.pos.clone().sub(CITY_OFF) } as Anchor) : null, o);
+  }
+
   /** Places for people in the city's architecture (world coordinates). */
   anchors(x: number, z: number, r: number, kinds: AnchorKind[], o: { max?: number; seed?: number; from?: THREE.Vector3; spacing?: number; minY?: number; maxY?: number } = {}): Anchor[] {
     const list = this.city.anchors({ x: x - CITY_OFF.x, z: z - CITY_OFF.z, r, kinds, max: o.max, seed: o.seed, spacing: o.spacing, minY: o.minY, maxY: o.maxY, from: o.from?.clone().sub(CITY_OFF) });

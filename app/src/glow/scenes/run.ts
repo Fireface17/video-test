@@ -165,9 +165,9 @@ export default class Run extends Scene {
     // (along the diagonal over the cab: its north edge at sV + 1.75, its south edge at sV + 3.9, the curb at sV + 4.2)
     this.tracks = {
       he: {
-        s: [[T.C, sV - 0.4], [tv0, sV + 1.0, ease.linear], [tv1, sV + 4.75, ease.linear], [tv1 + 0.4, sV + 5.9, ease.outCubic], [off, sV + 6.0], [off + 0.6, sV + 6.0 + PACE * 0.32, ease.inQuad], [T.E, sV + 6.0 + PACE * 0.32 + PACE * (T.E - off - 0.6), ease.linear]],
+        s: [[T.C, sV - 0.4], [tv0, sV + 1.2, ease.linear], [tv1, sV + 4.6, ease.linear], [tv1 + 0.4, sV + 5.9, ease.outCubic], [off, sV + 6.0], [off + 0.6, sV + 6.0 + PACE * 0.32, ease.inQuad], [T.E, sV + 6.0 + PACE * 0.32 + PACE * (T.E - off - 0.6), ease.linear]],
         turn: [[tv1 + 0.05, 0], [tv1 + 0.5, 1], [off - 0.15, 1], [off + 0.3, 0]],
-        lift: [[tv0, 0], [(tv0 + tv1) / 2, 0.85, ease.outQuad], [tv1, 0.12, ease.inQuad], [tv1 + 0.08, 0.15]],
+        lift: [[tv0, 0], [(tv0 + tv1) / 2, 1.2, ease.outQuad], [tv1, 0.15, ease.inQuad]],
         jumpK: [[tv0 - 0.16, 0], [tv0 - 0.02, 1], [tv1, 1], [tv1 + 0.16, 0]],
         jumpT: [tv0 - 0.24, tv1 + 0.18],
       },
@@ -379,7 +379,10 @@ export default class Run extends Scene {
       const k = inOut(tm, T.take - 0.05, T.E + 1, 0.4, 0.1);
       holdHands(he, 1, she, 0, k, 0.05);
     } else if (leg.hold > 0) {
-      holdHands(he, 1, she, 0, leg.hold * (1 - 0.0), 0);
+      // (on the release, "glowing in the dark", their joined hands go up, and his other hand with the star)
+      const up = leg.id === 'L' ? inOut(tm, T.release + 0.05, this.ctx.end + 2, 0.45, 0.3) : 0;
+      holdHands(he, 1, she, 0, leg.hold, 0.85 * up);
+      if (up > 0.001) reachTo(he, 0, he.spinePoint(-0.35, 0.95, 0.25), up, V(-0.6, -0.3, 0), 0.4);
     }
     // his star in his right hand, her lantern in her left
     holdIn(he, 0, this.star, -0.01);
@@ -417,7 +420,7 @@ export default class Run extends Scene {
       { pos: this.lantern.position.clone(), color: col('gold', 0.18), radius: 2.5 },
     ];
     // ---- everyone else ----
-    const lv = { route: leg.route, sH: leg.s0 + PACE * (tm - leg.t0), v: PACE, index: li, hideKept: leg.id === 'I' };
+    const lv = { route: leg.route, sH: leg.s0 + PACE * (tm - leg.t0), v: PACE, index: li, hideKept: leg.id === 'I' || leg.id === 'C', gapExtra: leg.id === 'C' ? 9 : 0 };
     if (leg.id === 'C') lv.sH = Math.max(keys(tm, this.tracks!.he.s), keys(tm, this.tracks!.she.s));
     this.folk.update(tm, lv, S.cam);
     this.city.setGlows([...glows, ...this.folk.glows(S.cam.position, 9)]);
@@ -432,7 +435,7 @@ export default class Run extends Scene {
     shiftRender(this.ctx.renderer, S.scene, S.cam, this.world, this.city, out, S.bg);
     // ---- post ----
     let flash = 0;
-    for (const [a] of this.freezes) flash = Math.max(flash, t >= a ? Math.exp(-(t - a) * 9) * 0.85 : 0);
+    for (const [a] of this.freezes) flash = Math.max(flash, t >= a ? Math.exp(-(t - a) * 15) * 0.75 : 0);
     flash = Math.max(flash, t >= T.release ? Math.exp(-(t - T.release) * 5) * 0.5 : 0);
     void cam;
     return { bloom: 0.95, bloomThreshold: 0.75, bloomRadius: 0.85, halation: 0.14, vignette: 0.42, grain: 0.05, ca: 0.8, flash, shake: [0, 0] as [number, number] };
@@ -470,10 +473,10 @@ export default class Run extends Scene {
     switch (leg.id) {
       case 'A': {
         // ahead of them, low in the parking lane under the el; they come down the stairs and run at us
-        const ground = R.at(sH).setY(0.15);
-        pos = at(ground, 8.5 - 3.2 * ease.inOutQuad(u), -3.4, 1.05 + 0.4 * (1 - u));
-        tgt = at(mid.clone().setY(Math.max(mid.y, 0.15)), 1.2, 0.3, 1.25);
-        fov = 52 - 4 * u;
+        // (on the pavement ahead, looking back up the station's stairs: they come down at us with the crowd)
+        pos = V(390.0, 2.3, 71 + 6 * ease.inOutQuad(u));
+        tgt = mid.clone().add(V(0, 1.0, 0)).lerp(V(388.5, 3.5, 58), 0.2 * (1 - u));
+        fov = 46;
         roll = 0.03 * Math.sin(t * 1.3);
         break;
       }
@@ -488,34 +491,34 @@ export default class Run extends Scene {
         // the cab in the middle of the frame, from the street side ahead of its nose
         // (the cab's nose toward us, headlights on: she on the left on the street side, he lands on the right)
         // (from the front-left, a little above: the hood between them)
-        pos = V(406.3, 2.7, 118.9).lerp(V(406.9, 2.5, 119.4), ease.inOutQuad(u));
-        tgt = V(412.4, 0.95, 124.0).lerp(V(412.6, 1.05, 124.2), ease.inOutQuad(u));
-        fov = 44 - 4 * ease.inOutQuad(u);
+        pos = V(407.4, 2.2, 120.0).lerp(V(407.9, 2.0, 120.4), ease.inOutQuad(u));
+        tgt = V(412.4, 1.0, 124.1).lerp(V(412.6, 1.1, 124.3), ease.inOutQuad(u));
+        fov = 36 - 3 * ease.inOutQuad(u);
         break;
       }
       case 'E': {
         // low on the pavement past the smashed window: they run at us, the shards rise into the frame
         const tilt = smoothstep(T.star - 0.2, leg.t1, t);
-        pos = V(441.5 - 1.5 * u, 0.75 + 0.8 * tilt, 124.0);
-        tgt = V(433.0, 1.1 + 3.5 * tilt * tilt, 128.6).lerp(V(437, 6, 129), tilt * 0.5);
+        pos = V(442 - 1.5 * u, 0.6 + 0.8 * tilt, 125.7);
+        tgt = V(433.0, 1.0 + 3.5 * tilt * tilt, 128.6).lerp(V(437, 6, 129), tilt * 0.5);
         fov = 50;
         break;
       }
       case 'F': {
         // the crane: from just behind them up high, looking back over the stream winding through the streets
         const k = ease.inOutCubic(smoothstep(0.02, 0.98, u));
-        const p0 = at(mid, -3.5, -1.2, 1.5), p1 = V(470, 64, 150);
+        const p0 = at(mid, -3.5, -1.2, 1.5), p1 = V(458, 34, 121);
         pos = p0.lerp(p1, k);
-        tgt = at(mid, 4, 0, 1.0).lerp(V(405, 0, 112), k);
+        tgt = at(mid, 4, 0, 1.0).lerp(V(396, 0, 118.5), k);
         fov = 48 + 8 * k;
         roll = -0.05 * Math.sin(Math.PI * k);
         break;
       }
       case 'G1': {
         // on the crossing, low between the cabs' headlights: they cross the avenue in front of us
-        pos = V(621.5, 0.7, 124.9).lerp(V(622.6, 0.75, 124.6), u);
-        tgt = mid.clone().setY(1.15).lerp(V(606, 1.6, 121), 0.2);
-        fov = 48;
+        pos = V(617.0, 0.8, 123.4).lerp(V(618.2, 0.85, 123.2), u);
+        tgt = mid.clone().setY(1.15).lerp(V(606, 1.6, 121), 0.15);
+        fov = 50;
         break;
       }
       case 'G2': {
@@ -529,18 +532,20 @@ export default class Run extends Scene {
       }
       case 'I': {
         // low behind them, down the long street to the river; the windows wake in a wave ahead of them
-        pos = at(mid, -7.5, -3.2, 3.2 + 0.8 * u);
-        tgt = at(mid, 70, -1.5, 10 + 6 * smoothstep(T.wake, T.wake + 1.8, t));
+        pos = at(mid, -8, -5.5, 6.5 + 1.0 * u);
+        tgt = at(mid, 45, -3.5, 3 + 6 * smoothstep(T.wake, T.wake + 1.8, t));
         fov = 60;
         roll = 0.02 * Math.sin(t * 2.1);
         break;
       }
       case 'J': {
         // from the deck, by the railing: they climb the stairs and come up onto the overpass, the city behind
+        // (on the walkway past the top of the stairs: they come up toward us and run by, the city behind them)
         const oy = this.R3.at(9999).y;
-        pos = V(1139.5, oy + 1.8, 158).lerp(V(1140.5, oy + 1.5, 156), u);
-        tgt = mid.clone().setY(mid.y + 1.0).lerp(V(1134, oy * 0.6, 142), 0.25);
+        pos = V(1126.8, 7.0 + 1.5 * u, 157 + 2 * u);
+        tgt = mid.clone().add(V(0, 1.0, 0));
         fov = 50;
+        void oy;
         break;
       }
       case 'K': {
@@ -548,17 +553,17 @@ export default class Run extends Scene {
         const oy = this.R3.at(9999).y;
         const fi = this.freezes.findIndex(([a, b]) => t >= a && t < b + 0.12);
         const k = fi < 0 ? (t < this.freezes[0]![0] ? -1 : 2) : fi;
-        if (k <= 0) { pos = at(mid, 7, 6, 2.2); tgt = at(mid, -6, 0, 1.0); fov = 46; }
-        else if (k === 1) { pos = at(mid, 1.6, 1.3, 1.25); tgt = at(mid, 0, 0, 1.15); fov = 40; }
-        else { pos = at(mid, 5.0, -1.5, 0.35); tgt = at(mid, 0, 0, 1.6); fov = 58; roll = 0.12; }
+        if (k <= 0) { pos = at(mid, 3.5, -4.5, 2.0); tgt = at(mid, -2, 1.5, 1.2); fov = 48; }
+        else if (k === 1) { pos = at(mid, 1.5, -1.3, 1.35); tgt = at(mid, 0, 0, 1.15); fov = 40; }
+        else { pos = at(mid, 3.4, 0.4, 0.4); tgt = at(mid, 0, 0, 1.5); fov = 58; roll = 0.12; }
         void oy;
         break;
       }
       default: {
         // L: release — the camera lifts and pulls back over the river, the stream pours along the deck
         const k = ease.inOutCubic(u);
-        pos = at(mid, 6 + 6 * k, 9 + 14 * k, 1.5 + 14 * k);
-        tgt = at(mid, -10 * k, 0, 1.2);
+        pos = at(mid, 4 + 4 * k, -6 - 8 * k, 2 + 9 * k);
+        tgt = at(mid, -6 * k, 4, 1.0);
         fov = 50 + 6 * k;
         break;
       }

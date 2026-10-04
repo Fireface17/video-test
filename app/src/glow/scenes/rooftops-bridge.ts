@@ -89,8 +89,8 @@ const STEP_FRAG = /* glsl */ `
     float edge = max(q.x, q.y);
     float rim = smoothstep(0.78, 0.97, edge);
     float bar = 1.0 - 0.35 * (1.0 - smoothstep(0.02, 0.06, abs(vUv.y - 0.5)));
-    float core = (0.1 + 0.12 * (1.0 - edge * edge)) * bar;
-    vec3 c = vC.rgb * (core + 0.7 * rim) * vC.a;
+    float core = (0.08 + 0.1 * (1.0 - edge * edge)) * bar;
+    vec3 c = vC.rgb * (core + 0.5 * rim) * vC.a;
     gl_FragColor = vec4(c, 1.0);
   }`;
 
@@ -119,7 +119,7 @@ export class LightBridge extends THREE.Group {
     this.plates = new THREE.Mesh(g, new THREE.ShaderMaterial({ vertexShader: STEP_VERT, fragmentShader: STEP_FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
     this.plates.frustumCulled = false;
     this.halos = new GlowPoints(n * 2, 1);
-    this.fly = new GlowPoints(n * 12, 1);
+    this.fly = new GlowPoints(n * 24, 1);
     this.add(this.plates, this.halos, this.fly);
   }
 
@@ -142,11 +142,11 @@ export class LightBridge extends THREE.Group {
       // the flight: from the person up in an arc, a small trail
       if (!settled) {
         const k = ease.inOutCubic(fly);
-        for (let j = 0; j < 12; j++) {
-          const kj = Math.max(0, k - j * 0.025);
+        for (let j = 0; j < 24; j++) {
+          const kj = Math.max(0, k - j * 0.009);
           const p = st.from.clone().lerp(st.pos, kj);
           p.y += Math.sin(kj * Math.PI) * 3.0;
-          this.fly.set(nf++, p.x, p.y, p.z, st.color, (1 - j / 12) * 1.6 * gain, j === 0 ? 0.9 : 0.45);
+          this.fly.set(nf++, p.x, p.y, p.z, st.color, (1 - j / 24) * (j === 0 ? 2.2 : 0.9) * gain, j === 0 ? 0.8 : 0.3);
         }
       }
       // the plate grows out from its centre and settles with a little bounce, glowing brighter as it lands

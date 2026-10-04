@@ -82,6 +82,8 @@ export interface LegView {
   index: number;
   /** Leave the companions out of this shot. */
   hideKept?: boolean;
+  /** Keep the stream this much further back (m). */
+  gapExtra?: number;
 }
 
 /**
@@ -97,7 +99,7 @@ export class Folk {
   private runs: CycleMotion[] = [];
 
   /** Far away a person is a soft point of light (so the stream reads from high up). */
-  beacons = new GlowPoints(700, 0.5);
+  beacons = new GlowPoints(700, 0.8);
 
   constructor(dust: [number, number, number]) {
     this.crowd = new Crowd({ dust, dustGain: 0.1 });
@@ -200,7 +202,7 @@ export class Folk {
     for (const m of this.stream) {
       const p = m.p;
       if (t < m.from) { p.k = 0; continue; }
-      const s = leg.sH - m.gap - 1.2 * noise1(t * 0.3 + m.ph, 3);
+      const s = leg.sH - m.gap - (leg.gapExtra ?? 0) - 1.2 * noise1(t * 0.3 + m.ph, 3);
       if (s < -R.extendBack) { p.k = 0; continue; }
       R.side(s, m.lane + 0.5 * noise1(t * 0.25 + m.ph, 5), p.pos);
       p.yaw = R.yaw(s);
@@ -216,7 +218,7 @@ export class Folk {
       const d = p.pos.distanceTo(cp);
       const f = smoothstep(14, 45, d);
       if (f <= 0) continue;
-      B.set(n++, p.pos.x, p.pos.y + 1.15, p.pos.z, p.color, 0.5 * k * f, 1);
+      B.set(n++, p.pos.x, p.pos.y + 1.15, p.pos.z, p.color, 1.3 * k * f, 1.2);
     }
     B.commit(n);
   }

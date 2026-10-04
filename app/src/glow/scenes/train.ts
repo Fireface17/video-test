@@ -1,30 +1,32 @@
 // Verse 2 and pre-chorus 2, "We've been ghosts in a crowded room": the next night, the power is back but closeness
-// isn't. A night elevated train: the city's windows and signs streaming past, the lamp posts passing on the beat,
-// rain on the glass. Inside, passengers are see-through ghosts lit only by their phones; he (blue light) and she
-// (rose-peach) are among them, dim.
-//   A  "We've been ghosts in a crowded room"   the words wiped by a finger into the fogged window above a bench
-//                                              of ghosts on their phones; slow push-in
-//   B  "Holding on to the friends that we've got"  down the aisle to the amber info display, which spells the line;
-//                                              hands on the straps and the pole, two friends sharing one phone
-//   C  "If the night's gonna swallow the moon"  the reflection shot: over his shoulder at the window; in the glass
-//                                              he and she see each other; outside the moon over the roofs, and the
-//                                              words are the stops of the LED line map. A black tower slides over
-//                                              the moon; at a gap in the rails the car's lights flicker and die
-//   D  "Then we'll light up the spot"          the dark car from its end: the line hangs in small lights; the two
+// isn't. A night elevated train: the city's windows and signs streaming past, the lamp posts passing on the beat
+// (their light sweeping through the car), rain on the glass. Inside, the passengers are see-through ghosts lit
+// only by their phones (one asleep, nodding; one in headphones; two friends over one phone); he (blue light) and
+// she (rose-peach, her unlit paper lantern) are among them, dim. Every passenger moves on their own captured clip.
+//   A  "We've been ghosts in a crowded room"   wiped by a finger into the fogged window over a bench of ghosts
+//   B  "Holding on to the friends that we've got"  down the aisle to the amber info display, which spells the
+//                                              line; hands on the door poles, the two friends sharing a phone
+//   C  "If the night's gonna swallow the moon"  the reflection shot: past him at the window; in the glass he and
+//                                              she see each other; the words are the stops of the LED line map;
+//                                              a black tower slides over the moon; at a gap in the rails the
+//                                              car's lights stutter and die
+//   D  "Then we'll light up the spot"          the dark car from the rear: the line hangs in small lights; the two
 //                                              light up, then the ghosts one by one, phones forgotten; the train
 //                                              pulls in and the station's lights come on with them
-//   E  "Put your hands up"                     the doors slide open on the neon wall of the station; hands go up
-//   F  "if you've ever felt low"               on the platform: they pour out under the neon, hands up; whip pan
+//   E  "Put your hands up"                     the doors slide open on the station's neon wall; hands go up
+//   F  "if you've ever felt low"               on the platform: they pour out under the neon; whip pan
 //   G  "Tonight we let it all go"              the stair: the words painted in light on the risers; crane down
-//   H  "Turn the pain into gold, oh"           high above the avenue: neon on the asphalt turns gold, and the city
-//   I  "Here we go, here we go"                street level: they burst into the avenue under the neon
+//   H  "Turn the pain into gold, oh"           high over the avenue: neon on the asphalt, gold on "gold" (and
+//                                              the city with it)
+//   I  "Here we go, here we go"                street level: they burst into the avenue under HERE WE GO
+// The full city (lib/city.ts) is drawn only in H and I; from the train a cheap stand-in (train-world.ts) is used.
 import * as THREE from 'three';
 import { Scene, type Frame } from '../../engine/scene';
 import { norm, type Line } from '../../engine/lyrics';
 import { clamp, ease, frameIdx, hash, lerp, noise1, prog, pulse, smoothstep } from '../../engine/util';
 import { Stage, aim } from '../lib/stage';
 import { col } from '../lib/palette';
-import { RealFigure, glowBodyMaterial, loadBody, type BodyKind } from '../lib/people';
+import { RealFigure, loadBody, type BodyKind } from '../lib/people';
 import { loadMotion, type Motion } from '../lib/motion';
 import { NeonLine, flickerOn } from '../lib/neon';
 import { displayTextGeometry, loadDisplayFont } from '../lib/fonts';
@@ -56,7 +58,7 @@ const SPECS: Spec[] = [
   { id: 'G6', body: 'michelle', seat: [2.6, 1], clip: '13_05', seg: [30.0, 36.0], standAt: ['13_05', 10.1], mirror: true, off: 3.3, phone: 0, glow: '#c8ffd8' },
   { id: 'FR1', body: 'michelle', seat: [6.45, 1], clip: '13_04', seg: [23.0, 26.2], standAt: ['13_04', 26.2], mirror: false, off: 1.6, phone: 0, extra: 'shareA', glow: '#ffe2a8' },
   { id: 'FR2', body: 'rpm', seat: [7.05, 1], clip: '13_04', seg: [32.6, 38.0], standAt: ['13_04', 38.0], mirror: true, off: 2.0, phone: null, extra: 'shareB', glow: '#d4c0ff' },
-  { id: 'HE', hero: 'he', stand: [0.55, 0.45, 0], clip: '79_71', mirror: false, off: 2.0, phone: null, hold: 0, extra: 'strap', glow: '' },
+  { id: 'HE', hero: 'he', stand: [0.55, 0.62, 0], clip: '79_71', mirror: false, off: 2.0, phone: null, glow: '' },
   { id: 'G7', body: 'michelle', stand: [5.12, -0.62, Math.PI], clip: '77_02', mirror: true, off: 1.0, phone: 1, hold: 0, extra: 'pole', glow: '#ffd0a0' },
   { id: 'G8', body: 'rpm', hat: true, stand: [4.06, -0.6, Math.PI], clip: '111_28', mirror: false, off: 4.0, phone: 0, hold: 1, extra: 'pole', glow: '#a8e8ff' },
 ];
@@ -105,7 +107,6 @@ export default class Train extends Scene {
   bars: number[] = [];
 
   override async init() {
-    (globalThis as { __train?: Train }).__train = this; // (for profiling scripts)
     const { lyrics, audio } = this.ctx;
     const S = this.st.scene, U = this.U;
     this.st.bg.copy(col('night'));
@@ -180,7 +181,7 @@ export default class Train extends Scene {
       lighten(fig, 0.012, fig.kind === 'michelle' ? 0.45 : 1);
       const seated = !!s.seat;
       const home = seated ? V3(s.seat![0], 0, s.seat![1] * (CAR.hw - 0.3)) : V3(s.stand![0], 0, s.stand![1]);
-      const homeYaw = seated ? (s.seat![1] < 0 ? 0 : Math.PI) : s.stand![2];
+      const homeYaw = (seated ? (s.seat![1] < 0 ? 0 : Math.PI) : s.stand![2]) + (s.extra === 'shareA' ? -0.85 : s.extra === 'shareB' ? 0.7 : 0);
       const seed = i * 7 + 3;
       // motion: the seated / standing loop, standing up, very happy, the run
       const m0 = segs[i]!;
@@ -267,12 +268,12 @@ export default class Train extends Scene {
     this.car.add(this.display);
     // L3: the line map on the +z cove over the middle window: the stops are the words
     const w3 = L.l3.words.map((w) => w.w.replace(/[,.]/g, '').toUpperCase());
-    this.lineMap = new LineMap(3.3, 0.42, [
+    this.lineMap = new LineMap(2.55, 0.42, [
       { words: [w3[0]!], above: true }, { words: [w3[1]!, w3[2]!], above: false }, { words: [w3[3]!], above: true }, { words: [w3[4]!], above: false }, { words: [w3[5]!, w3[6]!], above: true },
     ]);
     const cy = (CAR.top + CAR.ceil) / 2;
-    this.lineMap.position.set(-0.2, cy, 1.19 - 0.012);
-    this.lineMap.lookAt(V3(-0.2, cy - 0.38, 1.19 - 0.2 - 0.012));
+    this.lineMap.position.set(0.15, cy, 1.19 - 0.012);
+    this.lineMap.lookAt(V3(0.15, cy - 0.38, 1.19 - 0.2 - 0.012));
     this.car.add(this.lineMap);
     // L4: letters of small lights over the aisle at the rear of the car
     const l4 = L.l4, s4 = l4.words.findIndex((w) => norm(w.w) === 'light');
@@ -282,8 +283,8 @@ export default class Train extends Scene {
     this.moteGrp.rotation.y = -Math.PI / 2;
     this.car.add(this.moteGrp);
     // P1: neon script on the station wall, facing the doors
-    this.wallNeon = new NeonLine(L.p1, [[0, 1, 2, 3], [4, 5, 6, 7, 8]], { font: 'script', size: 0.72, color: col('pink', 2.2).lerp(col('white', 2.2), 0.12), leading: 0.8, radius: 0.015 });
-    this.wallNeon.position.set(4.6, FLOOR_Y + 1.2, ST.zWall + 0.06);
+    this.wallNeon = new NeonLine(L.p1, [[0, 1], [2, 3], [4, 5, 6, 7, 8]], { font: 'script', size: 0.72, color: col('pink', 2.2).lerp(col('white', 2.2), 0.12), leading: 0.76, radius: 0.015 });
+    this.wallNeon.position.set(4.6, FLOOR_Y + 1.1, ST.zWall + 0.06);
     S.add(this.wallNeon);
     // P3: neon lying on the asphalt of the avenue past the stair, readable from the crane
     this.roadNeon = new NeonLine(L.p3, [[0, 1, 2], [3, 4, 5]], { font: 'readable', size: 1.9, color: col('violet', 2.0).lerp(col('blue', 2.0), 0.3), leading: 2.4, radius: 0.06 });
@@ -376,7 +377,7 @@ export default class Train extends Scene {
   }
   shotC(t: number): Shot {
     const k = ease.inOutQuad(prog(t, this.T.cC, this.T.cD));
-    return { pos: V3(-1.05, 1.16, -0.62).lerp(V3(-0.92, 1.2, -0.45), k), tgt: V3(0.32, 1.8, 1.44), fov: 52, roll: 0.0, local: true };
+    return { pos: V3(-1.05, 1.16, -0.62).lerp(V3(-0.92, 1.2, -0.45), k), tgt: V3(0.32, lerp(1.98, 1.84, k), 1.44), fov: 52, roll: 0.0, local: true };
   }
   private shotD(t: number): Shot {
     const k = ease.inOutQuad(prog(t, this.T.cD, this.T.cE));
@@ -384,7 +385,7 @@ export default class Train extends Scene {
   }
   private shotE(t: number): Shot {
     const k = ease.inOutQuad(prog(t, this.T.cE, this.T.cF));
-    return { pos: V3(4.55, 1.05, 1.2).lerp(V3(4.55, 1.08, 0.95), k), tgt: V3(4.6, 2.05, -6.0), fov: 50, roll: 0.0, local: true };
+    return { pos: V3(4.58, 0.95, 0.4).lerp(V3(4.6, 0.98, 0.18), k), tgt: V3(4.6, 2.15, -6.0), fov: 54, roll: 0.0, local: true };
   }
   private shotF(t: number): Shot {
     const T = this.T, k = ease.inOutQuad(prog(t, T.cF, T.cG));
@@ -410,9 +411,9 @@ export default class Train extends Scene {
   shotH(t: number): Shot {
     const T = this.T, k = ease.inOutQuad(prog(t, T.cH, T.cI));
     const up = ease.inOutCubic(prog(t, T.gold - 0.1, T.cI));
-    const pos = V3(45, 19, -15.5).lerp(V3(42, 17.5, -15), k);
-    pos.y += 3 * up;
-    const tgt = V3(28.5, 0, -6.5).add(V3(-4, 6.5, 2).multiplyScalar(up));
+    const pos = V3(40, 14.5, -14).lerp(V3(37.5, 13, -13.5), k);
+    pos.y += 2 * up;
+    const tgt = V3(27.5, 0, -6.5).add(V3(-3, 2.6, 1.5).multiplyScalar(up));
     return { pos, tgt, fov: 50, roll: 0.0, local: false };
   }
   private shotI(t: number): Shot {
@@ -492,7 +493,7 @@ export default class Train extends Scene {
     const hand = s.phone ?? 0;
     if (p.phone && phoneK > 0.001) {
       const share = s.extra === 'shareA';
-      const tgt = head.clone().addScaledVector(fd, share ? 0.3 : 0.27).addScaledVector(UP, p.seated ? -0.36 : -0.3).addScaledVector(side, share ? -0.17 : (hand ? 0.05 : -0.05));
+      const tgt = head.clone().addScaledVector(fd, share ? 0.34 : 0.27).addScaledVector(UP, share ? -0.2 : p.seated ? -0.36 : -0.3).addScaledVector(side, share ? -0.12 : (hand ? 0.05 : -0.05));
       tgt.x += 0.01 * noise1(t * 0.7 + p.seed, 2); tgt.y += 0.01 * noise1(t * 0.6 + p.seed, 3);
       blendReach(f, hand, tgt, phoneK * (1 - raise), fd.clone().multiplyScalar(-0.3).addScaledVector(side, hand ? 1 : -1).addScaledVector(UP, -1));
       f.setHand(hand, 0.55);
@@ -718,7 +719,6 @@ export default class Train extends Scene {
       h.mesh.scale.setScalar(1 + 0.25 * pulse(t, h.t0, 0.08));
       h.mat.color.copy(col('white', 2.4).lerp(col('gold', 2.4), 0.45 * gk)).multiplyScalar(on);
     }
-    void subLine;
   }
 }
 

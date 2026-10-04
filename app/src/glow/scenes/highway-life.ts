@@ -109,10 +109,10 @@ export class Puffs extends THREE.Points {
 
 /** Steam from the storm drains along both edges of our carriageway (and a manhole in the median). */
 export class Steam extends THREE.Group {
-  puffs = new Puffs(260);
+  puffs = new Puffs(160);
   grates: THREE.InstancedMesh;
   static P = 130; // drain spacing along the road
-  static PER = 22;
+  static PER = 14;
   constructor() {
     super();
     this.grates = new THREE.InstancedMesh(boxAt(0.9, 0.03, 0.5, 0, 0.012, 0), litMat({ color: C('#2a2c30', 0.5), rough: 0.4, metal: 0.7, spec: 0.8 }), 12);
@@ -139,7 +139,7 @@ export class Steam extends THREE.Group {
         const sw = noise1(t * 0.6 + p * 0.37 + k, 3) * 0.5;
         const y = 0.1 + age * 3.2 * (0.8 + 0.4 * h1(p, k));
         const fade = Math.min(1, age / 0.12) * (1 - age) ** 1.6;
-        this.puffs.set(n++, x + age * 1.4 + sw * age, y, -u + (h1(p, 4) - 0.5) * 0.6 - age * 0.8, col, fade * (1.2 + 0.6 * h1(p, 5)), 0.35 + age * 2.4);
+        this.puffs.set(n++, x + age * 1.4 + sw * age, y, -u + (h1(p, 4) - 0.5) * 0.6 - age * 0.8, col, fade * (1.5 + 0.7 * h1(p, 5)), 0.3 + age * 1.7);
       }
     }
     for (let i = ng; i < 12; i++) { m.makeScale(0, 0, 0); this.grates.setMatrixAt(i, m); }

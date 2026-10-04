@@ -22,6 +22,8 @@ export default class LabCity extends Scene {
   shots: Shot[] = [];
   opened = [false, false];
   lm!: Landmarks;
+  steamAt = new THREE.Vector3();
+  steamCam = new THREE.Vector3();
 
   override async init() {
     const S = this.st;
@@ -33,6 +35,8 @@ export default class LabCity extends Scene {
     const put = (o: THREE.Object3D, x: number, z: number, ry: number) => { const r = this.city.roofNear(x, z)!; o.position.set((r.x0 + r.x1) / 2, 0, (r.z0 + r.z1) / 2); o.rotation.y = ry; };
     put(this.lm.esb, -250, -1150, 0); put(this.lm.chrysler, 375 + 125, -1480, 0); put(this.lm.wtc, 760, -2050, 0);
     S.add(this.lm);
+    (window as unknown as { __labCity: LabCity; __THREE: unknown }).__labCity = this;
+    (window as unknown as { __THREE: unknown }).__THREE = THREE;
     (window as unknown as { __labCity: LabCity; __THREE: unknown }).__labCity = this;
     (window as unknown as { __THREE: unknown }).__THREE = THREE;
     // stats: instanced vertices per kind of mesh
@@ -51,6 +55,14 @@ export default class LabCity extends Scene {
     const c = this.city;
     this.anchors = c.anchors({ x: 40, z: 108, r: 45, kinds: ['window', 'fireEscape', 'balcony', 'roofEdge'], max: 40, seed: 3, spacing: 5, from: V(62, 9, 124) });
     const P = c.power;
+    // the steam source nearest the origin, for the steam shot
+    const sNear = [...c.plan.steam].sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z))[0];
+    if (sNear) {
+      this.steamAt.set(sNear.x, 0, sNear.z);
+      // look at it along the road it is in
+      const g = c.grid, onAv = Math.abs(sNear.x - g.avX(g.avI(sNear.x))) < g.avRoadH();
+      this.steamCam.set(sNear.x + (onAv ? 4 : 22), 1.7, sNear.z + (onAv ? 22 : 3));
+    }
     const reset = () => { P.clear(); c.dawn = 0; c.setGlows([]); this.dots.visible = false; this.opened.forEach((o, i) => { if (o) { c.openWindow(i, null); this.opened[i] = false; } }); };
     this.shots = [
       { a: 0, b: 4, pos: (k) => V(lerp(-20, 10, k), 46, 30), at: () => V(-60, 70, -1100), setup: reset },
@@ -95,6 +107,9 @@ export default class LabCity extends Scene {
       { a: 56, b: 58, pos: () => V(396, 1.7, 84), at: () => V(386, 4.5, 48), fov: 55, setup: reset },
       { a: 58, b: 60, pos: () => V(1136.5, 10.1, 120), at: () => V(1146, 9, -250), fov: 55, setup: reset },
       { a: 60, b: 62, pos: () => V(1170, 1.7, 110), at: () => V(1146, 6, -120), fov: 55, setup: reset },
+      { a: 62, b: 64, pos: () => V(-500, 32, -60), at: () => V(-500, 0, -300), fov: 55, setup: reset },
+      { a: 64, b: 66, pos: () => this.steamCam, at: () => V(this.steamAt.x, 2.5, this.steamAt.z), fov: 55, setup: reset },
+      { a: 66, b: 72, pos: () => V(40, 70, 260), at: () => V(-60, 25, 20), fov: 50, setup: (t) => { reset(); P.level = 0; P.wave(0, { x: -260, z: -300, r: (t - 66) * 140, soft: 180, to: 1 }); } },
     ];
   }
 

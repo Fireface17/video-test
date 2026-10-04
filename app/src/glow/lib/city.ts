@@ -19,7 +19,7 @@ import {
   CityLOD, KitBuilder, M, TileSet, antennaGeometry, balconyGeometry, buildingBatch, buildingMeshes, facadeMaterial, plantMaterial, roofMaterial, buildingMaterial, fireEscapeGeometry, kitBatch, kitMaterial, ringBatch, ringGeometry, ringMaterial, roofBoxGeometry, waterTowerGeometry,
   type BInst, type KInst, type RInst,
 } from './city-build';
-import { bakeLightMap, cobraGeometry, groundMaterial, lampColor, lightAt, parkLampGeometry, slabMaterial, slabMesh, type LightMapInfo } from './city-street';
+import { bakeLightMap, cobraGeometry, groundFarGeometry, groundMaterial, lampColor, lightAt, parkLampGeometry, slabMaterial, slabMesh, type LightMapInfo } from './city-street';
 import { cloudMaterial, skyMaterial, skylineMaterial, waterMaterial } from './city-sky';
 import { CityLife } from './city-life';
 import { Rail, elTrainZ, type ElInfo, type OverpassInfo } from './city-rail';
@@ -316,10 +316,7 @@ export class City extends THREE.Group {
     const gnu = this.groundNearMat.uniforms as Record<string, THREE.IUniform>, gfu = this.groundMat.uniforms as Record<string, THREE.IUniform>;
     gnu.uVein = gfu.uVein!; gnu.uVeinC = gfu.uVeinC!;
     const gx0 = bounds[0] - 4000, gx1 = river !== null ? river + 15 : bounds[2] + 4000, gz0 = bounds[1] - 4000, gz1 = bounds[3] + 4000;
-    const gg = new THREE.PlaneGeometry(gx1 - gx0, gz1 - gz0);
-    gg.rotateX(-Math.PI / 2);
-    gg.translate((gx0 + gx1) / 2, -0.02, (gz0 + gz1) / 2);
-    this.ground = new THREE.Mesh(gg, this.groundMat);
+    this.ground = new THREE.Mesh(groundFarGeometry(gx0, gz0, gx1, gz1, -0.02), this.groundMat);
     this.ground.frustumCulled = false;
     this.ground.renderOrder = -1;
     const PATCH = 420;
@@ -335,7 +332,9 @@ export class City extends THREE.Group {
       let x = Math.round((c.x + (f.x / fl) * PATCH * 0.3 - U.uOrigin.value.x) / 10) * 10, z = Math.round((c.z + (f.z / fl) * PATCH * 0.3 - U.uOrigin.value.z) / 10) * 10;
       x = Math.min(x, riverEdge - PATCH / 2);
       const pu = this.groundNearMat.uniforms.uPatch!.value as THREE.Vector3;
-      pu.set(x, c.y < 70 ? 0 : -1e4, z);
+      const on = c.y < 70;
+      pu.set(x, on ? 0 : -1e4, z);
+      (this.groundMat.uniforms.uHole!.value as THREE.Vector3).set(x, z, on ? PATCH / 2 - 0.5 : 0);
     };
     this.add(this.ground, this.groundNear);
     const slabs = slabMesh(plan, slabMaterial(U));

@@ -74,7 +74,6 @@ export default class Highway extends Scene {
   cabin!: Cabin;
   mirrorRT = makeRT(768, 205);
   flare = new LensFlare();
-  backRefl = new Reflection(320, 180);
   rain = new Rain();
   steam = new Steam();
   moths = new Moths();
@@ -236,7 +235,7 @@ export default class Highway extends Scene {
     this.scene.add(this.cabin);
     this.backCam.layers.enableAll();
     // dark verticals smear into ghostly figures in the blurred reflection: keep them out of it
-    this.noRefl = [this.lamps.poles, this.lamps.halos, this.furn.posts, ...this.gantries.map((g) => g.children[0]!), this.cabin, this.rain, this.power.wires, this.moths];
+    this.noRefl = [this.lamps.poles, this.lamps.halos, this.furn.posts, ...this.gantries.map((g) => g.children[0]!), this.cabin, this.rain, this.power.wires, this.moths, this.steam];
     // wipes: a sweep every ~1.25 s; in the mirror shot one ends before "Now" and the next starts after
     // "sun's" (the blades never cross the words as they are born); in the last shot the stall freezes one
     // high on the glass
@@ -655,15 +654,15 @@ export default class Highway extends Scene {
       this.backCam.updateProjectionMatrix();
       this.cabin.visible = false;
       for (const g of this.gantries) g.visible = false;
-      this.road.u.reflK!.value = 0.8;
-      this.road.u.tR!.value = this.backRefl.rt.texture; this.road.u.tRB!.value = this.backRefl.blur.texture; this.road.u.texMat!.value = this.backRefl.texMat;
-      this.backRefl.render(renderer, this.hideFor(() => this.scene), this.backCam);
-      this.unhide();
+      // (in the small mirror the wet road needs no reflection pass of its own)
+      this.road.u.reflK!.value = 0;
+      this.rain.visible = false; this.steam.visible = false; this.moths.visible = false;
       renderer.setRenderTarget(this.mirrorRT);
       renderer.setClearColor(0x000000, 1);
       renderer.clear(true, true, true);
       renderer.render(this.scene, this.backCam);
       this.cabin.visible = true;
+      this.rain.visible = true; this.steam.visible = true; this.moths.visible = true;
       for (const g of this.gantries) g.visible = true;
     }
     this.road.u.reflK!.value = 1;

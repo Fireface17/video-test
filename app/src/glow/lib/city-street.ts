@@ -64,6 +64,11 @@ export function bakeLightMap(plan: CityPlan, lampSeeds: number[], extra: { x: nu
     }
   }
   for (const e of extra) splat(e.x, e.z, e.c, e.s, e.k);
+  // the lights under the sidewalk sheds
+  for (const sh of plan.sheds) {
+    const tx = sh.nz, tz = -sh.nx, n = Math.max(1, Math.round(sh.w / 3));
+    for (let i = 0; i < n; i++) { const u = (i + 0.5) / n - 0.5; splat(sh.x + tx * u * sh.w + sh.nx * 1.4, sh.z + tz * u * sh.w + sh.nz * 1.4, [0.85, 0.92, 1.0], 1.8, 0.35); }
+  }
   // encode sqrt(v / 4) in RGBA8
   const px = new Uint8Array(w * h * 4);
   for (let i = 0; i < w * h; i++) {
@@ -109,12 +114,20 @@ const WET_GLSL = /* glsl */ `
 export function groundMaterial(U: CityUniforms, gridGlsl: string, riverX: number | null, near: boolean) {
   const uni = U as unknown as Record<string, THREE.IUniform>;
   return new THREE.ShaderMaterial({
-    uniforms: { ...uni, uPatch: { value: new THREE.Vector3() }, uVein: { value: new THREE.Vector4(0, 0, 0, 0) }, uVeinC: { value: new THREE.Color(1, 0.7, 0.3) } },
+    uniforms: { ...uni, uPatch: { value: new THREE.Vector3() }, uHole: { value: new THREE.Vector3(0, 0, 0) }, uVein: { value: new THREE.Vector4(0, 0, 0, 0) }, uVeinC: { value: new THREE.Color(1, 0.7, 0.3) } },
     defines: { GROUND_NEAR: near ? 1 : 0 },
     vertexShader: /* glsl */ `
-      uniform vec3 uPatch;
+      uniform vec3 uPatch, uHole;
+      attribute vec2 aSel;
       varying vec3 vW;
-      void main(){ vec4 w = modelMatrix * vec4(position + uPatch, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+      void main(){
+        vec3 p = position + uPatch;
+        #if GROUND_NEAR == 0
+          // the far plane leaves a hole where the detailed patch is (its inner corners follow the patch)
+          if (aSel.x != 0.0) p.x = uHole.x + aSel.x * uHole.z;
+          if (aSel.y != 0.0) p.z = uHole.y + aSel.y * uHole.z;
+        #endif
+        vec4 w = modelMatrix * vec4(p, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: /* glsl */ `
       ${CITY_GLSL}
       ${gridGlsl}
@@ -174,7 +187,7 @@ export function groundMaterial(U: CityUniforms, gridGlsl: string, riverX: number
         wet *= road;
         // ---- light, reflections ----
         vec3 N = vec3(0.0, 1.0, 0.0);
-        vec3 L = ambient(N) + streetLight(vW.xz, 0.0, p) + sunLight(vW, N) + peopleGlow(vW, N);
+        vec3 L = ambient(N) + streetLight(vW.xz, 0.0, p) + sunLit(N, 1.0) + peopleGlow(vW, N);
         vec3 c = alb * (1.0 - 0.45 * wet) * L;
         // the glare of the lamps and the shine of the wet road seen from afar: streets read as lines of light
         float farK = smoothstep(80.0, 600.0, length(vW - cameraPosition));
@@ -187,6 +200,24 @@ export function groundMaterial(U: CityUniforms, gridGlsl: string, riverX: number
         gl_FragColor = vec4(cityFog(c, vW, p), 1.0);
       }`,
   });
+}
+
+/** The far ground: a big plane in a 3×3 grid without its middle cell, whose inner corners follow the near patch. */
+export function groundFarGeometry(x0: number, z0: number, x1: number, z1: number, y: number) {
+  const P: number[] = [], S: number[] = [], I: number[] = [];
+  const xs = [x0, 0, 0, x1], zs = [z0, 0, 0, z1], sel = [0, -1, 1, 0];
+  for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) { P.push(xs[i]!, y, zs[j]!); S.push(sel[i]!, sel[j]!); }
+  for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) {
+    if (i === 1 && j === 1) continue;
+    const a = j * 4 + i, b = a + 1, c = a + 4, d = a + 5;
+    I.push(a, c, b, b, c, d);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(16).fill(0).flatMap(() => [0, 1, 0]), 3));
+  g.setAttribute('aSel', new THREE.Float32BufferAttribute(S, 2));
+  g.setIndex(I);
+  return g;
 }
 
 /** Sidewalk slabs (one per block, 0.15 m high): concrete flags, granite curbs; the rear yards inside; a park. */
@@ -214,12 +245,18 @@ export function slabMaterial(U: CityUniforms) {
         float dW = xz.x - vRect.x, dE = vRect.z - xz.x, dN = xz.y - vRect.y, dS = vRect.w - xz.y;
         float walk = max(max(step(dW, vWalk.x), step(dE, vWalk.y)), max(step(dN, vWalk.z), step(dS, vWalk.w)));
         float edge = min(min(dW, dE), min(dN, dS));
-        vec3 L = ambient(N) + streetLight(vW.xz + N.xz * 0.5, 0.15, p) + sunLight(vW, N) + peopleGlow(vW, N);
+        vec3 L = ambient(N) + streetLight(vW.xz + N.xz * 0.5, 0.15, p) + sunLit(N, N.y) + peopleGlow(vW, N);
         // concrete flags with joints; the granite curb edge; rear yards; a park's lawns and paths
         vec2 f = fract(xz / 1.52);
         float joint = (step(f.x, 0.012) + step(f.y, 0.012)) * smoothstep(0.08, 0.02, px);
         vec3 side = vec3(0.3, 0.295, 0.285) * (0.85 + 0.2 * h12(floor(xz / 1.52))) * (1.0 - 0.35 * clamp(joint, 0.0, 1.0));
         side = mix(side, vec3(0.38, 0.38, 0.4), smoothstep(0.42, 0.38, edge));
+        // subway grates: rectangles of steel grating near the curb of the avenue pavements, dark below
+        float avSide = step(min(dW, dE), vWalk.x) * step(vWalk.z, min(dN, dS));
+        float gz = xz.y / 9.0, gid = floor(gz);
+        float grate = avSide * step(0.72, h12(vec2(gid, floor(xz.x / 50.0)))) * step(abs(fract(gz) - 0.5), 0.17) * step(1.1, min(dW, dE)) * step(min(dW, dE), 2.6);
+        float bars = max(step(0.6, fract(xz.x * 9.0)), step(0.75, fract(xz.y * 2.5)));
+        side = mix(side, mix(vec3(0.004), vec3(0.16, 0.16, 0.17), bars), grate);
         float g = vnoise(xz * 0.25 + 7.0);
         vec3 yard = mix(vec3(0.07, 0.065, 0.06), vec3(0.03, 0.05, 0.025), smoothstep(0.4, 0.6, g));
         float path = clamp(step(abs((xz.x - vRect.x) / (vRect.z - vRect.x) - (xz.y - vRect.y) / (vRect.w - vRect.y)) * (vRect.z - vRect.x), 2.2) + step(abs(xz.y - (vRect.y + vRect.w) * 0.5), 2.6), 0.0, 1.0);
