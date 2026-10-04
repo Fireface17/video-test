@@ -10,7 +10,7 @@ import { boxG, canvasTex, glassMat, litMat, type LightU } from './train-gfx';
 
 export const CAR = {
   hl: 9, hw: 1.38, wo: 1.5, top: 2.05, ceil: 2.25, win0: 0.95, win1: 1.86,
-  doors: [-4.6, 4.6], doorHW: 0.7, doorH: 1.98, seatY: 0.46, seatZ: 0.92, barZ: 0.8, barY: 1.93,
+  doors: [-4.6, 4.6], doorHW: 0.7, doorH: 1.98, seatY: 0.46, seatZ: 0.92, barZ: 0.64, barY: 1.98,
 };
 /** Wall segments along x: pillar, window, door. */
 const SEGS: [number, number, 'p' | 'w' | 'd'][] = [

@@ -63,7 +63,9 @@ float hwLampDist(vec3 d) { float c = -d.y; return smoothstep(0.22, 0.62, c) * (0
 
 // GGX-ish specular lobe (normalised enough for our purposes)
 float hwSpec(vec3 N, vec3 L, vec3 V, float rough) {
-  vec3 H = normalize(L + V);
+  vec3 H = L + V; float hl = dot(H, H);
+  if (hl < 1e-8) return 0.0; // (light straight behind the surface as seen: no highlight, and no NaN)
+  H *= inversesqrt(hl);
   float nh = max(dot(N, H), 0.0), a = max(rough * rough, 0.002), a2 = a * a;
   float d = nh * nh * (a2 - 1.0) + 1.0;
   return a2 / (3.14159 * d * d) * 0.25;
@@ -225,7 +227,7 @@ export function litMat(o: LitOpts = {}) {
           float n10 = mix(hwH12(i.xz + (i.y + 1.0) * 17.0), hwH12(i.xz + vec2(1.0, 0.0) + (i.y + 1.0) * 17.0), f.x);
           float n11 = mix(hwH12(i.xz + vec2(0.0, 1.0) + (i.y + 1.0) * 17.0), hwH12(i.xz + vec2(1.0, 1.0) + (i.y + 1.0) * 17.0), f.x);
           float g = mix(mix(n00, n01, f.z), mix(n10, n11, f.z), f.y);
-          alb *= 1.0 - grime * (0.4 * g + 0.25 * exp(-vW.y * 1.5));
+          alb *= clamp(1.0 - grime * (0.4 * g + 0.25 * exp(-clamp(vW.y, -2.0, 40.0) * 1.5)), 0.0, 1.0);
           rgh = clamp(rgh + grime * 0.35 * (g - 0.3), 0.05, 1.0);
         }
         ${o.frag ?? ''}
@@ -239,6 +241,7 @@ export function litMat(o: LitOpts = {}) {
         #ifdef USE_HFOG
         c = hwFog(c, vW, cameraPosition);
         #endif
+        if (any(isnan(c)) || any(isinf(c))) c = vec3(0.0);
         gl_FragColor = vec4(c, 1.0);
       }`,
   });

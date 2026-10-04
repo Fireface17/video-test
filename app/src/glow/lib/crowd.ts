@@ -60,7 +60,8 @@ export class Crowd extends THREE.Group {
   private J1 = new Float32Array(39);
   private q = new THREE.Quaternion();
 
-  constructor(public o: { light?: number; dust?: [number, number, number]; dustGain?: number } = {}) {
+  /** `face`: turn every clip to the person's own facing (lib/motion PlayOpts.face), so `yaw` is where they look. */
+  constructor(public o: { light?: number; dust?: [number, number, number]; dustGain?: number; face?: boolean } = {}) {
     super();
   }
 
@@ -130,8 +131,8 @@ export class Crowd extends THREE.Group {
         fig.position.copy(p.pos).add(new THREE.Vector3(0, fig.hipHeight * s, 0));
         fig.rotation.set(0, p.yaw, 0);
         fig.scale.setScalar(s);
-        const layers = [{ m: this.motion(cur.clip), t: this.clipTime(p, cur, t), w, loop: true, mirror: p.mirror }];
-        if (prev && w < 1) layers.unshift({ m: this.motion(prev.clip), t: this.clipTime(p, prev, t), w: 1 - w, loop: true, mirror: p.mirror });
+        const layers = [{ m: this.motion(cur.clip), t: this.clipTime(p, cur, t), w, loop: true, mirror: p.mirror, face: this.o.face }];
+        if (prev && w < 1) layers.unshift({ m: this.motion(prev.clip), t: this.clipTime(p, prev, t), w: 1 - w, loop: true, mirror: p.mirror, face: this.o.face });
         applyLayers(fig, layers);
         p.pose?.(fig, t);
         fig.time = t;
@@ -141,7 +142,7 @@ export class Crowd extends THREE.Group {
       }
       if (k <= 0.002) continue;
       const fig = this.bodies[p.body ?? 0]!;
-      const tb = (c: ClipCue): JointTable => this.motion(c.clip).joints(fig, { mirror: p.mirror });
+      const tb = (c: ClipCue): JointTable => this.motion(c.clip).joints(fig, { mirror: p.mirror, face: this.o.face });
       tb(cur).at(this.clipTime(p, cur, t), this.J1);
       if (prev && w < 1) {
         tb(prev).at(this.clipTime(p, prev, t), this.J0);

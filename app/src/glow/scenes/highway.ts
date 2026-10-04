@@ -134,7 +134,7 @@ export default class Highway extends Scene {
     this.sky = new Sky(this.tex.clouds);
     this.city = new City({ x: CITY.x, z: CITY.z, seed: 4242, hills: true, facing: 0 });
     // the city we left behind (seen in the mirror): the blackout runs through it toward us
-    this.cityBack = new City({ x: 240, z: 1750, seed: 777, n: 320, core: 0.85, spread: 0.6, facing: Math.PI * 0.5, lit: 1.8 });
+    this.cityBack = new City({ x: 160, z: 1350, seed: 777, n: 340, core: 0.8, spread: 0.55, facing: Math.PI * 0.5, lit: 2.2 });
     this.refl = new Reflection();
     const atlasWords = L0.words.map((w) => w.w);
     const atlas = wordAtlas(atlasWords);
@@ -219,7 +219,7 @@ export default class Highway extends Scene {
 
     // living details
     this.power = new PowerLine(this.sAt(this.W0) - 300, this.sAt(this.W1) + 2600, this.scrU - 140);
-    this.bridgeU = this.sAt(T.gauge) + 95;
+    this.bridgeU = this.sAt(T.gauge) + 15; // (the drone flies under it during the gauge insert)
     this.bridge = new Bridge(this.tex.concrete);
     this.bridge.position.z = -this.bridgeU;
     this.signs = new RoadSigns([
@@ -352,10 +352,9 @@ export default class Highway extends Scene {
   /** The blackout: distance behind the car where the power is dead (negative: it has passed us). */
   private blackBehind(t: number) {
     const T = this.T, hit = T.out + 0.03;
-    if (t < hit) {
-      const p = clamp((t - (T.l2 - 0.3)) / (hit - (T.l2 - 0.3)));
-      return t < T.l2 - 0.3 ? 1e5 : 1500 * Math.pow(1 - p, 1.7);
-    }
+    if (t < T.l2 - 0.3) return 1e5;
+    // in the mirror shot the lamps behind us die one after another, then it closes in until it catches up
+    if (t < hit) return keys(t, [[T.l2 - 0.3, 900], [T.sun, 300, ease.linear], [hit, 0, ease.inOutQuad]]);
     const d = t - hit;
     return -(d * 900 + d * d * 8000);
   }
@@ -434,18 +433,18 @@ export default class Highway extends Scene {
       case 'mirror': {
         const p = prog(t, T.l2, T.sun, ease.inOutQuad);
         const pos = this.eyeAt(t).add(new THREE.Vector3(0.0, 0.004 * sway(3, 9), 0.02));
-        return { pos, yaw: (5 - 1.0 * p) * DEG + 0.006 * sway(0.4, 10), pitch: (-8.5 + 0.8 * p) * DEG, roll: 0.004 * sway(0.5, 11), fov: lerp(49, 47, p) };
+        return { pos, yaw: (10 - 1.0 * p) * DEG + 0.006 * sway(0.4, 10), pitch: (-8.5 + 0.8 * p) * DEG, roll: 0.004 * sway(0.5, 11), fov: lerp(52, 50, p) };
       }
       case 'sun': {
         // from the roof: a long lens into the sunrise over the road, slowly widening as the screen dies
         const p = prog(t, T.sun, T.dead + 0.1, ease.inOutCubic);
         const p2 = prog(t, T.dead, T.l3 + 0.3, ease.outQuad);
         const pos = new THREE.Vector3(this.carX(t) + 0.25, 1.75 + 0.45 * p + 0.004 * sway(3, 12), -s);
-        const tgt = new THREE.Vector3(0, SCR.y0 + SCR.h * lerp(0.44, 0.43, p), -this.scrU);
+        const tgt = new THREE.Vector3(0, SCR.y0 + SCR.h * lerp(0.5, 0.45, p), -this.scrU);
         const d = tgt.clone().sub(pos);
         const yaw = Math.atan2(d.x, -d.z) + 0.004 * sway(0.4, 13);
-        const pitch = Math.atan2(d.y, Math.hypot(d.x, d.z)) - lerp(1.6, 1.2, p) * DEG;
-        return { pos, yaw, pitch, roll: 0.003 * sway(0.4, 14), fov: lerp(14, 24, p) + 1.5 * p2 };
+        const pitch = Math.atan2(d.y, Math.hypot(d.x, d.z)) - lerp(1.0, 1.4, p) * DEG;
+        return { pos, yaw, pitch, roll: 0.003 * sway(0.4, 14), fov: lerp(15.5, 24, p) + 1.5 * p2 };
       }
       case 'station': {
         // braking toward the services: a long lens on the message sign ahead, easing as we come closer
@@ -646,7 +645,7 @@ export default class Highway extends Scene {
       // the view behind, for the mirror (the city behind, the lamps dying toward us)
       const cx = this.carX(t);
       this.backCam.position.set(cx, 1.35, -s + 0.6);
-      this.backCam.rotation.set(0.035, Math.PI - 0.05, 0, 'YXZ');
+      this.backCam.rotation.set(0.06, Math.PI - 0.04, 0, 'YXZ');
       this.backCam.updateMatrixWorld(true);
       this.backCam.updateProjectionMatrix();
       this.cabin.visible = false;
@@ -661,15 +660,6 @@ export default class Highway extends Scene {
       renderer.render(this.scene, this.backCam);
       this.cabin.visible = true;
       for (const g of this.gantries) g.visible = true;
-      if ((globalThis as { __dbgMirror?: boolean }).__dbgMirror !== false && Math.abs(t - 30.58) < 0.005) {
-        const W = this.mirrorRT.width, Hh = this.mirrorRT.height;
-        const buf = new Uint16Array(W * Hh * 4);
-        renderer.readRenderTargetPixels(this.mirrorRT, 0, 0, W, Hh, buf);
-        const h2f = (h: number) => { const s = (h & 0x8000) ? -1 : 1, e = (h >> 10) & 0x1f, f = h & 0x3ff; return e === 0 ? s * 6.1e-5 * (f / 1024) : e === 31 ? (f ? NaN : s * Infinity) : s * Math.pow(2, e - 15) * (1 + f / 1024); };
-        let bad = 0, mx = 0, mxAt = '';
-        for (let i = 0; i < W * Hh; i++) for (let c = 0; c < 3; c++) { const v = h2f(buf[i * 4 + c]!); if (!Number.isFinite(v)) { bad++; if (bad < 4) console.error('MIRROR bad at', i % W, Math.floor(i / W), v); } else if (v > mx) { mx = v; mxAt = (i % W) + ',' + Math.floor(i / W); } }
-        console.error('MIRROR stats bad', bad, 'max', mx, 'at', mxAt, W, Hh);
-      }
     }
     this.road.u.reflK!.value = 1;
     this.road.u.tR!.value = this.refl.rt.texture; this.road.u.tRB!.value = this.refl.blur.texture; this.road.u.texMat!.value = this.refl.texMat;
@@ -688,7 +678,7 @@ export default class Highway extends Scene {
     if (shot === 'sun' && ss.light > 0.05) {
       const sunW = new THREE.Vector3(0, SCR.y0 + SCR.h * (SCREEN_HORIZON + Math.max(0, ss.sunY)), -this.scrU + 0.7);
       const sd = sunW.sub(pos).normalize();
-      this.flare.render(renderer, out, this.cam, sd, 0.13 * ss.light * (1 - ss.glitch * 0.7), 0.4);
+      this.flare.render(renderer, out, this.cam, sd, 0.07 * ss.light * (1 - ss.glitch * 0.7), 0.4);
     }
 
     // ---- post

@@ -9,6 +9,10 @@ import type { Pose } from './cosmos-gfx';
 /** Dancing clips (expressive, salsa, lambada, twist, happy with arms up…) and calmer ones (standing, idle). */
 export const DANCE = ['05_02', '05_12', '49_09', '49_12', '55_01', '55_02', '60_02', '61_02', '111_05', '113_04', '141_12', '120_05', '79_69', '80_43', '94_01'];
 export const IDLE = ['140_06', '77_02', '111_28'];
+/** For the hand-holding chains: standing, swaying, walking hand in hand, a little dance in place (the arms are
+ * re-solved to hold the neighbours' hands); and a few who sit. */
+export const CHAIN: [string, number][] = [['140_06', 1], ['77_02', 1], ['111_28', 1], ['22_08', 0.8], ['23_08', 0.8], ['80_43', 0.6], ['120_05', 0.4], ['141_12', 0.4], ['113_04', 0.3]];
+export const SIT = ['75_19', '13_04'];
 
 /** A person's motion: clip, body kind, where in the clip (s), how fast, mirrored or not (mirroring is done by `place`). */
 export interface Mover { clip: number; body: number; off: number; rate: number; mirror: boolean }

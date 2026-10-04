@@ -10,6 +10,9 @@ import { clamp, hash, mulberry32 } from '../../engine/util';
 import { GlowPoints } from '../lib/points';
 import { GlowLines } from '../lib/stars';
 
+/** The spiral's disk bulges a little at its centre. */
+const rfDip = (r: number) => 12 * Math.exp(-r / 40);
+
 export interface LiftSource {
   /** The person's chest (world); lights rise from here. */
   pos: THREE.Vector3;
@@ -26,60 +29,68 @@ export class Lifts extends THREE.Group {
   heads: GlowPoints;
   tails: GlowLines;
   sparks: { s: number; tb: number; th: number; sp: number; size: number; jx: number; jz: number }[] = [];
-  /** The spiral's axis (x, z) and height. */
+  /** The spiral's axis (x, z) and height, and how fast it turns (rad/s). */
   axis = new THREE.Vector3(0, 260, 0);
+  spin = 0.06;
   gain = 1;
+
+  /** Per source: the curl's phase, a drift, where its stream lands in the spiral (arm, radius). */
+  src: { th: number; dx: number; dz: number; arm: number; rf: number }[] = [];
 
   constructor(public sources: LiftSource[], o: { width?: number } = {}) {
     super();
     const r = mulberry32(911);
-    sources.forEach((src, s) => {
-      for (let i = 0; i < src.n; i++) {
-        this.sparks.push({ s, tb: src.t0 + Math.pow(r(), 0.8) * src.dur, th: r() * Math.PI * 2, sp: 0.75 + r() * 0.5, size: 0.6 + r() * r() * 1.8, jx: r() - 0.5, jz: r() - 0.5 });
+    sources.forEach((s, si) => {
+      this.src.push({ th: r() * Math.PI * 2, dx: r() - 0.5, dz: r() - 0.5, arm: si % 2, rf: 16 + 125 * Math.pow(r(), 0.75) });
+      for (let i = 0; i < s.n; i++) {
+        this.sparks.push({ s: si, tb: s.t0 + (i / s.n) * s.dur + r() * 0.05, th: r() * Math.PI * 2, sp: 0.9 + r() * 0.2, size: 0.6 + r() * r() * 1.6, jx: (r() - 0.5) * 0.3, jz: (r() - 0.5) * 0.3 });
       }
     });
-    this.heads = new GlowPoints(this.sparks.length, 0.09);
-    this.tails = new GlowLines(this.sparks.length, o.width ?? 0.035);
+    this.heads = new GlowPoints(this.sparks.length, 0.3);
+    this.tails = new GlowLines(this.sparks.length, o.width ?? 0.05);
     this.add(this.tails, this.heads);
   }
 
-  /** Where spark i is at age a (s). */
-  at(i: number, a: number, out: THREE.Vector3) {
-    const k = this.sparks[i]!, src = this.sources[k.s]!, p = src.pos;
+  /** Where spark i is at age a (s): off the body, faster and faster up, into a turning two-armed spiral high above. */
+  at(i: number, a: number, out: THREE.Vector3, t = 0) {
+    const k = this.sparks[i]!, src = this.sources[k.s]!, S = this.src[k.s]!, p = src.pos;
     const u = a * k.sp;
     // up: slow off the body, then faster and faster
-    const y = p.y + 0.7 * u + 1.1 * u * u + 0.42 * u * u * u;
-    // around the person first (a little curl), then drawn into the turning spiral over the city
-    const curl = 0.25 * Math.min(u, 1.5);
-    let x = p.x + Math.cos(k.th + u * 2.2) * curl + k.jx * 0.6 * u;
-    let z = p.z + Math.sin(k.th + u * 2.2) * curl + k.jz * 0.6 * u;
-    const q = clamp((u - 1.0) / 6.0);
-    const qe = q * q * (3 - 2 * q);
+    const y = p.y + 0.6 * u + 3 * u * u + 6 * u * u * u;
+    // a little curl round the person as it leaves, then a gentle drift: each person's sparks make one stream
+    const curl = 0.35 * Math.min(u * 1.5, 1);
+    let x = p.x + Math.cos(S.th + u * 3) * curl + k.jx + S.dx * 3 * u * u;
+    let z = p.z + Math.sin(S.th + u * 3) * curl + k.jz + S.dz * 3 * u * u;
+    // its place in the spiral (one of two arms, a log spiral, turning slowly); a stream lays itself along its arm
+    const q = clamp((u - 1.2) / 1.65), qe = q * q * (3 - 2 * q);
+    const A = this.axis;
     if (qe > 0) {
-      const dx = p.x - this.axis.x, dz = p.z - this.axis.z;
-      const r0 = Math.hypot(dx, dz), a0 = Math.atan2(dz, dx);
-      const ang = a0 + 0.06 * u * u, rr = r0 * (1 - 0.55 * qe) + 30 * qe;
-      x = x + (this.axis.x + Math.cos(ang) * rr - x) * qe;
-      z = z + (this.axis.z + Math.sin(ang) * rr - z) * qe;
+      const rf = S.rf * (1 + 0.25 * (k.tb - src.t0) / Math.max(src.dur, 0.1));
+      const th = S.arm * Math.PI + 2.3 * Math.log(rf / 16) + this.spin * t + k.jx * 0.4;
+      x += (A.x + Math.cos(th) * rf - x) * qe;
+      z += (A.z + Math.sin(th) * rf - z) * qe;
     }
-    return out.set(x, Math.min(y, this.axis.y + 40 * Math.tanh((y - this.axis.y) / 40)), z);
+    const yc = A.y + k.jz * 20 - rfDip(S.rf);
+    return out.set(x, y < yc ? y : yc, z);
   }
 
   private _a = new THREE.Vector3();
   private _b = new THREE.Vector3();
 
-  update(t: number) {
+  update(t: number, cam?: THREE.Vector3) {
     const H = this.heads, T = this.tails;
     let n = 0;
     for (let i = 0; i < this.sparks.length; i++) {
       const k = this.sparks[i]!, a = t - k.tb;
       if (a <= 0 || a > 9) { H.hide(i); continue; }
       const c = this.sources[k.s]!.color;
-      const fade = clamp(a / 0.2) * clamp((9 - a) / 1.5);
       const tw = 0.75 + 0.25 * Math.sin(t * 9 + i * 1.7);
-      this.at(i, a, this._a);
-      H.set(i, this._a.x, this._a.y, this._a.z, c, 1.6 * fade * tw * this.gain, k.size * (1 + 0.4 * clamp(a / 3)));
-      this.at(i, Math.max(0, a - 0.09), this._b);
+      this.at(i, a, this._a, t);
+      // (never a big blur right at the lens)
+      const near = cam ? clamp((this._a.distanceTo(cam) - 5) / 12) : 1;
+      const fade = clamp(a / 0.2) * clamp((9 - a) / 1.5) * near * near;
+      H.set(i, this._a.x, this._a.y, this._a.z, c, 1.6 * fade * tw * this.gain, k.size * (1 + 1.5 * clamp(a / 3)));
+      this.at(i, Math.max(0, a - 0.025), this._b, t - 0.025);
       T.set(n++, this._a, this._b, c, 0.9 * fade * this.gain);
     }
     H.commit();
@@ -217,7 +228,34 @@ export class Beams extends THREE.Group {
       c.mesh.rotation.set(tilt, pan, 0, 'YXZ');
       const ci = (Math.floor(beat / 2) + i) % colors.length;
       const hit = Math.exp(-(beat - Math.floor(beat)) * 3.5);
-      c.mat.uniforms.color!.value.copy(colors[ci]!).multiplyScalar(k * (0.35 + 0.45 * hit));
+      c.mat.uniforms.color!.value.copy(colors[ci]!).multiplyScalar(k * (0.1 + 0.16 * hit));
     });
   }
+}
+
+/** The spiral's own glow: two soft log-spiral arms and a core (a disc seen from below), turning with the sparks. */
+export class SpiralGlow extends THREE.Mesh {
+  declare material: THREE.ShaderMaterial;
+  constructor(radius: number, color: THREE.Color) {
+    super(new THREE.CircleGeometry(radius, 64), new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      uniforms: { k: { value: 0 }, rot: { value: 0 }, color: { value: color.clone() }, R: { value: radius } },
+      vertexShader: 'varying vec2 vP; void main(){ vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: /* glsl */ `
+        uniform float k, rot, R; uniform vec3 color; varying vec2 vP;
+        void main() {
+          float r = length(vP), rn = r / R;
+          float a = atan(vP.y, vP.x + 1e-5) - rot;
+          // two arms of a log spiral r = 16 e^(θ/2.3)
+          float th = 2.3 * log(max(r, 1.0) / 16.0);
+          float d = abs(fract((a - th) / 6.2831853 * 2.0) - 0.5) * 2.0; // 0 on an arm
+          float arm = exp(-d * d * 18.0) * smoothstep(0.05, 0.2, rn) * (1.0 - smoothstep(0.55, 1.0, rn));
+          float core = exp(-rn * rn * 60.0) * 1.4 + exp(-rn * 9.0) * 0.35;
+          gl_FragColor = vec4(color * k * (arm * 0.5 + core), 1.0);
+        }`,
+    }));
+    this.rotation.x = Math.PI / 2;
+    this.frustumCulled = false;
+  }
+  update(t: number, k: number, spin: number) { this.material.uniforms.k!.value = k; this.material.uniforms.rot!.value = -spin * t; }
 }

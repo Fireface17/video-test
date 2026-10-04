@@ -57,8 +57,8 @@ void main() {
   float a = atan(d.y, d.x + 1e-5);
   float rays = pow(abs(cos(a * 7.0 + fb(vec2(a * 3.0, 1.0)) * 1.5)), 10.0) * exp(-r / 0.35) * smoothstep(0.1, 0.16, r);
   float disc = smoothstep(0.112, 0.104, r + (fb(vec2(a * 5.0, r * 30.0)) - 0.5) * 0.006);
-  vec3 sunC = vec3(3.2, 2.5, 1.5);
-  vec3 glow = vec3(2.0, 1.0, 0.38) * (exp(-r / 0.09) * 0.9 + exp(-r / 0.32) * 0.35);
+  vec3 sunC = vec3(2.3, 1.85, 1.15);
+  vec3 glow = vec3(1.7, 0.85, 0.32) * (exp(-r / 0.09) * 0.8 + exp(-r / 0.32) * 0.35);
   float above = smoothstep(${HOR.toFixed(3)} - 0.004, ${HOR.toFixed(3)} + 0.004, p.y);
   c += (glow + vec3(1.6, 0.9, 0.4) * rays * 0.35) * uDawn * mix(0.4, 1.0, above);
   c = mix(c, sunC, disc * above * uDawn);
@@ -219,7 +219,7 @@ export class GiantScreen extends THREE.Group {
     this.faceU = {
       ...HU,
       pic: { value: pic.rt.texture }, uGlitch: { value: 0 }, uOff: { value: 0 }, uStuck: { value: 0 }, uSeed: { value: 0 }, uT: { value: 0 },
-      res: { value: new THREE.Vector2(560, Math.round(560 / ASPECT)) },
+      res: { value: new THREE.Vector2(720, Math.round(720 / ASPECT)) },
     };
     const face = new THREE.Mesh(new THREE.PlaneGeometry(W, H), new THREE.ShaderMaterial({
       uniforms: this.faceU,
@@ -275,7 +275,7 @@ export class GiantScreen extends THREE.Group {
           vec2 fw = fwidth(lp);
           float sub = smoothstep(0.18, 0.5, max(fw.x, fw.y));
           float diode = smoothstep(0.5, 0.28, length(fract(lp) - 0.5));
-          c *= mix(0.6 + 0.75 * diode, 1.0, sub);
+          c *= mix(0.78 + 0.4 * diode, 1.0, sub);
           // ---- stuck pixels after the death
           float sp = step(0.9975, h2(floor(lp) + 0.3));
           vec3 spc = mix(vec3(1.0, 0.1, 0.05), vec3(0.1, 1.0, 0.3), step(0.5, h2(floor(lp) + 1.7)));

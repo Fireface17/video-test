@@ -196,8 +196,9 @@ export class Sky extends THREE.Group {
     this.plane.set(1, px + 18, py, pz + 4, C('#38ff7a'), 1.4 * pk, 7);
     this.plane.set(2, px, py - 1, pz - 10, C('#ffffff'), 5 * strobe * pk, 9);
     this.plane.set(3, px, py + 2, pz + 12, C('#ff3a2a'), 2.5 * beacon * pk, 6);
-    const qa = t - 18;
-    const qx = -1500 + 62 * qa, qy = 330 - 5 * qa, qz = -2100 + 18 * qa;
+    // (on its approach: high on the right while the billboards go by, sinking slowly to the left)
+    const qa = t - 21.6;
+    const qx = 650 - 55 * qa, qy = 430 - 4 * qa, qz = -1150 + 12 * qa;
     const strobe2 = (Math.floor(t * 60 + 20) % 66) < 4 ? 1 : 0;
     this.plane.set(4, qx + 6, qy - 2, qz, C('#fff6e8'), 4.0 * pk, 10);
     this.plane.set(5, qx - 6, qy - 2, qz + 1, C('#fff6e8'), 3.0 * pk, 9);
@@ -462,7 +463,7 @@ export class Streaks extends THREE.Mesh {
           vec3 ax = b.xyz - a.xyz; float L = length(ax);
           vec3 dir = L > 1e-5 ? ax / L : vec3(1.0, 0.0, 0.0);
           vec3 mid = mix(a.xyz, b.xyz, position.x);
-          vec3 side = normalize(cross(dir, normalize(mid) + vec3(0.0, 0.0, 1e-4)));
+          vec3 cr = cross(dir, normalize(mid) + vec3(0.0, 0.0, 1e-4)); vec3 side = cr / max(length(cr), 1e-6);
           vec3 p = mid + side * position.y * iW - dir * iW * (1.0 - 2.0 * position.x);
           vL = vec2((position.x * (L + 2.0 * iW) - iW) / max(L, 1e-4), position.y);
           vLen = L / max(iW, 1e-4);

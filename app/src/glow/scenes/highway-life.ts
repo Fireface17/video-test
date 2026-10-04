@@ -220,7 +220,7 @@ export class Wires extends THREE.Mesh {
           vec3 P = mix(iA, iB, position.x);
           vec4 mv = viewMatrix * vec4(P, 1.0);
           vec3 ax = (viewMatrix * vec4(iB - iA, 0.0)).xyz;
-          vec3 side = normalize(cross(normalize(ax + vec3(1e-6)), normalize(mv.xyz)));
+          vec3 cr = cross(normalize(ax + vec3(1e-6)), normalize(mv.xyz)); vec3 side = cr / max(length(cr), 1e-6);
           float d = max(-mv.z, 0.1);
           float px = 2.4 * d / (projectionMatrix[1][1] * 1080.0);
           float w = max(rad, px);

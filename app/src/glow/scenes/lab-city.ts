@@ -51,10 +51,10 @@ export default class LabCity extends Scene {
       { a: 16, b: 20, pos: (k) => V(lerp(-20, 10, k), 46, 30), at: () => V(-60, 70, -1100), setup: () => { reset(); P.level = 0; } },
       { a: 20, b: 26, pos: (k) => V(lerp(60, 80, k), 140, 250), at: () => V(-60, 0, -500), setup: (t) => { reset(); P.level = 0; P.wave(0, { x: -100, z: -380, r: (t - 20.3) * 260, soft: 160, to: 1 }); } },
       { a: 26, b: 30, pos: (k) => V(1150, 22, lerp(420, 380, k)), at: () => V(900, 30, -900), setup: reset },
-      { a: 30, b: 34, pos: (k) => V(lerp(30, 40, k), 1.6, 120 + 3.6), at: () => V(400, 6, 116), fov: 55, setup: reset },
+      { a: 30, b: 34, pos: (k) => V(lerp(30, 40, k), 1.6, 127.6), at: () => V(400, 6, 121), fov: 55, setup: reset },
       { a: 34, b: 38, pos: (k) => V(lerp(-20, 10, k), 46, 30), at: () => V(-60, 70, -1100), setup: () => { reset(); c.dawn = 1; } },
       {
-        a: 38, b: 42, pos: (k) => V(lerp(55, 70, k), 22, 262), at: () => V(30, 14, 120), fov: 45,
+        a: 38, b: 42, pos: (k) => V(lerp(55, 70, k), 9, 124), at: () => V(30, 12, 108), fov: 50,
         setup: (t) => {
           reset();
           P.level = 0.0;
@@ -72,6 +72,13 @@ export default class LabCity extends Scene {
           void t;
         },
       },
+      // close-ups: shopfronts across a street; the streets agent's hot-light camera; a walk-up with fire escapes; roofs; an intersection
+      { a: 42, b: 44, pos: () => V(431, 1.6, 113), at: () => V(431, 2.8, 130), fov: 50, setup: reset },
+      { a: 44, b: 46, pos: () => V(441.5, 0.42, 127.85), at: () => V(433.5, 0.9, 128.2), fov: 50, setup: reset },
+      { a: 46, b: 48, pos: () => V(404, 1.2, 124), at: () => V(480, 1.2, 124), fov: 50, setup: reset },
+      { a: 48, b: 50, pos: () => V(40, 1.7, 127), at: () => V(40, 9, 110), fov: 55, setup: reset },
+      { a: 50, b: 52, pos: () => V(60, 34, 150), at: () => V(20, 18, 90), fov: 50, setup: reset },
+      { a: 52, b: 54, pos: () => V(-125 + 12.5, 1.6, 140), at: () => V(-125 - 5, 3.5, 112), fov: 55, setup: reset },
     ];
   }
 

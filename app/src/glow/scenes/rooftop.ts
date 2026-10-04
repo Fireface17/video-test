@@ -58,7 +58,7 @@ export default class Rooftop extends Scene {
   he!: RealFigure;
   idle!: Motion;
   star = new StarSticker(0.06);
-  crowd = new Crowd({ dust: [24, 220, 900], dustGain: 0.2 });
+  crowd = new Crowd({ dust: [24, 220, 900], dustGain: 0.2, face: true });
   near: Near[] = [];
   far: FarPerson[] = [];
   L: Record<string, Line> = {};
@@ -274,27 +274,28 @@ export default class Rooftop extends Scene {
     if (t < cB) {
       // A: over his shoulder, from his palms up to the line being written over the street
       const k = ease.inOutCubic(prog(t, 30.75, 31.5));
-      pos.copy(H).add(V(0.7 - 0.15 * k, 1.85 + 0.35 * k, 1.25 + 0.45 * prog(t, 30.6, cB)));
-      tgt.copy(H).add(V(-0.05, 1.0, -0.8)).lerp(this.TXT.clone().add(V(0.5, -0.6, 0)), k);
-      fov = lerp(40, 56, k);
+      // beside him at shoulder height: his palms, then the light leaving them for the street
+      pos.copy(H).add(V(lerp(0.95, 1.35, k), lerp(1.5, 2.0, k), lerp(0.35, 1.15, k) + 0.25 * prog(t, 30.6, cB)));
+      tgt.copy(H).add(V(0.0, 1.0, -0.45)).lerp(this.TXT.clone().add(V(-0.8, -0.9, 0)), k);
+      fov = lerp(38, 58, k);
     } else if (t < cC) {
       shot = 'B';
       const k = ease.inOutQuad(prog(t, cB, cC));
-      pos.copy(H).add(V(lerp(-3.0, -1.2, k), lerp(5.5, 6.3, k), lerp(6.5, 5.6, k)));
-      tgt.set(lerp(-2.5, 0.5, k), lerp(12.5, 13.5, k), -9.5);
-      fov = 62;
+      pos.copy(H).add(V(lerp(-1.4, 0.4, k), lerp(3.9, 4.3, k), lerp(1.9, 1.5, k)));
+      tgt.set(lerp(-2.0, 0.5, k), lerp(11.0, 12.0, k), -9.5);
+      fov = 64;
     } else if (t < cD) {
       shot = 'C';
       const k = ease.inOutQuad(prog(t, cC, cD)), up = ease.inOutCubic(prog(t, cC + 0.5, cD + 0.1));
-      pos.set(lerp(-4.2, 1.2, k), lerp(12.2, 12.9, k), lerp(-2.6, -2.0, k));
-      tgt.set(lerp(-2.0, 0.6, k), lerp(11.2, 12.0, k) + up * 18, -9.5 - up * 8);
-      fov = 46;
+      pos.set(lerp(0.9, -0.3, k), lerp(12.0, 12.6, k), lerp(-4.6, -4.2, k));
+      tgt.set(lerp(-1.1, -0.9, k), lerp(11.4, 11.8, k) + up * 9, -9.0 + up * 1.5);
+      fov = 42;
       roll = -0.02;
     } else if (t < cE) {
       shot = 'D';
       const k = ease.inOutQuad(prog(t, cD, cE));
-      pos.copy(H).add(V(1.0 - 0.3 * k, 0.55 + 0.4 * k, 2.4 + 0.5 * k));
-      tgt.copy(this.C1).add(V(-4 + 8 * k, -16 + 4 * k, 0));
+      pos.copy(H).add(V(-1.6 - 0.3 * k, 0.55 + 0.4 * k, 2.6 + 0.5 * k));
+      tgt.copy(this.C1).add(V(-20 + 8 * k, -16 + 4 * k, 0));
       fov = 58 - 3 * k;
       roll = 0.03;
     } else if (t < cF) {
@@ -319,8 +320,8 @@ export default class Rooftop extends Scene {
     } else {
       shot = 'H';
       const k = ease.inOutQuad(prog(t, cH, burst)), push = ease.inCubic(prog(t, 42.9, burst));
-      pos.copy(H).add(V(1.6 - 0.4 * k, 0.35 + 0.3 * k, 2.6 - 0.6 * k)).lerp(this.S0, push * 0.45);
-      tgt.copy(this.S0).lerp(this.C3, 0.45 * (1 - push)).add(V(0, -1.5 * (1 - k), 0));
+      pos.copy(H).add(V(1.6 - 0.4 * k, 0.15 + 0.2 * k, 3.0 - 0.6 * k)).lerp(this.S0, push * 0.45);
+      tgt.copy(this.S0).lerp(this.C3, 0.3 * (1 - push)).add(V(0, -1.0 * (1 - k), 0));
       fov = 56 - 14 * push;
       const sh = 0.04 * (pulse(t, here2, 0.1) + pulse(t, here.words[4]!.start, 0.1) + pulse(t, here.words[5]!.start, 0.1));
       pos.x += sh * noise1(t * 40, 3); pos.y += sh * noise1(t * 40, 4);
@@ -345,20 +346,31 @@ export default class Rooftop extends Scene {
     const he = this.he;
     he.position.copy(H).setY(H.y + he.hipHeight);
     he.rotation.y = Math.PI;
-    this.idle.apply(he, t * 0.8 + 4, { loop: true });
+    this.idle.apply(he, t * 0.8 + 4, { loop: true, face: !DBG.includes('noface') });
+    if (DBG.includes('noik')) { he.time = t; }
+    if (DBG.includes('dbgface')) {
+      he.updateMatrixWorld(true);
+      const hq = he.bone('Hips').getWorldQuaternion(new THREE.Quaternion());
+      const fz = V(0, 0, 1).applyQuaternion(hq), toe = he.bone('LeftToeBase').getWorldPosition(V(0, 0, 0)).sub(he.bone('LeftFoot').getWorldPosition(V(0, 0, 0)));
+      const sh = he.bone('LeftArm').getWorldPosition(V(0, 0, 0)).sub(he.bone('RightArm').getWorldPosition(V(0, 0, 0)));
+      console.warn(`t=${t.toFixed(2)} hipsZ=(${fz.x.toFixed(2)},${fz.z.toFixed(2)}) toe=(${toe.x.toFixed(2)},${toe.z.toFixed(2)}) L-R shoulders=(${sh.x.toFixed(2)},${sh.z.toFixed(2)}) faceQ=${(2 * Math.atan2(this.idle.faceQ().y, this.idle.faceQ().w) * 57.3).toFixed(0)}`);
+      const Wq: THREE.Quaternion[] = [], rr = V(0, 0, 0);
+      const hd = (u: number, loop: boolean) => { if (loop) this.idle.sample(u, Wq, rr, { loop: true }); else this.idle.sampleRaw(u, Wq, rr, true); const f = V(0, 0, 1).applyQuaternion(Wq[0]!); return (Math.atan2(f.x, f.z) * 57.3).toFixed(0); };
+      console.warn(`clip u=${((t * 0.8 + 4) % (this.idle.duration - 0.6)).toFixed(2)} dur=${this.idle.duration.toFixed(2)} raw(0.32)=${hd(0.32, false)} raw(14.08)=${hd(14.08, false)} loop(t)=${hd(t * 0.8 + 4, true)}`);
+    }
     const lift = ease.inOutCubic(prog(t, put.words[0]!.start - 0.15, put.words[3]!.start + 0.1));
     const upR = ease.inOutCubic(prog(t, put.words[3]!.start - 0.2, put.words[4]!.start + 0.3)) * (1 - ease.inOutCubic(prog(t, 34.6, 35.8)));
     const both = ease.inOutCubic(prog(t, hereT - 0.3, hereT + 0.9));
     // palms up in front of him (looking at them), lifted as the line starts, the right hand up after the light
-    const palmL = he.spinePoint(0.17, 0.12 + 0.3 * lift, 0.32 + 0.08 * lift), palmR = he.spinePoint(-0.15, 0.1 + 0.32 * lift, 0.33 + 0.06 * lift);
+    const palmL = he.spinePoint(0.16, 0.2 + 0.14 * lift, 0.26 + 0.04 * lift), palmR = he.spinePoint(-0.14, 0.19 + 0.16 * lift, 0.27 + 0.04 * lift);
     const open = ease.inOutCubic(prog(t, 35.0, 36.4)) * (1 - both);
     const openL = he.spinePoint(0.45, 0.05, 0.25), openR = he.spinePoint(-0.45, 0.05, 0.25);
     const palms = 1 - ease.inOutCubic(prog(t, 33.4, 34.6));
     const handL = palmL.clone().lerp(openL, open * (1 - palms)), handR = palmR.clone().lerp(he.spinePoint(-0.25, 1.05, 0.25), upR).lerp(openR, open * (1 - palms));
     const restL = he.hand(1), restR = he.hand(0);
     const wL = Math.max(palms, open, 0.0001), wR = Math.max(palms, upR, open, 0.0001);
-    he.reach(1, restL.clone().lerp(handL, Math.min(1, wL)), V(0.8, -0.7, -0.3));
-    he.reach(0, restR.clone().lerp(handR, Math.min(1, wR)), V(-0.8, -0.7, -0.3));
+    if (!DBG.includes('noik')) he.reach(1, restL.clone().lerp(handL, Math.min(1, wL)), V(0.8, -0.7, -0.3));
+    if (!DBG.includes('noik')) he.reach(0, restR.clone().lerp(handR, Math.min(1, wR)), V(-0.8, -0.7, -0.3));
     if (both > 0) {
       he.reach(1, he.hand(1).lerp(he.spinePoint(0.32, 1.12, 0.3), both), V(0.8, -0.3, -0.4));
       he.reach(0, he.hand(0).lerp(he.spinePoint(-0.32, 1.12, 0.3), both), V(-0.8, -0.3, -0.4));
@@ -467,9 +479,11 @@ export default class Rooftop extends Scene {
         bright *= 1 + 1.6 * pulse(t, here.words[3 + fw]!.start, 0.18) * k3;
         bright *= smoothstep(0, 0.3, age);
       }
-      const g = goldR > 0 ? smoothstep(-25, 25, goldR - Math.hypot(p.x - H.x, p.z - H.z)) : 0;
+      let g = goldR > 0 ? smoothstep(-25, 25, goldR - Math.hypot(p.x - H.x, p.z - H.z)) : 0;
+      const sweep = l.free ? 0 : 0.4 * clamp((l.T[1]!.x - this.C1.x + 60) / 120);
+      if (!l.free) g = Math.max(g, smoothstep(0, 0.35, t - tGold + 0.05 - sweep));
       const flick = 0.8 + 0.2 * noise1(t * 3 + l.seed, 11);
-      const c = LANTERN.clone().lerp(GOLD.clone().multiplyScalar(1.3), g).multiplyScalar(flick * 1.6 * bright);
+      const c = LANTERN.clone().lerp(GOLD.clone().multiplyScalar(1.6), g).multiplyScalar(flick * 1.6 * bright * (1 + (l.free ? 0 : 0.8 * pulse(t, tGold + sweep, 0.25))));
       lp.set(li++, p.x, p.y, p.z, c, 1, size);
     });
     lp.commit(li);
@@ -495,7 +509,7 @@ export default class Rooftop extends Scene {
     if (penOn > 0) glows.push({ pos: pen, color: col('white', 0.5 * penOn), radius: 4 });
     for (const n of this.near) {
       const k = typeof n.p.k === 'number' ? n.p.k : n.p.k(t);
-      if (k > 0.01) glows.push({ pos: n.chest(), color: n.color.clone().lerp(GOLD, goldK * 0.8).multiplyScalar(0.4 * k), radius: 2.8 });
+      if (k > 0.01) glows.push({ pos: n.chest(), color: n.color.clone().lerp(GOLD, goldK * 0.8).multiplyScalar(0.6 * k), radius: 3.4 });
     }
     w.glows(glows);
     w.pigeonsFly = Infinity;
@@ -513,7 +527,7 @@ export default class Rooftop extends Scene {
     if (DBG.includes('nocrowd')) this.crowd.visible = false;
     if (DBG.includes('noset')) w.set.visible = false;
     S.render(this.ctx.renderer, out);
-    const flash = prog(t, burst - 0.22, burst + 0.05);
+    const flash = prog(t, burst - 0.18, burst + 0.05) * 0.6;
     return {
       bloom: 0.95 + 0.25 * goldK, bloomThreshold: 0.72, bloomRadius: 0.85, halation: 0.14, vignette: 0.48, grain: 0.05, ca: 0.6,
       exposure: 1.15, flash: flash * flash * 0.8,

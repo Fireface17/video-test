@@ -41,6 +41,8 @@ export interface PlayOpts {
   inPlace?: boolean;
   /** Left ↔ right (doubles the variety of a clip). */
   mirror?: boolean;
+  /** Turn the clip so the subject's mean heading is the figure's own +z (clips were captured facing every which way). */
+  face?: boolean;
 }
 export interface Layer extends PlayOpts { m: Motion; t: number; w?: number }
 
@@ -101,6 +103,24 @@ export class Motion {
 
   bone(name: string) { return this.index.get(name); }
 
+  private _face: THREE.Quaternion | null = null;
+  /** The rotation that cancels the clip's mean heading (about y), for `face`. */
+  faceQ(): THREE.Quaternion {
+    if (this._face) return this._face;
+    const W: THREE.Quaternion[] = [], r = new THREE.Vector3(), f = new THREE.Vector3();
+    const hips = this.bone('Hips') ?? 0;
+    let sx = 0, sz = 0;
+    for (let t = 0; t < this.duration; t += 0.1) {
+      this.sampleRaw(t, W, r, true);
+      f.set(0, 0, 1).applyQuaternion(W[hips]!);
+      const l = Math.hypot(f.x, f.z);
+      if (l > 1e-4) { sx += f.x / l; sz += f.z / l; }
+    }
+    const a = Math.atan2(sx, sz);
+    this._face = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Number.isFinite(a) ? -a : 0);
+    return this._face;
+  }
+
   private _qa = new THREE.Quaternion();
   private _qb = new THREE.Quaternion();
 
@@ -155,10 +175,10 @@ export class Motion {
   private tables = new Map<string, JointTable>();
 
   /** A table of the 13 star joints (pelvis frame) over the looped clip, for `fig`'s body kind — for crowds. */
-  joints(fig: RealFigure, o: { mirror?: boolean; hz?: number } = {}): JointTable {
-    const key = `${fig.kind}|${o.mirror ? 1 : 0}`;
+  joints(fig: RealFigure, o: { mirror?: boolean; hz?: number; face?: boolean } = {}): JointTable {
+    const key = `${fig.kind}|${o.mirror ? 1 : 0}|${o.face ? 1 : 0}`;
     let tb = this.tables.get(key);
-    if (!tb) { tb = new JointTable(this, fig, o.mirror ?? false, o.hz ?? 30); this.tables.set(key, tb); }
+    if (!tb) { tb = new JointTable(this, fig, o.mirror ?? false, o.hz ?? 30, o.face ?? false); this.tables.set(key, tb); }
     return tb;
   }
 }
@@ -239,6 +259,7 @@ export function applyLayers(fig: RealFigure, layers: Layer[]) {
   for (const l of live) {
     const w = l.w ?? 1, rig = l.m.rig(fig);
     l.m.sample(l.t, _W, _root, l);
+    if (l.face) { const fq = l.m.faceQ(); for (let b = 0; b < l.m.names.length; b++) _W[b]!.premultiply(fq); _root.applyQuaternion(fq); }
     acc += w;
     const k = w / acc;
     rig.bones.forEach((e, i) => {
@@ -270,7 +291,7 @@ export class JointTable {
   n: number;
   period: number;
 
-  constructor(m: Motion, fig: RealFigure, mirror: boolean, public hz: number) {
+  constructor(m: Motion, fig: RealFigure, mirror: boolean, public hz: number, face = false) {
     this.period = m.duration - XFADE;
     this.n = Math.max(2, Math.round(this.period * hz));
     this.data = new Float32Array(this.n * 39);
@@ -278,7 +299,7 @@ export class JointTable {
     fig.position.set(0, 0, 0); fig.quaternion.identity(); fig.scale.setScalar(1);
     const js: THREE.Vector3[] = [];
     for (let i = 0; i < this.n; i++) {
-      applyLayers(fig, [{ m, t: (i / this.n) * this.period, loop: true, mirror }]);
+      applyLayers(fig, [{ m, t: (i / this.n) * this.period, loop: true, mirror, face }]);
       starJoints(fig, js);
       js.forEach((v, j) => this.data.set([v.x, v.y, v.z], i * 39 + j * 3));
     }

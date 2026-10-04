@@ -57,8 +57,8 @@ const SPECS: Spec[] = [
   { id: 'FR1', body: 'michelle', seat: [6.45, 1], clip: '13_04', seg: [23.0, 26.2], standAt: ['13_04', 26.2], mirror: false, off: 1.6, phone: 0, extra: 'shareA', glow: '#ffe2a8' },
   { id: 'FR2', body: 'rpm', seat: [7.05, 1], clip: '13_04', seg: [32.6, 38.0], standAt: ['13_04', 38.0], mirror: true, off: 2.0, phone: null, extra: 'shareB', glow: '#d4c0ff' },
   { id: 'HE', hero: 'he', stand: [0.55, 0.45, 0], clip: '79_71', mirror: false, off: 2.0, phone: null, hold: 0, extra: 'strap', glow: '' },
-  { id: 'G7', body: 'michelle', stand: [6.05, -0.38, Math.PI], clip: '77_02', mirror: true, off: 1.0, phone: 1, hold: 0, extra: 'strap', glow: '#ffd0a0' },
-  { id: 'G8', body: 'rpm', hat: true, stand: [5.88, -0.62, -Math.PI / 2], clip: '111_28', mirror: false, off: 4.0, phone: 1, hold: 0, extra: 'pole', glow: '#a8e8ff' },
+  { id: 'G7', body: 'michelle', stand: [5.12, -0.62, Math.PI], clip: '77_02', mirror: true, off: 1.0, phone: 1, hold: 0, extra: 'pole', glow: '#ffd0a0' },
+  { id: 'G8', body: 'rpm', hat: true, stand: [4.06, -0.6, Math.PI], clip: '111_28', mirror: false, off: 4.0, phone: 0, hold: 1, extra: 'pole', glow: '#a8e8ff' },
 ];
 /** Who leaves first. */
 const EXIT = ['G8', 'G7', 'FR1', 'FR2', 'HE', 'SHE', 'G6', 'G3', 'G2', 'G1'];
@@ -105,6 +105,7 @@ export default class Train extends Scene {
   bars: number[] = [];
 
   override async init() {
+    (globalThis as { __train?: Train }).__train = this; // (for profiling scripts)
     const { lyrics, audio } = this.ctx;
     const S = this.st.scene, U = this.U;
     this.st.bg.copy(col('night'));
@@ -120,7 +121,7 @@ export default class Train extends Scene {
     L.p3 = after('Turn the pain into gold', L.p2.start);
     L.p4 = after('Here we go, here we go', L.p3.start);
     const wd = (l: Line, w: string, nth = 0) => l.words.filter((x) => norm(x.w) === norm(w))[nth]!.start;
-    const beatBefore = (t: number) => audio.timeOfBeat(Math.floor(audio.beatAt(t + 0.03)));
+    const beatBefore = (t: number) => audio.timeOfBeat(Math.floor(audio.beatAt(t))); // (never after the first word)
     const downAfter = (t: number) => audio.downbeats.find((d) => d >= t - 0.06) ?? t;
     const T = this.T;
     T.cB = beatBefore(L.l2.start);
@@ -270,8 +271,8 @@ export default class Train extends Scene {
       { words: [w3[0]!], above: true }, { words: [w3[1]!, w3[2]!], above: false }, { words: [w3[3]!], above: true }, { words: [w3[4]!], above: false }, { words: [w3[5]!, w3[6]!], above: true },
     ]);
     const cy = (CAR.top + CAR.ceil) / 2;
-    this.lineMap.position.set(0.2, cy, 1.19 - 0.012);
-    this.lineMap.lookAt(V3(0.2, cy - 0.38, 1.19 - 0.2 - 0.012));
+    this.lineMap.position.set(-0.2, cy, 1.19 - 0.012);
+    this.lineMap.lookAt(V3(-0.2, cy - 0.38, 1.19 - 0.2 - 0.012));
     this.car.add(this.lineMap);
     // L4: letters of small lights over the aisle at the rear of the car
     const l4 = L.l4, s4 = l4.words.findIndex((w) => norm(w.w) === 'light');
@@ -285,11 +286,11 @@ export default class Train extends Scene {
     this.wallNeon.position.set(4.6, FLOOR_Y + 1.2, ST.zWall + 0.06);
     S.add(this.wallNeon);
     // P3: neon lying on the asphalt of the avenue past the stair, readable from the crane
-    this.roadNeon = new NeonLine(L.p3, [[0, 1, 2], [3, 4, 5]], { font: 'readable', size: 1.55, color: col('violet', 2.0).lerp(col('blue', 2.0), 0.3), leading: 2.0, radius: 0.05 });
+    this.roadNeon = new NeonLine(L.p3, [[0, 1, 2], [3, 4, 5]], { font: 'readable', size: 1.9, color: col('violet', 2.0).lerp(col('blue', 2.0), 0.3), leading: 2.4, radius: 0.06 });
     const hc = this.shotH(this.T.cH + 0.5);
     const fwd = hc.tgt.clone().sub(hc.pos).setY(0).normalize(), right = V3(-fwd.z, 0, fwd.x);
     this.roadNeon.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right, fwd, UP));
-    this.roadNeon.position.set(31.5, 0.06, -8.8);
+    this.roadNeon.position.set(31.0, 0.06, -6.8);
     S.add(this.roadNeon);
     // P4: HERE WE GO, twice, in Tilt Neon on the station's end, over the avenue
     const tilt = await loadDisplayFont('tiltneon');
@@ -303,7 +304,7 @@ export default class Train extends Scene {
         const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0, 0, 0), side: THREE.DoubleSide });
         const mesh = new THREE.Mesh(geos[k]!, mat);
         mesh.rotation.y = Math.PI / 2;
-        mesh.position.set(ST.x1 + 0.35, FLOOR_Y + (ri ? 3.1 : 5.4), -5.6 - (x + ws[k]! / 2));
+        mesh.position.set(ST.x1 + 0.35, FLOOR_Y + (ri ? 2.5 : 4.75), -5.6 - (x + ws[k]! / 2));
         x += ws[k]! + gap;
         this.hereGo.push({ mesh, mat, t0: p4.words[wi]!.start });
         S.add(mesh);
@@ -371,7 +372,7 @@ export default class Train extends Scene {
   }
   private shotB(t: number): Shot {
     const k = ease.inOutQuad(prog(t, this.T.cB, this.T.cC));
-    return { pos: V3(2.5, 1.48, -0.3).lerp(V3(3.25, 1.5, -0.24), k), tgt: V3(8.95, 1.86, 0.06), fov: 33, roll: -0.006, local: true };
+    return { pos: V3(1.2, 1.5, -0.02).lerp(V3(2.05, 1.5, -0.04), k), tgt: V3(8.95, 1.88, 0.1), fov: 31, roll: -0.006, local: true };
   }
   shotC(t: number): Shot {
     const k = ease.inOutQuad(prog(t, this.T.cC, this.T.cD));
@@ -383,7 +384,7 @@ export default class Train extends Scene {
   }
   private shotE(t: number): Shot {
     const k = ease.inOutQuad(prog(t, this.T.cE, this.T.cF));
-    return { pos: V3(4.45, 1.0, 0.62).lerp(V3(4.45, 1.03, 0.36), k), tgt: V3(4.55, 2.0, -6.0), fov: 46, roll: 0.0, local: true };
+    return { pos: V3(4.55, 1.05, 1.2).lerp(V3(4.55, 1.08, 0.95), k), tgt: V3(4.6, 2.05, -6.0), fov: 50, roll: 0.0, local: true };
   }
   private shotF(t: number): Shot {
     const T = this.T, k = ease.inOutQuad(prog(t, T.cF, T.cG));
@@ -409,15 +410,15 @@ export default class Train extends Scene {
   shotH(t: number): Shot {
     const T = this.T, k = ease.inOutQuad(prog(t, T.cH, T.cI));
     const up = ease.inOutCubic(prog(t, T.gold - 0.1, T.cI));
-    const pos = V3(44, 17, -21).lerp(V3(41, 15.5, -19.5), k);
+    const pos = V3(45, 19, -15.5).lerp(V3(42, 17.5, -15), k);
     pos.y += 3 * up;
-    const tgt = V3(29, 0, -7.5).add(V3(-4, 6.5, 2).multiplyScalar(up));
+    const tgt = V3(28.5, 0, -6.5).add(V3(-4, 6.5, 2).multiplyScalar(up));
     return { pos, tgt, fov: 50, roll: 0.0, local: false };
   }
   private shotI(t: number): Shot {
     const T = this.T, k = ease.inOutQuad(prog(t, T.cI, this.ctx.end + 0.2));
     const pos = V3(38, 1.25, -9.4).lerp(V3(50, 1.5, -9.0), k);
-    const tgt = V3(20, 8.2, -6.2).lerp(V3(24, 9.0, -6.2), k);
+    const tgt = V3(20, 9.4, -6.2).lerp(V3(24, 10.0, -6.2), k);
     return { pos, tgt, fov: 54, roll: 0.02, local: false };
   }
 
@@ -500,7 +501,7 @@ export default class Train extends Scene {
     if ((s.extra === 'strap' || s.extra === 'pole') && t < p.tUp + 0.6) {
       const hk = 1 - ease.inOutCubic(prog(t, p.tUp, p.tUp + 0.6));
       const i = s.hold ?? 0;
-      const tgt = s.extra === 'pole' ? this.car.localToWorld(V3(5.36, 1.38, -0.93)) : this.car.strapHandle(p.strap);
+      const tgt = s.extra === 'pole' ? this.car.localToWorld(V3(p.home.x < 4.6 ? 3.84 : 5.36, 1.42, -0.93)) : this.car.strapHandle(p.strap);
       blendReach(f, i, tgt, hk, side.clone().multiplyScalar(i ? 1 : -1).addScaledVector(UP, -0.6).addScaledVector(fd, -0.4));
       f.setHand(i, 0.75);
     }
@@ -578,8 +579,9 @@ export default class Train extends Scene {
     const moonK = t < T.cD ? 1 : 0;
     const moonLight = (1 - prog(t, T.swallow + 0.1, T.moon + 0.15)) * moonK;
     U.uMoonC.value.setRGB(0.3, 0.33, 0.45).multiplyScalar(0.12 * moonLight);
-    this.out.city.mirrorOn = shot.id === 'H' || shot.id === 'I' || shot.id === 'G';
-    this.out.update(t, cam, moonK);
+    const street = shot.id === 'G' || shot.id === 'H' || shot.id === 'I';
+    this.out.city.mirrorOn = street;
+    this.out.update(t, cam, moonK, street);
 
     // ---- people
     const beat = this.ctx.audio.beatAt(t);
@@ -630,6 +632,9 @@ export default class Train extends Scene {
     }
     this.station.update();
     this.station.lampPos.forEach((lp, i) => lights.push({ p: lp, r: -3.0, c: new THREE.Color(0.8, 0.88, 1.0), k: 0.6 * this.station.lightsOn[i]! }));
+    // the wall's neon throws pink on the tiles and the people
+    const nOn = L4lit(this.L.p1!, t);
+    if (nOn > 0) lights.push({ p: V3(4.6, FLOOR_Y + 1.7, ST.zWall + 0.9), r: -2.6, c: col('pink', 1), k: 0.35 * nOn });
     // the display
     const dispOn = t > T.cB - 0.6 && t < T.cC + 0.2;
     if (dispOn) lights.push({ p: this.car.localToWorld(V3(8.6, 2.0, 0)), r: 0.6, c: new THREE.Color(1.0, 0.45, 0.1), k: 0.6 });
@@ -698,7 +703,7 @@ export default class Train extends Scene {
     singHidden(this.wallNeon, t, 1.0);
     // P2: the risers
     const rl = this.station.riserMat.uniforms.uLv!.value as Float32Array;
-    L.p2!.words.forEach((w, i) => (rl[i] = flickerOn(t, w.start, i + 21) * (1 + 0.4 * pulse(t, w.start, 0.15)) * (1 - prog(t, T.cI - 0.3, T.cI + 0.5))));
+    L.p2!.words.forEach((w, i) => (rl[i] = flickerOn(t, w.start, i + 21) * (1 + 0.4 * pulse(t, w.start, 0.15)) * (1 - prog(t, T.cH + 0.3, T.cH + 1.1))));
     // P3: the asphalt neon, turning gold on "gold"
     const gk = ease.inOutCubic(prog(t, T.gold - 0.05, T.gold + 0.5));
     this.roadNeon.setColor(col('violet', 2.0).lerp(col('blue', 2.0), 0.3).lerp(col('gold', 2.4), gk));
@@ -715,6 +720,9 @@ export default class Train extends Scene {
     void subLine;
   }
 }
+
+/** How much of a line is lit (0..1, by words sung). */
+function L4lit(l: Line, t: number) { return l.words.filter((w) => t >= w.start).length / l.words.length; }
 
 /** Neon karaoke where a word not yet sung is not there at all (dark tubes would read on a lit wall). */
 function singHidden(n: NeonLine, t: number, gain: number) {

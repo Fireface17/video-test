@@ -177,6 +177,8 @@ export class RoadSurface extends THREE.Mesh {
           vec3 rSharp = vec3(0.0), rBlur = vec3(0.0);
           rBlur = texture2D(tRB, ruv + dist1).rgb;
           if (puddle > 0.01) rSharp = texture2D(tR, ruv + dist1 * 0.35 + vec2(0.0, sin(u * 2.3 + x * 0.7) * 0.0015 * dk)).rgb;
+          if (any(isnan(rBlur)) || any(isinf(rBlur))) rBlur = vec3(0.0);
+          if (any(isnan(rSharp)) || any(isinf(rSharp))) rSharp = vec3(0.0);
           float cosV = clamp(dot(vec3(0.0, 1.0, 0.0), V), 0.0, 1.0);
           float fres = 0.02 + 0.98 * pow(1.0 - cosV, 5.0);
           float fresR = 0.03 + 0.97 * pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 5.0);

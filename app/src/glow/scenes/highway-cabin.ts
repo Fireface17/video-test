@@ -52,10 +52,10 @@ vec3 cabLight(vec3 P, vec3 N, vec3 V, float shine, out vec3 spec) {
     for (int i = 0; i < 2; i++) {
       vec3 Hp = i == 0 ? cHandA : cHandB;
       vec3 L = Hp - P; float d2 = dot(L, L); vec3 l = L * inversesqrt(max(d2, 1e-6));
-      vec3 h = normalize(l + V);
+      vec3 h = l + V; h *= inversesqrt(max(dot(h, h), 1e-8));
       spec += cHandCol * pow(max(dot(N, h), 0.0), 30.0) * shine / (d2 / 0.06 + 1.0);
     }
-    vec3 h2 = normalize(cTopDir + V);
+    vec3 h2 = cTopDir + V; h2 *= inversesqrt(max(dot(h2, h2), 1e-8));
     spec += cTopCol * pow(max(dot(N, h2), 0.0), 24.0) * shine * 2.0;
   }
   return c;
@@ -323,7 +323,7 @@ export class Cabin extends THREE.Group {
     this.phoneLight.rotation.x = -Math.PI / 2;
     this.phoneLight.position.y = -0.002;
     ph.add(body, scr, this.phoneLight);
-    ph.position.set(0.6, -0.587, -0.3);
+    ph.position.set(0.85, -0.587, -0.28);
     ph.rotation.set(0.0, 0.62, 0.0);
     this.add(ph);
 
@@ -352,7 +352,7 @@ export class Cabin extends THREE.Group {
     }));
     mg.position.z = 0.004;
     this.mirror.add(housing, stem, mg);
-    this.mirror.position.set(0.35, 0.085, -0.5);
+    this.mirror.position.set(0.35, 0.08, -0.465);
     this.mirror.rotation.set(0.06, -0.33, 0.012, 'YXZ');
     this.add(this.mirror);
 
@@ -452,7 +452,7 @@ export class Cabin extends THREE.Group {
     // ---- phone: the empty battery blinks
     const blink = ((t % 1.6) < 0.8 ? 1 : 0.18) * s.phone;
     this.phoneMat.color.copy(C('#ffffff', 0.85 * blink));
-    (this.phoneLight.material as THREE.ShaderMaterial).uniforms.k!.value = 0.05 * blink;
+    (this.phoneLight.material as THREE.ShaderMaterial).uniforms.k!.value = 0.14 * blink;
     // ---- his hands on the wheel (2-bone IK every frame: the car moves), a squeeze on the beat
     const fig = this.fig;
     if (fig) {

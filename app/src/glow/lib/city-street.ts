@@ -48,18 +48,18 @@ export function bakeLightMap(plan: CityPlan, lampSeeds: number[], extra: { x: nu
   plan.lamps.forEach((l, i) => {
     const c = lampColor(l, lampSeeds[i]!);
     const hx = l.x + l.ax * 1.8, hz = l.z + l.az * 1.8;
-    if (l.kind === 1) { splat(hx, hz, c, 4.5, 0.9); splat(hx, hz, c, 10, 0.12); return; }
-    splat(hx, hz, c, 6.5, 1.25);
-    splat(hx, hz, c, 15, 0.22);
+    if (l.kind === 1) { splat(hx, hz, c, 4.5, 0.55); splat(hx, hz, c, 10, 0.08); return; }
+    splat(hx, hz, c, 6.5, 0.72);
+    splat(hx, hz, c, 15, 0.12);
   });
   for (const s of plan.shops) {
     if (!s.lit) continue;
-    const c = shopLight(s), k = s.kind === SHOP.LOBBY ? 0.35 : s.kind === SHOP.BAR || s.kind === SHOP.RESTAURANT ? 0.5 : 0.85;
+    const c = shopLight(s), k = s.kind === SHOP.LOBBY ? 0.18 : s.kind === SHOP.BAR || s.kind === SHOP.RESTAURANT ? 0.22 : 0.38;
     const tx = s.nz, tz = -s.nx, n = Math.max(1, Math.round(s.w / 2.2));
     for (let i = 0; i < n; i++) {
       const u = (i + 0.5) / n - 0.5;
       splat(s.x + tx * u * s.w + s.nx * 1.6, s.z + tz * u * s.w + s.nz * 1.6, c, 2.2, k * (2.2 / Math.max(2.2, s.w / n)) * 1.2);
-      splat(s.x + tx * u * s.w + s.nx * 4.5, s.z + tz * u * s.w + s.nz * 4.5, c, 4.5, k * 0.25);
+      splat(s.x + tx * u * s.w + s.nx * 4.5, s.z + tz * u * s.w + s.nz * 4.5, c, 4.5, k * 0.2);
     }
   }
   for (const e of extra) splat(e.x, e.z, e.c, e.s, e.k);
@@ -89,128 +89,103 @@ export function lightAt(lm: LightMapInfo, x: number, z: number): [number, number
 
 const WET_GLSL = /* glsl */ `
   uniform sampler2D uMirror; uniform mat4 uMirrorMat;
-  // what the wet ground reflects at W: the mirror pass (blurred along the screen's vertical) or, without it, the sky
+  // what the wet ground reflects at W: the mirror pass (smeared along the screen's vertical) or, without it, the sky
   vec3 wetReflection(vec3 W, vec2 nrm, float rough, float p) {
-    if (uMirrorOn > 0.5) {
-      vec4 mp = uMirrorMat * vec4(W, 1.0);
-      vec2 uv = mp.xy / max(mp.w, 1e-3) + nrm * 0.012;
-      vec3 r = vec3(0.0);
-      float s = rough * 0.022;
-      r += texture2D(uMirror, uv + vec2(0.0, -2.0 * s)).rgb * 0.12;
-      r += texture2D(uMirror, uv + vec2(0.0, -1.0 * s)).rgb * 0.22;
-      r += texture2D(uMirror, uv).rgb * 0.32;
-      r += texture2D(uMirror, uv + vec2(0.0, 1.0 * s)).rgb * 0.22;
-      r += texture2D(uMirror, uv + vec2(0.0, 2.0 * s)).rgb * 0.12;
-      return r;
-    }
+    vec4 mp = uMirrorMat * vec4(W, 1.0);
+    vec2 uv = mp.xy / max(mp.w, 1e-3) + nrm * 0.012;
+    float s = rough * 0.02;
+    vec3 r = (texture2D(uMirror, uv + vec2(0.0, -s)).rgb + texture2D(uMirror, uv).rgb * 1.4 + texture2D(uMirror, uv + vec2(0.0, s)).rgb) / 3.4;
     vec3 V = normalize(W - cameraPosition);
-    return envRefl(reflect(V, vec3(nrm.x, 1.0, nrm.y) / length(vec3(nrm.x, 1.0, nrm.y))), 0.0) * 0.6 + lightMap(W.xz) * p * 0.12;
+    vec3 alt = skyRefl(reflect(V, vec3(0.0, 1.0, 0.0))) * 0.6 + lightMap(W.xz) * p * 0.12;
+    return mix(alt, r, uMirrorOn);
   }
 `;
 
-export function groundMaterial(U: CityUniforms, gridGlsl: string, riverX: number | null, elX: number | null) {
+/**
+ * The street surface. `near`: the detailed version (patches, puddles, manholes, ripples) on a patch that follows the
+ * camera; the far version (roads, crosswalks, lane lines, lamp pools, reflections) everywhere.
+ */
+export function groundMaterial(U: CityUniforms, gridGlsl: string, riverX: number | null, near: boolean) {
+  const uni = U as unknown as Record<string, THREE.IUniform>;
   return new THREE.ShaderMaterial({
-    uniforms: U as unknown as Record<string, THREE.IUniform>,
-    vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+    uniforms: { ...uni, uPatch: { value: new THREE.Vector3() }, uVein: { value: new THREE.Vector4(0, 0, 0, 0) }, uVeinC: { value: new THREE.Color(1, 0.7, 0.3) } },
+    defines: { GROUND_NEAR: near ? 1 : 0 },
+    vertexShader: /* glsl */ `
+      uniform vec3 uPatch;
+      varying vec3 vW;
+      void main(){ vec4 w = modelMatrix * vec4(position + uPatch, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: /* glsl */ `
       ${CITY_GLSL}
       ${gridGlsl}
       ${WET_GLSL}
       uniform vec4 uVein; uniform vec3 uVeinC;
       varying vec3 vW;
-      const float RIVER_X = ${(riverX ?? 1e9).toFixed(1)}, EL_X = ${(elX ?? 1e9).toFixed(1)};
+      const float RIVER_X = ${(riverX ?? 1e9).toFixed(1)};
       void main() {
         vec2 xz = vW.xz - uOrigin.xz;
         vec2 an = avNear(xz.x), sn = stNear(xz.y);
         float wide = stWide(sn.x);
-        float sRoadH = mix(ST_ROADH, WIDE_ROADH, wide), sHalf = mix(ST_HALF, WIDE_HALF, wide);
+        float sRoadH = mix(ST_ROADH, WIDE_ROADH, wide);
         float dx = an.y, dz = sn.y, adx = abs(dx), adz = abs(dz);
         float onAv = step(adx, AV_ROADH), onSt = step(adz, sRoadH);
+        float road = max(onAv, onSt);
         float px = max(fwidth(xz.x), fwidth(xz.y));
-        float p = power(vW.xz);
-        // ---- asphalt ----
-        float agg = vnoise(xz * 7.0) * smoothstep(0.08, 0.02, px);
-        float patchN = fbm3(xz * 0.07 + 11.0);
-        vec3 alb = vec3(0.075, 0.075, 0.08) * (0.85 + 0.25 * agg);
-        alb *= mix(1.0, 0.75, smoothstep(0.55, 0.6, patchN));                         // patches of newer asphalt
-        alb = mix(alb, alb * 1.3, smoothstep(0.62, 0.66, fbm3(xz * 0.11 + 4.0)) * 0.5);
-        // tar snakes: thin dark squiggles
-        float snake = smoothstep(0.02, 0.0, abs(fbm3(xz * 0.35 + 2.0) - 0.5)) * smoothstep(0.1, 0.03, px);
-        alb *= 1.0 - 0.5 * snake;
-        // ---- markings ----
-        float mk = 0.0; vec3 mkC = vec3(0.6, 0.6, 0.58);
         float aw = clamp(px * 0.8, 0.02, 0.5);
-        // avenue lanes: dashed lines between 5 lanes; the parking lanes' edge; a red bus lane on some avenues
-        float avBlock = onAv * (1.0 - onSt);
-        float lane = abs(mod(dx + 1.6, 3.2) - 1.6);
-        float dashZ = step(fract(xz.y / 12.0), 0.25);
-        mk += avBlock * smoothstep(0.08 + aw, 0.08, lane) * dashZ * step(adx, 6.0);
+        float p = power(vW.xz);
+        vec3 alb = vec3(0.07, 0.07, 0.075);
+        // ---- markings: lane lines on the avenues, a double yellow on the wide streets, crosswalks, stop lines
+        float avBlock = onAv * (1.0 - onSt), stBlock = onSt * (1.0 - onAv);
+        float mk = avBlock * smoothstep(0.08 + aw, 0.08, abs(mod(dx + 1.6, 3.2) - 1.6)) * step(fract(xz.y / 12.0), 0.25) * step(adx, 6.0);
         mk += avBlock * smoothstep(0.07 + aw, 0.07, abs(adx - 8.0));
-        float bus = avBlock * step(h11(an.x * 3.7), 0.45) * step(-8.0, dx * sign(h11(an.x * 5.1) - 0.5)) * step(dx * sign(h11(an.x * 5.1) - 0.5), -4.8) * step(abs(an.x * 250.0 + AX0 - EL_X), 1.0) * 0.0;
-        float busLane = avBlock * step(h11(an.x * 3.7), 0.45) * step(4.8, dx) * step(dx, 8.0);
-        alb = mix(alb, vec3(0.22, 0.045, 0.035), busLane * 0.85);
-        float bike = avBlock * step(0.55, h11(an.x * 3.7)) * step(-8.0, dx) * step(dx, -6.2);
-        alb = mix(alb, vec3(0.05, 0.16, 0.07), bike * 0.85);
-        // streets: a double yellow on the wide two-way ones
-        float stBlock = onSt * (1.0 - onAv);
-        mk += stBlock * wide * smoothstep(0.07 + aw, 0.07, abs(adz - 0.18));
         float yellow = stBlock * wide * smoothstep(0.07 + aw, 0.07, abs(adz - 0.18));
-        mk += stBlock * smoothstep(0.07 + aw, 0.07, abs(adz - sRoadH + 2.3)) * (1.0 - wide) * 0.0;
-        // crosswalks (ladder bars) and stop lines, at every intersection
-        float cwA = onAv * step(sRoadH + 0.6, adz) * step(adz, sRoadH + 3.8) * step(adx, AV_ROADH - 0.3);
-        mk += cwA * smoothstep(0.5 + aw * 2.0, 0.5, abs(fract(dx / 1.3) - 0.5) * 2.0 + 0.0) * 0.0;
-        mk += cwA * step(fract(dx / 1.3), 0.55);
+        mk += yellow;
+        mk += onAv * step(sRoadH + 0.6, adz) * step(adz, sRoadH + 3.8) * step(adx, AV_ROADH - 0.3) * step(fract(dx / 1.3), 0.55);
         mk += onAv * smoothstep(0.2 + aw, 0.2, abs(adz - sRoadH - 4.6)) * step(adx, AV_ROADH - 0.3);
-        float cwS = onSt * step(AV_ROADH + 0.6, adx) * step(adx, AV_ROADH + 3.8) * step(adz, sRoadH - 0.3);
-        mk += cwS * step(fract(dz / 1.3), 0.55);
+        mk += onSt * step(AV_ROADH + 0.6, adx) * step(adx, AV_ROADH + 3.8) * step(adz, sRoadH - 0.3) * step(fract(dz / 1.3), 0.55);
         mk += onSt * smoothstep(0.2 + aw, 0.2, abs(adx - AV_ROADH - 4.6)) * step(adz, sRoadH - 0.3);
         mk = clamp(mk, 0.0, 1.0) * (1.0 - onAv * onSt);
-        // worn paint
-        mk *= 0.55 + 0.45 * smoothstep(0.3, 0.7, vnoise(xz * 1.3));
-        mkC = mix(mkC, vec3(0.55, 0.4, 0.08), yellow);
-        alb = mix(alb, mkC, mk);
-        // manholes: round covers in the lanes
-        vec2 mc = vec2(onAv > 0.5 ? (floor(dx / 3.2) + 0.5) * 3.2 : floor(xz.x / 23.0) * 23.0 + 11.5, onAv > 0.5 ? floor(xz.y / 27.0) * 27.0 + 13.5 : (floor(dz / 2.8) + 0.5) * 2.8);
-        vec2 mrel = onAv > 0.5 ? vec2(dx - mc.x, xz.y - mc.y) : vec2(xz.x - mc.x, dz - mc.y);
-        float mh = step(0.62, h12(floor(onAv > 0.5 ? vec2(an.x * 9.0 + floor(dx / 3.2), xz.y / 27.0) : vec2(xz.x / 23.0, sn.x * 7.0 + floor(dz / 2.8))))) * max(onAv, onSt);
-        float mr = length(mrel);
-        float cover = mh * smoothstep(0.42, 0.38, mr);
-        alb = mix(alb, vec3(0.06, 0.055, 0.05) * (0.8 + 0.4 * step(0.5, fract((mrel.x + mrel.y) * 6.0))), cover);
-        float rim = mh * smoothstep(0.03, 0.0, abs(mr - 0.4));
-        // ---- beyond the streets (lots under buildings, the city's edge) ----
-        float road = max(onAv, onSt);
-        alb = mix(vec3(0.035, 0.035, 0.035), alb, road);
-        // ---- wet: puddles, gutters; the crown of the road drier ----
-        float gutter = max(onAv * (1.0 - onSt) * smoothstep(AV_ROADH - 1.4, AV_ROADH, adx), onSt * (1.0 - onAv) * smoothstep(sRoadH - 1.2, sRoadH, adz));
-        float pud = smoothstep(0.52, 0.6, fbm3(xz * 0.09 + 3.1) + 0.12 * vnoise(xz * 0.8));
-        float wet = clamp(0.45 + 0.55 * max(pud, gutter) - 0.15 * patchN, 0.0, 1.0) * road;
-        float mirrorK = max(pud, gutter * 0.8);
-        // ---- light ----
+        // red bus lanes and green bike lanes on some avenues
+        float lk = h11(an.x * 3.7);
+        alb = mix(alb, vec3(0.2, 0.045, 0.035), avBlock * step(lk, 0.45) * step(4.8, dx) * step(dx, 8.0) * 0.85);
+        alb = mix(alb, vec3(0.05, 0.15, 0.07), avBlock * step(0.55, lk) * step(-8.0, dx) * step(dx, -6.2) * 0.85);
+        float wet = 0.55, mirrorK = 0.0, rough = 1.0;
+        vec2 ripple = vec2(0.0);
+        #if GROUND_NEAR
+          // asphalt grain, patches, tar snakes, worn paint, manholes, puddles, gutters, ripples
+          float patchN = vnoise(xz * 0.07 + 11.0);
+          alb *= (0.85 + 0.25 * vnoise(xz * 7.0) * smoothstep(0.08, 0.02, px)) * mix(1.0, 0.75, smoothstep(0.55, 0.6, patchN));
+          alb *= 1.0 - 0.5 * smoothstep(0.02, 0.0, abs(vnoise(xz * 0.35 + 2.0) - 0.5)) * smoothstep(0.1, 0.03, px);
+          mk *= 0.55 + 0.45 * smoothstep(0.3, 0.7, vnoise(xz * 1.3));
+          vec2 cellM = floor(xz / vec2(23.0, 27.0));
+          vec2 mrel = xz - (cellM + 0.5) * vec2(23.0, 27.0) - (h22m(cellM) - 0.5) * vec2(14.0, 18.0);
+          float mh = step(0.6, h12(cellM)) * road;
+          float mr = length(mrel);
+          alb = mix(alb, vec3(0.06, 0.055, 0.05) * (0.8 + 0.4 * step(0.5, fract((mrel.x + mrel.y) * 6.0))), mh * smoothstep(0.42, 0.38, mr));
+          float gutter = max(avBlock * smoothstep(AV_ROADH - 1.4, AV_ROADH, adx), stBlock * smoothstep(sRoadH - 1.2, sRoadH, adz));
+          float pud = smoothstep(0.52, 0.6, fbm3(xz * 0.09 + 3.1));
+          mirrorK = max(pud, gutter * 0.8);
+          wet = clamp(0.45 + 0.55 * mirrorK - 0.15 * patchN, 0.0, 1.0);
+          rough = mix(1.0, 0.15, mirrorK);
+          ripple = (vec2(vnoise(xz * 2.3 + uTime * 0.3), vnoise(xz * 2.3 + 17.0 - uTime * 0.25)) - 0.5) * (1.0 - mirrorK * 0.8);
+        #endif
+        alb = mix(alb, mix(vec3(0.6, 0.6, 0.58), vec3(0.55, 0.4, 0.08), yellow), mk);
+        alb = mix(vec3(0.035), alb, road);
+        wet *= road;
+        // ---- light, reflections ----
         vec3 N = vec3(0.0, 1.0, 0.0);
-        vec3 L = ambient(N, p) + streetLight(vW.xz, 0.0, p) * (1.0 - 0.8 * uDawn) + sunLight(vW, N) + peopleGlow(vW, N);
-        alb *= 1.0 - 0.45 * wet;                            // wet asphalt is darker
-        vec3 c = alb * L;
-        c += rim * 0.0;
-        // reflections: sharp in puddles, smeared on the wet asphalt
+        vec3 L = ambient(N) + streetLight(vW.xz, 0.0, p) + sunLight(vW, N) + peopleGlow(vW, N);
+        vec3 c = alb * (1.0 - 0.45 * wet) * L;
         vec3 V = normalize(vW - cameraPosition);
-        float cosv = clamp(-V.y, 0.0, 1.0);
-        float fres = 0.04 + 0.96 * pow(1.0 - cosv, 5.0);
-        vec2 ripple = (vec2(vnoise(xz * 2.3 + uTime * 0.3), vnoise(xz * 2.3 + 17.0 - uTime * 0.25)) - 0.5) * (1.0 - mirrorK * 0.8);
-        vec3 refl = wetReflection(vW, ripple, mix(1.0, 0.15, mirrorK), p);
-        c += refl * wet * fres * mix(0.55, 1.0, mirrorK) * (1.0 - mk * 0.5);
-        // the avenues' pulse (drop): rings of light running along the roads
-        if (uVein.x > 0.0) {
-          float d = uVein.w > 0.5 ? length(xz - uVein.yz) : abs(xz.y - uVein.y);
-          float centre = max(onAv * exp(-dx * dx / 18.0), onSt * exp(-dz * dz / 8.0));
-          c += uVeinC * uVein.x * road * (0.25 + centre) ;
-        }
-        c = cityFog(c, vW, p);
-        gl_FragColor = vec4(c, 1.0);
+        float fres = 0.04 + 0.96 * pow(1.0 - clamp(-V.y, 0.0, 1.0), 5.0);
+        c += wetReflection(vW, ripple, rough, p) * wet * fres * mix(0.55, 1.0, mirrorK) * (1.0 - mk * 0.5);
+        // the drop's pulse along the roads
+        c += uVeinC * uVein.x * road * (0.25 + max(onAv * exp(-dx * dx / 18.0), onSt * exp(-dz * dz / 8.0)));
+        gl_FragColor = vec4(cityFog(c, vW, p), 1.0);
       }`,
   });
 }
 
-/** Sidewalk slabs (one per block, 0.15 m high): concrete flags, granite curbs; the rear yards inside. */
+/** Sidewalk slabs (one per block, 0.15 m high): concrete flags, granite curbs; the rear yards inside; a park. */
 export function slabMaterial(U: CityUniforms) {
   return new THREE.ShaderMaterial({
     uniforms: U as unknown as Record<string, THREE.IUniform>,
@@ -232,44 +207,27 @@ export function slabMaterial(U: CityUniforms) {
         vec2 xz = vW.xz - uOrigin.xz;
         float p = power(vW.xz);
         float px = max(fwidth(xz.x), fwidth(xz.y));
-        vec3 c;
-        // distance in from each edge
         float dW = xz.x - vRect.x, dE = vRect.z - xz.x, dN = xz.y - vRect.y, dS = vRect.w - xz.y;
         float walk = max(max(step(dW, vWalk.x), step(dE, vWalk.y)), max(step(dN, vWalk.z), step(dS, vWalk.w)));
-        vec3 L = ambient(N, p) + streetLight(vW.xz + N.xz * 0.5, 0.15, p) * (1.0 - 0.8 * uDawn) + sunLight(vW, N) + peopleGlow(vW, N);
-        if (N.y > 0.5) {
-          vec3 alb;
-          if (vKind.x > 0.5) {
-            // a park: lawns, paths, a little fog of leaves
-            float path = step(abs((xz.x - vRect.x) / (vRect.z - vRect.x) - (xz.y - vRect.y) / (vRect.w - vRect.y)) * (vRect.z - vRect.x), 2.2) + step(abs(xz.y - (vRect.y + vRect.w) * 0.5), 2.6);
-            alb = mix(vec3(0.035, 0.06, 0.03) * (0.7 + 0.6 * fbm3(xz * 0.3)), vec3(0.22, 0.2, 0.18), clamp(path, 0.0, 1.0));
-            alb = mix(alb, vec3(0.3, 0.3, 0.29), walk);
-          } else if (walk > 0.5) {
-            // concrete flags, joints, gum, stains; the granite curb edge
-            vec2 f = fract(xz / 1.52);
-            float joint = (step(f.x, 0.012) + step(f.y, 0.012)) * smoothstep(0.08, 0.02, px);
-            alb = vec3(0.3, 0.295, 0.285) * (0.85 + 0.2 * h12(floor(xz / 1.52))) * (1.0 - 0.35 * clamp(joint, 0.0, 1.0));
-            alb *= 0.9 + 0.1 * vnoise(xz * 3.0);
-            alb *= 1.0 - 0.4 * step(0.985, h12(floor(xz * 9.0))) * smoothstep(0.05, 0.01, px);
-            float edge = min(min(dW, dE), min(dN, dS));
-            alb = mix(alb, vec3(0.38, 0.38, 0.4), smoothstep(0.42, 0.38, edge));
-          } else {
-            // rear yards: dirt, paving, a bit of green
-            float g = fbm3(xz * 0.25 + 7.0);
-            alb = mix(vec3(0.07, 0.065, 0.06), vec3(0.03, 0.05, 0.025), smoothstep(0.4, 0.6, g));
-          }
-          // wet sidewalks reflect a little
-          vec3 V = normalize(vW - cameraPosition);
-          float fres = 0.04 + 0.96 * pow(1.0 - clamp(-V.y, 0.0, 1.0), 5.0);
-          float wet = (0.3 + 0.5 * smoothstep(0.55, 0.62, fbm3(xz * 0.2 + 5.0))) * walk;
-          alb *= 1.0 - 0.3 * wet;
-          c = alb * L + wetReflection(vW, vec2(0.0), 0.8, p) * wet * fres * 0.45;
-        } else {
-          // the curb: granite, lit from the street
-          c = vec3(0.33, 0.33, 0.34) * (0.85 + 0.2 * h12(floor(vec2(xz.x + xz.y, 0.0) / 1.8))) * (L + streetLight(vW.xz + N.xz * 1.5, 0.0, p) * 0.4);
-        }
-        c = cityFog(c, vW, p);
-        gl_FragColor = vec4(c, 1.0);
+        float edge = min(min(dW, dE), min(dN, dS));
+        vec3 L = ambient(N) + streetLight(vW.xz + N.xz * 0.5, 0.15, p) + sunLight(vW, N) + peopleGlow(vW, N);
+        // concrete flags with joints; the granite curb edge; rear yards; a park's lawns and paths
+        vec2 f = fract(xz / 1.52);
+        float joint = (step(f.x, 0.012) + step(f.y, 0.012)) * smoothstep(0.08, 0.02, px);
+        vec3 side = vec3(0.3, 0.295, 0.285) * (0.85 + 0.2 * h12(floor(xz / 1.52))) * (1.0 - 0.35 * clamp(joint, 0.0, 1.0));
+        side = mix(side, vec3(0.38, 0.38, 0.4), smoothstep(0.42, 0.38, edge));
+        float g = vnoise(xz * 0.25 + 7.0);
+        vec3 yard = mix(vec3(0.07, 0.065, 0.06), vec3(0.03, 0.05, 0.025), smoothstep(0.4, 0.6, g));
+        float path = clamp(step(abs((xz.x - vRect.x) / (vRect.z - vRect.x) - (xz.y - vRect.y) / (vRect.w - vRect.y)) * (vRect.z - vRect.x), 2.2) + step(abs(xz.y - (vRect.y + vRect.w) * 0.5), 2.6), 0.0, 1.0);
+        vec3 park = mix(vec3(0.035, 0.06, 0.03) * (0.7 + 0.6 * g), vec3(0.22, 0.2, 0.18), path);
+        vec3 alb = mix(mix(yard, park, vKind.x), side, walk);
+        float wet = (0.3 + 0.4 * step(0.6, g)) * walk * step(0.5, N.y);
+        vec3 V = normalize(vW - cameraPosition);
+        float fres = 0.04 + 0.96 * pow(1.0 - clamp(-V.y, 0.0, 1.0), 5.0);
+        vec3 c = alb * (1.0 - 0.3 * wet) * L + wetReflection(vW, vec2(0.0), 0.8, p) * wet * fres * 0.45;
+        // the curb's face: granite, lit from the street
+        c = mix(c, vec3(0.33, 0.33, 0.34) * (L + streetLight(vW.xz + N.xz * 1.5, 0.0, p) * 0.4), step(N.y, 0.5));
+        gl_FragColor = vec4(cityFog(c, vW, p), 1.0);
       }`,
   });
 }

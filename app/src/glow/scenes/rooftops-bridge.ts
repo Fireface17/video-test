@@ -89,8 +89,8 @@ const STEP_FRAG = /* glsl */ `
     float edge = max(q.x, q.y);
     float rim = smoothstep(0.78, 0.97, edge);
     float bar = 1.0 - 0.35 * (1.0 - smoothstep(0.02, 0.06, abs(vUv.y - 0.5)));
-    float core = (0.32 + 0.25 * (1.0 - edge * edge)) * bar;
-    vec3 c = vC.rgb * (core + 1.6 * rim) * vC.a;
+    float core = (0.1 + 0.12 * (1.0 - edge * edge)) * bar;
+    vec3 c = vC.rgb * (core + 0.7 * rim) * vC.a;
     gl_FragColor = vec4(c, 1.0);
   }`;
 

@@ -34,7 +34,9 @@ export class RoofWorld extends THREE.Group {
     this.city = new City({ seed: 11, half: 1700, centre: [80, -950], downtownR: 520, clouds: o.clouds ?? 800, clear, mirror: o.mirror ?? false });
     this.city.position.copy(CITY_OFF);
     this.add(this.city);
-    this.city.setMoon(MOON_DIR, new THREE.Color(0.075, 0.085, 0.12));
+    // (a little more moon and sky than the city's default: the blackout has to stay readable)
+    this.city.setMoon(MOON_DIR, new THREE.Color(0.12, 0.13, 0.18));
+    (this.city.U.uSkyAmb.value as THREE.Color).multiplyScalar(1.8);
     this.set = new RoofSet(this.city);
     this.add(this.set);
 

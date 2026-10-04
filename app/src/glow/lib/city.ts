@@ -16,7 +16,7 @@ import { GlowPoints } from './points';
 import { CityPlan, F, Grid, GRID, ST, faceNormal, type Building, type Tier } from './city-plan';
 import { cityUniforms, type CityUniforms } from './city-glsl';
 import {
-  KitBuilder, M, antennaGeometry, balconyGeometry, buildingBatch, depthPrepass, buildingMaterial, fireEscapeGeometry, kitBatch, kitMaterial, ringBatch, ringGeometry, ringMaterial, roofBoxGeometry, waterTowerGeometry,
+  CityLOD, KitBuilder, M, TileSet, antennaGeometry, balconyGeometry, buildingBatch, buildingMeshes, facadeMaterial, plantMaterial, roofMaterial, buildingMaterial, fireEscapeGeometry, kitBatch, kitMaterial, ringBatch, ringGeometry, ringMaterial, roofBoxGeometry, waterTowerGeometry,
   type BInst, type KInst, type RInst,
 } from './city-build';
 import { bakeLightMap, cobraGeometry, groundMaterial, lampColor, lightAt, parkLampGeometry, slabMaterial, slabMesh, type LightMapInfo } from './city-street';
@@ -170,36 +170,7 @@ export class CityPower {
 }
 
 /** Tiles: big ones carry the buildings and the mid-distance things, small ones the small things seen up close. */
-const TILE_X = 500, TILE_Z = 480, NEAR_X = 250, NEAR_Z = 240;
-
-/** Instances of each kind of thing, gathered per tile. */
-export class TileSet<T> {
-  map = new Map<string, { origin: THREE.Vector3; lists: Map<string, T[]> }>();
-  constructor(public sx: number, public sz: number) {}
-  add(kind: string, x: number, z: number, item: T) {
-    const a = Math.floor(x / this.sx), b = Math.floor(z / this.sz), k = `${a},${b}`;
-    let t = this.map.get(k);
-    if (!t) { t = { origin: new THREE.Vector3((a + 0.5) * this.sx, 0, (b + 0.5) * this.sz), lists: new Map() }; this.map.set(k, t); }
-    let l = t.lists.get(kind);
-    if (!l) t.lists.set(kind, (l = []));
-    l.push(item);
-  }
-  /** Build every tile into a LOD (drawn within `dist`) using make(kind, list, origin) → mesh. */
-  build(parent: THREE.Object3D, dist: number, make: (kind: string, list: T[], origin: THREE.Vector3) => THREE.Object3D | null, lods: THREE.Object3D[]) {
-    for (const t of this.map.values()) {
-      const g = new THREE.Group();
-      for (const [kind, list] of t.lists) { const m = make(kind, list, t.origin); if (m) g.add(m); }
-      if (!g.children.length) continue;
-      const lod = new THREE.LOD();
-      lod.position.copy(t.origin);
-      g.position.set(-t.origin.x, 0, -t.origin.z);
-      lod.addLevel(g, 0);
-      lod.addLevel(new THREE.Object3D(), dist);
-      parent.add(lod);
-      lods.push(lod);
-    }
-  }
-}
+const TILE_X = 500, TILE_Z = 480, NEAR_X = 250, NEAR_Z = 240, FAC_X = 125, FAC_Z = 120;
 
 export class City extends THREE.Group {
   plan: CityPlan;
@@ -209,6 +180,8 @@ export class City extends THREE.Group {
   /** The buildings' material (its uniforms are the shared city uniforms). */
   mat: THREE.ShaderMaterial;
   groundMat: THREE.ShaderMaterial;
+  groundNearMat: THREE.ShaderMaterial;
+  groundNear: THREE.Mesh;
   /** Lamp heads (GlowPoints; colours are rewritten by update() from the power). */
   lamps: GlowPoints;
   lampHalos: GlowPoints;
@@ -234,7 +207,9 @@ export class City extends THREE.Group {
   private mirror?: Mirror;
   /** the distance-drawn groups of small things (hidden from the mirror pass) */
   lods: THREE.Object3D[] = [];
-  prepass: THREE.Mesh[] = [];
+  /** facade materials [masonry, glass][near, mid, far], the roofs' */
+  facM: THREE.ShaderMaterial[][] = [];
+  roofM!: THREE.ShaderMaterial;
   midTiles!: TileSet<unknown>;
   nearTiles!: TileSet<unknown>;
   private o: CityOpts;
@@ -276,27 +251,40 @@ export class City extends THREE.Group {
     this.mat = buildingMaterial(U);
     const ringMat = ringMaterial(U);
     const kitMat = kitMaterial(U), kitMat2 = kitMaterial(U, { side: THREE.DoubleSide, streetK: 1.2 });
-    // buildings in big tiles (always drawn), small things in tiles drawn only within a distance
-    const big = new Map<string, BInst[]>(), bigO = new Map<string, THREE.Vector3>();
+    // buildings: facades in small tiles (three levels of detail), roofs and bulkheads in big tiles;
+    // small things in tiles drawn only within a distance
+    const big = new Map<string, { o: THREE.Vector3; roofs: BInst[]; plant: BInst[] }>();
+    const fac = new Map<string, { o: THREE.Vector3; m: BInst[]; g: BInst[] }>();
     const mid = new TileSet<unknown>(TILE_X, TILE_Z), near = new TileSet<unknown>(NEAR_X, NEAR_Z);
-    for (const b of plan.buildings) {
-      const cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2, a = Math.floor(cx / TILE_X), c = Math.floor(cz / TILE_Z), k = `${a},${c}`;
-      if (!big.has(k)) { big.set(k, []); bigO.set(k, new THREE.Vector3((a + 0.5) * TILE_X, 0, (c + 0.5) * TILE_Z)); }
-      this.addBuilding(b, big.get(k)!, mid, near);
+    const sink = {
+      roof: (q: BInst) => { const a = Math.floor(q.x / TILE_X), c = Math.floor(q.z / TILE_Z), k = `${a},${c}`; let t = big.get(k); if (!t) big.set(k, (t = { o: new THREE.Vector3((a + 0.5) * TILE_X, 0, (c + 0.5) * TILE_Z), roofs: [], plant: [] })); t.roofs.push(q); },
+      plant: (q: BInst) => { const a = Math.floor(q.x / TILE_X), c = Math.floor(q.z / TILE_Z), k = `${a},${c}`; let t = big.get(k); if (!t) big.set(k, (t = { o: new THREE.Vector3((a + 0.5) * TILE_X, 0, (c + 0.5) * TILE_Z), roofs: [], plant: [] })); t.plant.push(q); },
+      facade: (q: BInst, glass: boolean) => { const a = Math.floor(q.x / FAC_X), c = Math.floor(q.z / FAC_Z), k = `${a},${c}`; let t = fac.get(k); if (!t) fac.set(k, (t = { o: new THREE.Vector3((a + 0.5) * FAC_X, 0, (c + 0.5) * FAC_Z), m: [], g: [] })); (glass ? t.g : t.m).push(q); },
+    };
+    for (const b of plan.buildings) this.addBuilding(b, sink, mid, near);
+    const lod = o.lod ?? 1;
+    this.facM = [[0, 1, 2].map((l) => facadeMaterial(U, l, false)), [0, 1, 2].map((l) => facadeMaterial(U, l, true))];
+    this.roofM = roofMaterial(U);
+    const plantM = plantMaterial(U);
+    const fd: [number, number] = [190 * lod, 700 * lod];
+    for (const t of fac.values()) {
+      if (t.m.length) this.add(buildingMeshes(t.m, t.o, this.facM[0]!, fd));
+      if (t.g.length) this.add(buildingMeshes(t.g, t.o, this.facM[1]!, fd));
+    }
+    for (const t of big.values()) {
+      if (t.roofs.length) this.add(buildingBatch(t.roofs, this.roofM, t.o, 'top'));
+      if (t.plant.length) this.add(buildingBatch(t.plant, plantM, t.o, 'all5'));
     }
     plan.lamps.forEach((l, i) => {
       if (l.kind === 1) near.add('park', l.x, l.z, { x: l.x, y: 0.15, z: l.z, yaw: 0, sx: 1, sy: 1, sz: 1, col: [1, 1, 1], k: 0.5 + this.lampSeeds[i]! * 0.49 } as KInst);
       else if (l.kind === 0) near.add('cobra', l.x, l.z, { x: l.x, y: 0.15, z: l.z, yaw: Math.atan2(-l.az, l.ax), sx: 1, sy: l.h / 9, sz: 1, col: [1, 1, 1], k: 0.5 + this.lampSeeds[i]! * 0.49 } as KInst);
     });
-    const lod = o.lod ?? 1;
     const geoRingC = ringGeometry([[0, 0, 0], [0.22, 0.25, 0], [0.3, 0.3, 0], [0.42, 0.38, 0], [0.7, 0.92, 0], [0.82, 1, 0], [1, 1, 0]], 0.35, false);
     const geoRingP = ringGeometry([[0, 0, 0.0], [1, 0, 0.0], [1, 0, 0.06]], 0.32, true);
     const geo: Record<string, THREE.BufferGeometry> = {
       water: waterTowerGeometry(), roofBox: roofBoxGeometry(), ant: antennaGeometry(), fe: fireEscapeGeometry(), bal: balconyGeometry(), cobra: cobraGeometry(), park: parkLampGeometry(),
     };
     const rad: Record<string, number> = { water: 8, roofBox: 3, ant: 1, fe: 4, bal: 2, cobra: 10, park: 5 };
-    for (const [k, list] of big) { const m = buildingBatch(list, this.mat, bigO.get(k)!); this.add(m); this.prepass.push(depthPrepass(m, this.mat)); }
-    this.add(...this.prepass);
     this.lods = [];
     const make = (kind: string, list: unknown[], origin: THREE.Vector3) => {
       if (kind === 'cornice') return ringBatch(geoRingC, list as RInst[], ringMat, origin);
@@ -310,21 +298,37 @@ export class City extends THREE.Group {
     this.midTiles = mid; this.nearTiles = near;
 
     // ---- ground, sidewalks, water ----
-    const elX = el !== null ? g.avX(el) : null;
-    this.groundMat = groundMaterial(U, g.glsl(), river, elX);
-    (this.groundMat.uniforms as Record<string, THREE.IUniform>).uVein = { value: new THREE.Vector4(0, 0, 0, 0) };
-    (this.groundMat.uniforms as Record<string, THREE.IUniform>).uVeinC = { value: new THREE.Color(1, 0.7, 0.3) };
+    // the street surface: a cheap version everywhere, a detailed patch that follows the camera at street level
+    this.groundMat = groundMaterial(U, g.glsl(), river, false);
+    this.groundNearMat = groundMaterial(U, g.glsl(), river, true);
+    const gnu = this.groundNearMat.uniforms as Record<string, THREE.IUniform>, gfu = this.groundMat.uniforms as Record<string, THREE.IUniform>;
+    gnu.uVein = gfu.uVein!; gnu.uVeinC = gfu.uVeinC!;
     const gx0 = bounds[0] - 4000, gx1 = river !== null ? river + 15 : bounds[2] + 4000, gz0 = bounds[1] - 4000, gz1 = bounds[3] + 4000;
     const gg = new THREE.PlaneGeometry(gx1 - gx0, gz1 - gz0);
     gg.rotateX(-Math.PI / 2);
-    gg.translate((gx0 + gx1) / 2, 0, (gz0 + gz1) / 2);
+    gg.translate((gx0 + gx1) / 2, -0.02, (gz0 + gz1) / 2);
     this.ground = new THREE.Mesh(gg, this.groundMat);
     this.ground.frustumCulled = false;
     this.ground.renderOrder = -1;
-    this.add(this.ground);
+    const PATCH = 420;
+    const ng = new THREE.PlaneGeometry(PATCH, PATCH, 1, 1).rotateX(-Math.PI / 2);
+    this.groundNear = new THREE.Mesh(ng, this.groundNearMat);
+    this.groundNear.frustumCulled = false;
+    this.groundNear.renderOrder = -2;
+    const riverEdge = river !== null ? river + 15 : 1e9;
+    this.groundNear.onBeforeRender = (_r, _s, camera) => {
+      // centred a little ahead of the camera, snapped to 10 m; only near the street; not over the river
+      const c = camera.position, f = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+      const fl = Math.hypot(f.x, f.z) || 1;
+      let x = Math.round((c.x + (f.x / fl) * PATCH * 0.3 - U.uOrigin.value.x) / 10) * 10, z = Math.round((c.z + (f.z / fl) * PATCH * 0.3 - U.uOrigin.value.z) / 10) * 10;
+      x = Math.min(x, riverEdge - PATCH / 2);
+      const pu = this.groundNearMat.uniforms.uPatch!.value as THREE.Vector3;
+      pu.set(x, c.y < 70 ? 0 : -1e4, z);
+    };
+    this.add(this.ground, this.groundNear);
     const slabs = slabMesh(plan, slabMaterial(U));
     this.add(slabs);
-    const mirrorHide: THREE.Object3D[] = [this.ground, slabs, ...this.lods];
+    const mirrorHide: THREE.Object3D[] = [this.ground, this.groundNear, slabs, ...this.lods];
     if (river !== null) {
       const wg = new THREE.PlaneGeometry(16000, 16000);
       wg.rotateX(-Math.PI / 2);
@@ -402,14 +406,24 @@ export class City extends THREE.Group {
     // ---- the wet ground's reflections ----
     if (o.mirror !== false) {
       this.mirror = new Mirror(this, mirrorHide);
-      this.ground.onBeforeRender = (renderer, scene, camera) => { if (this.mirrorOn) this.mirror!.update(renderer, scene, camera as THREE.PerspectiveCamera); else this.U.uMirrorOn.value = 0; };
+      this.mirrorOn = true;
+      // a sentinel drawn before any city surface renders the reflection for this frame's camera
+      const sg = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute([0, -1e4, 0, 0, -1e4, 0, 0, -1e4, 0], 3));
+      const sentinel = new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
+      sentinel.frustumCulled = false;
+      sentinel.renderOrder = -3;
+      sentinel.onBeforeRender = (renderer, scene, camera) => { if (this.mirrorOn) this.mirror!.update(renderer, scene, camera as THREE.PerspectiveCamera); else this.U.uMirrorOn.value = 0; };
+      this.add(sentinel);
+      mirrorHide.push(sentinel);
     }
   }
 
   /** Building → instances in its tile. */
-  private addBuilding(b: Building, bl: BInst[], mid: TileSet<unknown>, near: TileSet<unknown>) {
+  private addBuilding(b: Building, sink: { roof: (q: BInst) => void; plant: (q: BInst) => void; facade: (q: BInst, glass: boolean) => void }, mid: TileSet<unknown>, near: TileSet<unknown>) {
+    const glass = b.style === ST.GLASS;
     const t = {
-      b: bl,
+      b: { push: (q: BInst) => { sink.facade(q, glass); sink.roof(q); } },
+      plantB: { push: (q: BInst) => sink.plant(q) },
       cornice: { push: (r: RInst) => mid.add('cornice', r.x, r.z, r) }, parapet: { push: (r: RInst) => mid.add('parapet', r.x, r.z, r) },
       water: { push: (q: KInst) => mid.add('water', q.x, q.z, q) }, ant: { push: (q: KInst) => mid.add('ant', q.x, q.z, q) },
       roofBox: { push: (q: KInst) => near.add('roofBox', q.x, q.z, q) }, fe: { push: (q: KInst) => near.add('fe', q.x, q.z, q) }, bal: { push: (q: KInst) => near.add('bal', q.x, q.z, q) },
@@ -429,7 +443,7 @@ export class City extends THREE.Group {
     if (b.shopFaces) { const t0 = b.tiers[0]!; t.cornice.push({ x: t0.cx, y0: b.gH - 0.3, z: t0.cz, hx: t0.w / 2, hz: t0.d / 2, h: 0.45, proj: 0.28, col: [0.08, 0.075, 0.07], fancy: 0 }); }
     for (const pl of b.plant) {
       const glassTop = b.style === ST.GLASS;
-      t.b.push({ x: pl.cx, y0: pl.y0, z: pl.cz, w: pl.w, h: pl.h, d: pl.d, f0: [b.seed + 0.5, ST.PLANT, 3, 0], f1: [glassTop ? 1 : 0, glassTop ? 0 : 1, 0, 0], f2: glassTop ? [0.06, 0.065, 0.07, 0] : [...b.wall.map((c) => c * 0.8), 0] as number[], f3: [0, b.h, 0, 0] });
+      t.plantB.push({ x: pl.cx, y0: pl.y0, z: pl.cz, w: pl.w, h: pl.h, d: pl.d, f0: [b.seed + 0.5, ST.PLANT, 3, 0], f1: [glassTop ? 1 : 0, glassTop ? 0 : 1, 0, 0], f2: glassTop ? [0.06, 0.065, 0.07, 0] : [...b.wall.map((c) => c * 0.8), 0] as number[], f3: [0, b.h, 0, 0] });
       t.parapet.push({ x: pl.cx, y0: pl.y0 + pl.h, z: pl.cz, hx: pl.w / 2, hz: pl.d / 2, h: 0.4, proj: 0.05, col: [0.15, 0.15, 0.15], fancy: 0 });
     }
     for (const w of b.water) t.water.push({ x: w.x, y: w.y, z: w.z, yaw: w.seed * 6.28, sx: w.r, sy: (w.stand + w.h + 1.1) / 7.7, sz: w.r, col: [1, 1, 1], k: 0 });
@@ -697,6 +711,7 @@ class Mirror {
     v.projectionMatrixInverse.copy(v.projectionMatrix).invert();
     this.busy = true;
     U.uMirrorOn.value = 0;
+    CityLOD.force = 2;
     const vis = this.hide.map((o) => o.visible);
     this.hide.forEach((o) => (o.visible = false));
     const clearC = new THREE.Color(); renderer.getClearColor(clearC); const clearA = renderer.getClearAlpha();
@@ -707,6 +722,7 @@ class Mirror {
     renderer.setRenderTarget(cur);
     renderer.setClearColor(clearC, clearA);
     this.hide.forEach((o, i) => (o.visible = vis[i]!));
+    CityLOD.force = -1;
     this.busy = false;
     U.uMirror.value = this.rt.texture;
     U.uMirrorOn.value = 1;

@@ -64,7 +64,8 @@ export class Outside extends THREE.Group {
   moon: THREE.Mesh;
   moonM: THREE.ShaderMaterial;
   moonDir: THREE.Vector3;
-  tower!: THREE.InstancedMesh;
+  tower!: THREE.Mesh;
+  backdrop: Backdrop;
   towerBeacon = new GlowPoints(2, 1.2);
   lamps: GlowPoints;
   lampPoles: THREE.InstancedMesh;
@@ -80,9 +81,15 @@ export class Outside extends THREE.Group {
     const OFF = new THREE.Vector3(-50, 0, -44);
     const clear: [number, number, number][] = [];
     for (let x = -230; x <= 300; x += 55) for (let z = 45; z <= 330; z += 55) clear.push([x - OFF.x, z - OFF.z, 48]);
-    this.city = new City({ seed: 29, half: 1600, centre: [-420 - OFF.x, 1000 - OFF.z], downtownR: 520, clear, fog: 0.00105, el: null, sky: false });
+    this.city = new City({
+      seed: 29, bounds: [-700 - OFF.x, -650 - OFF.z, 650 - OFF.x, 1250 - OFF.z], centre: [-420 - OFF.x, 1000 - OFF.z], downtownR: 520, clear, fog: 0.00105,
+      el: null, sky: false, park: null, river: null, detail: 0.5, traffic: 0.35, lod: 0.6,
+    });
     this.city.position.copy(OFF);
     this.add(this.city);
+    // the cheap stand-in seen from the train (the full city is drawn only in the street shots)
+    this.backdrop = new Backdrop(U, this.city);
+    this.add(this.backdrop);
     // sky and moon
     this.skyM = skyMat();
     this.skyM.uniforms.uMoonD!.value.copy(this.moonDir);
@@ -170,13 +177,7 @@ export class Outside extends THREE.Group {
     // the silhouette edge the moon goes behind is the tower's far left corner (the moon is up and to the +x side)
     const k = (zf + d - c.z) / this.moonDir.z;
     const xEdge = c.x + this.moonDir.x * k;
-    const g = new THREE.BoxGeometry(1, 1, 1);
-    g.translate(0, 0.5, 0);
-    g.setAttribute('aB', new THREE.InstancedBufferAttribute(new Float32Array([73.1, 0.015, 0.3, 1]), 4));
-    g.setAttribute('aTop', new THREE.InstancedBufferAttribute(new Float32Array([h]), 1));
-    this.tower = new THREE.InstancedMesh(g, this.city.mat, 1);
-    // the leading (+x… the line runs +x, so the tower slides toward -x in view) edge is its -x face
-    this.tower.setMatrixAt(0, new THREE.Matrix4().makeScale(w, h, d).setPosition(xEdge + w / 2, 0, zf + d / 2));
+    this.tower = this.backdrop.tower(xEdge + w / 2, zf + d / 2, w, d, h);
     this.tower.frustumCulled = false;
     this.add(this.tower);
     this.towerBeacon.set(0, xEdge + w / 2, h + 3, zf + d / 2, new THREE.Color(1, 0.08, 0.04), 2.5, 1);
@@ -186,10 +187,12 @@ export class Outside extends THREE.Group {
   }
 
   /** Per frame: the city's clock, the sky and moon around the camera, the beacon's blink. */
-  update(t: number, cam: THREE.Camera, moonK: number) {
-    this.city.update(t, cam.position);
+  update(t: number, cam: THREE.Camera, moonK: number, full: boolean) {
+    this.city.visible = full;
+    this.backdrop.visible = !full;
+    if (full) this.city.update(t, cam.position);
     this.sky.position.copy(cam.position);
-    const D = 2600, R = 0.03 * D;
+    const D = 2600, R = 0.036 * D;
     this.moon.position.copy(cam.position).addScaledVector(this.moonDir, D);
     this.moon.quaternion.copy(cam.quaternion);
     this.moon.scale.setScalar(R * 8);
@@ -207,6 +210,170 @@ export class Outside extends THREE.Group {
     for (const { lx, k } of sorted) { const side = k % 2 ? 1 : -1; out.push(new THREE.Vector3(lx, 12.6, side * 1.9)); }
     return out;
   }
+}
+
+/**
+ * A cheap night city for the shots from the train: blocks of buildings along the line's street and beyond
+ * (instanced boxes; the facades drawn in the shader as a grid of windows, some lit warm or cool, some with
+ * curtains or a TV's blue), a far skyline, and the black tower. It follows the real city's plan loosely: the
+ * same street the line runs over, the cleared lot on the moon side.
+ */
+export class Backdrop extends THREE.Group {
+  mat: THREE.ShaderMaterial;
+  constructor(U: LightU, city: City) {
+    super();
+    const r = mulberry32(41);
+    const inst: number[][] = [];
+    const clearAt = (x: number, z: number) => z > 40 && z < 380 && x > -280 && x < 350;
+    const avenue = (x: number) => [-175, 75, 325].some((a) => Math.abs(x - a) < 18);
+    // building lines along the street (z = -18.5 and +10.5 from the road's middle at z = -4), and the blocks behind
+    for (const side of [-1, 1]) for (let row = 0; row < 4; row++) {
+      const z0 = side < 0 ? -18.5 - row * 42 : 10.5 + row * 42;
+      for (let x = -520; x < 420;) {
+        const w = 7 + r() * 16;
+        const cx = x + w / 2;
+        x += w + (r() < 0.12 ? 3 + r() * 6 : 0.2);
+        if (avenue(cx)) continue;
+        const d = 12 + r() * 14, zc = z0 + side * (d / 2 + (row ? r() * 8 : 0));
+        if (clearAt(cx, zc)) continue;
+        if (side < 0 && row === 0 && cx > ST.x0 - 4 && cx < ST.x1 + 4) { /* behind the station: lower */ }
+        const h = row === 0 ? 12 + Math.pow(r(), 1.6) * 30 : 15 + Math.pow(r(), 1.3) * 45;
+        inst.push([cx, zc, w, d, h, r() * 100, r(), r() < 0.25 ? 1 : 0]);
+      }
+    }
+    // the far skyline: towers beyond the lot, a midtown cluster to the left of the moon
+    for (let i = 0; i < 260; i++) {
+      const a = (r() - 0.5) * 2.4, dist = 420 + r() * 900;
+      const cx = Math.sin(a) * dist - 60, cz = Math.cos(a) * dist + 40;
+      const dm = Math.hypot(cx + 420, cz - 1000), down = Math.exp(-(dm * dm) / (420 * 420));
+      const h = 20 + Math.pow(r(), 2) * 40 + down * (60 + r() * 190);
+      inst.push([cx, cz, 18 + r() * 30, 18 + r() * 30, h, r() * 100, r(), h > 70 ? 1 : 0]);
+    }
+    for (let i = 0; i < 160; i++) {
+      const cx = -600 + r() * 1100, cz = -60 - r() * 700;
+      if (Math.abs(cz + 4) < 30) continue;
+      inst.push([cx, cz, 15 + r() * 25, 15 + r() * 25, 15 + Math.pow(r(), 1.5) * 60, r() * 100, r(), r() < 0.3 ? 1 : 0]);
+    }
+    const geo = new THREE.BoxGeometry(1, 1, 1);
+    geo.translate(0, 0.5, 0);
+    const aB = new Float32Array(inst.length * 4);
+    this.mat = facadeMat(U);
+    const mesh = new THREE.InstancedMesh(geo, this.mat, inst.length);
+    const m = new THREE.Matrix4();
+    inst.forEach(([x, z, w, d, h, seed, warm, office], i) => {
+      mesh.setMatrixAt(i, m.makeScale(w!, h!, d!).setPosition(x!, 0, z!));
+      aB.set([seed!, warm!, office!, 0.3 + 0.4 * hash(i, 7)], i * 4);
+    });
+    geo.setAttribute('aB', new THREE.InstancedBufferAttribute(aB, 4));
+    mesh.frustumCulled = false;
+    this.add(mesh);
+    // the ground: dark lots and the lit street under the line
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000), groundMat(U));
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.set(0, 0.01, 0);
+    this.add(ground);
+    // street lamps along the street below the line, and in the lot
+    const lamps = new GlowPoints(400, 0.7, { fogDensity: 0.0012 });
+    let n = 0;
+    for (let x = -520; x < 420 && n < 398; x += 22) for (const z of [-15, 7]) lamps.set(n++, x + (z > 0 ? 11 : 0), 6.5, z, new THREE.Color(1, 0.55, 0.22), 1.2, 1);
+    for (let i = 0; n < 400; i++) lamps.set(n++, -260 + r() * 600, 6, 50 + r() * 320, new THREE.Color(1, 0.6, 0.3), 0.8 + r() * 0.6, 1);
+    lamps.commit();
+    this.add(lamps);
+    void city;
+  }
+
+  /** The black tower: dark glass, a few lit windows. */
+  tower(cx: number, cz: number, w: number, d: number, h: number) {
+    const g = new THREE.BoxGeometry(w, h, d);
+    g.translate(0, h / 2, 0);
+    g.setAttribute('aB', new THREE.Float32BufferAttribute(new Array(g.attributes.position!.count).fill(0).flatMap(() => [77.7, 0.2, 1, 0.012]), 4));
+    const t = new THREE.Mesh(g, facadeMat(this.mat.uniforms as unknown as LightU, true));
+    t.position.set(cx, 0, cz);
+    return t;
+  }
+}
+
+/** Facades: a grid of windows on each side face (homes 3.2 m cells, offices 1.6 x 3.9), lit by chance. */
+function facadeMat(U: LightU, glassTower = false) {
+  return new THREE.ShaderMaterial({
+    defines: glassTower ? { TOWER: 1 } : {},
+    uniforms: { ...U },
+    vertexShader: /* glsl */ `
+      attribute vec4 aB; varying vec3 vW; varying vec3 vN; varying vec4 vB; varying vec3 vS;
+      void main() {
+        vec4 lp = vec4(position, 1.0);
+      #ifdef USE_INSTANCING
+        lp = instanceMatrix * lp;
+        vS = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
+      #else
+        vS = vec3(1.0);
+      #endif
+        vec4 w = modelMatrix * lp; vW = w.xyz; vN = normal; vB = aB;
+        gl_Position = projectionMatrix * viewMatrix * w;
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uFogC; uniform float uFogD, uTime;
+      varying vec3 vW; varying vec3 vN; varying vec4 vB; varying vec3 vS;
+      float hh(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
+      void main() {
+        vec3 N = normalize(vN);
+        vec3 c;
+        float office = vB.z;
+        if (abs(N.y) > 0.5) c = vec3(0.01, 0.01, 0.013);
+        else {
+          vec3 T = normalize(cross(vec3(0.0, 1.0, 0.0), N));
+          float u = dot(vW, T), v = vW.y;
+          vec2 cell = office > 0.5 ? vec2(1.6, 3.9) : vec2(3.2, 3.2);
+          vec2 g = vec2(u, v) / cell, id = floor(g), f = fract(g);
+          vec2 lo = office > 0.5 ? vec2(0.08, 0.2) : vec2(0.28, 0.28), hi = office > 0.5 ? vec2(0.92, 0.95) : vec2(0.72, 0.85);
+          vec2 fw = fwidth(g); float px = max(fw.x, fw.y);
+          float aa = 0.5 * px;
+          float inWin = smoothstep(lo.x - aa, lo.x + aa, f.x) * smoothstep(hi.x + aa, hi.x - aa, f.x) * smoothstep(lo.y - aa, lo.y + aa, f.y) * smoothstep(hi.y + aa, hi.y - aa, f.y);
+          float seed = hh(vec3(vB.x + dot(N, vec3(1.0, 2.0, 3.0)) * 7.0, id));
+          float lit = step(seed, vB.w) * step(1.0, id.y);
+          float kind = hh(vec3(seed * 31.0, vB.x, 3.0));
+          vec3 warm = vec3(1.0, 0.64, 0.34), cool = vec3(0.75, 0.85, 1.0), tv = vec3(0.35, 0.5, 1.0);
+          vec3 Lc = kind < 0.55 + 0.35 * vB.y ? warm : kind < 0.9 ? mix(warm, cool, 0.6) : tv;
+          float Li = 0.45 + 0.5 * hh(vec3(seed, 4.0, 4.0));
+          // a room: brighter toward the ceiling, a dark sill line, sometimes a curtain
+          float room = 0.7 + 0.5 * f.y;
+          float cur = step(0.7, hh(vec3(seed, 11.0, 1.0))) * step(f.x, 0.5);
+          vec3 win = Lc * Li * room * lit * (1.0 - 0.5 * cur) + (1.0 - lit) * step(0.95, kind) * tv * 0.12;
+          vec3 wall = office > 0.5 ? vec3(0.008, 0.01, 0.016) : mix(vec3(0.03, 0.017, 0.012), vec3(0.022, 0.021, 0.024), step(0.6, vB.y));
+          wall += vec3(1.0, 0.55, 0.25) * 0.05 * exp(-v / 8.0);
+          float far = smoothstep(0.25, 0.6, px);
+          vec3 avg = mix(wall, Lc * Li * 0.4 * step(seed, vB.w), (hi.x - lo.x) * (hi.y - lo.y));
+          c = mix(mix(wall, win, inWin), avg, far);
+        #ifdef TOWER
+          c = mix(vec3(0.004, 0.005, 0.009), c, 0.6) + vec3(0.01, 0.012, 0.02) * (1.0 - inWin);
+        #endif
+        }
+        float d = length(vW - cameraPosition);
+        c = mix(vec3(0.03, 0.025, 0.03), c, exp(-0.0011 * 0.0011 * d * d));
+        gl_FragColor = vec4(c, 1.0);
+      }`,
+  });
+}
+
+/** The ground under the backdrop: dark lots, the street under the line with sodium pools and lane marks. */
+function groundMat(U: LightU) {
+  return new THREE.ShaderMaterial({
+    uniforms: { ...U },
+    vertexShader: /* glsl */ `varying vec3 vW; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+    fragmentShader: /* glsl */ `
+      varying vec3 vW;
+      void main() {
+        float zs = abs(vW.z + 4.0);
+        float street = 1.0 - smoothstep(13.0, 14.0, zs);
+        vec3 c = mix(vec3(0.006, 0.007, 0.01), vec3(0.018, 0.017, 0.02), street);
+        float pool = exp(-pow(mod(vW.x, 22.0) - 11.0, 2.0) / 30.0) * exp(-pow(zs - 9.0, 2.0) / 40.0);
+        c += vec3(1.0, 0.5, 0.17) * pool * 0.25 * street;
+        c += vec3(0.6, 0.45, 0.1) * 0.12 * step(abs(zs - 0.15), 0.08) * step(0.5, fract(vW.x / 6.0)) * street;
+        float d = length(vW - cameraPosition);
+        c = mix(vec3(0.03, 0.025, 0.03), c, exp(-0.0012 * 0.0012 * d * d));
+        gl_FragColor = vec4(c, 1.0);
+      }`,
+  });
 }
 
 function billboardTextures() {

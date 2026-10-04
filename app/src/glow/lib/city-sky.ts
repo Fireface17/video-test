@@ -34,11 +34,11 @@ export function skyMaterial(U: CityUniforms) {
         // the moon: a disc with seas, and its halo in the haze
         float m = dot(d, uMoonDir);
         float rad = 0.022;
-        float ang = acos(clamp(m, -1.0, 1.0));
+        float ang = sqrt(max(2.0 * (1.0 - m), 0.0));
         vec3 mt = normalize(cross(uMoonDir, vec3(0.0, 1.0, 0.0)) + vec3(1e-4, 0.0, 0.0)), mb = cross(mt, uMoonDir);
         vec2 mq = vec2(dot(d, mt), dot(d, mb)) / rad;
-        float disc = smoothstep(1.0, 0.96, length(mq));
-        float seas = 0.78 + 0.22 * smoothstep(0.35, 0.65, fbm3(mq * 2.2 + 4.0));
+        float disc = smoothstep(1.0, 0.96, length(mq)) * step(0.0, m);
+        float seas = 0.8 + 0.1 * sin(mq.x * 4.3 + 1.0) * sin(mq.y * 3.7 + 2.0) + 0.1 * sin(mq.x * 7.9 - mq.y * 6.1 + 0.5);
         vec3 moonC = vec3(1.0, 0.97, 0.9) * 3.2 * seas * (1.0 - 0.25 * smoothstep(0.6, 1.0, length(mq)));
         c = mix(c, moonC, disc * (1.0 - 0.6 * uDawn));
         float halo = exp(-ang * 9.0) * 0.08 + exp(-ang * 40.0) * 0.18;
@@ -67,7 +67,7 @@ export function cloudMaterial(U: CityUniforms) {
       varying vec3 vW;
       void main() {
         vec2 p = vW.xz / 1100.0 + vec2(uTime * 0.004, uTime * 0.0018);
-        float d = fbm3(p + fbm3(p * 0.6) * 0.9);
+        float d = fbm3(p + vec2(sin(p.y * 2.1 + 1.3), cos(p.x * 1.7 + 0.4)) * 0.45);
         float a = smoothstep(0.38, 0.72, d);
         float dist = length(vW.xz - cameraPosition.xz);
         // lit from below by the city (orange), the moon on the thin edges; at dawn pink and gold
@@ -126,7 +126,7 @@ export function waterMaterial(U: CityUniforms) {
       void main() {
         vec2 xz = vW.xz;
         float p = power(xz);
-        vec2 n = vec2(vnoise(xz * 0.21 + vec2(uTime * 0.35, 0.0)) + 0.5 * vnoise(xz * 0.9 - uTime * 0.6), vnoise(xz * 0.17 + 9.0 - vec2(0.0, uTime * 0.3)) + 0.5 * vnoise(xz * 1.1 + 4.0 + uTime * 0.5)) - 0.75;
+        vec2 n = vec2(vnoise(xz * 0.21 + vec2(uTime * 0.35, 0.0)), vnoise(xz * 0.17 + 9.0 - vec2(0.0, uTime * 0.3))) - 0.5;
         vec3 V = normalize(vW - cameraPosition);
         float fres = 0.03 + 0.97 * pow(1.0 - clamp(-V.y, 0.0, 1.0), 5.0);
         vec3 refl;
@@ -134,10 +134,9 @@ export function waterMaterial(U: CityUniforms) {
           vec4 mp = uMirrorMat * vec4(vW.x, 0.0, vW.z, 1.0);
           vec2 uv = mp.xy / max(mp.w, 1e-3);
           refl = vec3(0.0);
-          for (int i = 0; i < 4; i++) refl += texture2D(uMirror, uv + n * 0.03 + vec2(0.0, (float(i) - 1.5) * 0.012)).rgb;
-          refl *= 0.25;
+          refl = (texture2D(uMirror, uv + n * 0.03 + vec2(0.0, -0.008)).rgb + texture2D(uMirror, uv + n * 0.03 + vec2(0.0, 0.008)).rgb) * 0.5;
         } else refl = envRefl(reflect(V, normalize(vec3(n.x * 0.15, 1.0, n.y * 0.15))), 0.0);
-        vec3 c = vec3(0.004, 0.006, 0.009) + refl * fres * 0.9 + ambient(vec3(0.0, 1.0, 0.0), p) * 0.05;
+        vec3 c = vec3(0.004, 0.006, 0.009) + refl * fres * 0.9 + ambient(vec3(0.0, 1.0, 0.0)) * 0.05;
         c = cityFog(c, vW, p);
         gl_FragColor = vec4(c, 1.0);
       }`,

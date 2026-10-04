@@ -111,7 +111,7 @@ export class SkyShards extends THREE.Group {
     g.setAttribute('color', new THREE.BufferAttribute(this.col, 3).setUsage(THREE.DynamicDrawUsage));
     this.mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false }));
     this.mesh.frustumCulled = false;
-    this.cracks = new GlowLines(ne + 8, 0.12);
+    this.cracks = new GlowLines(ne + 8, 0.06);
     this.glints = new GlowPoints(this.shards.length * 2, 1);
     this.nEdges = ne;
     this.add(this.mesh, this.cracks, this.glints);
@@ -129,20 +129,20 @@ export class SkyShards extends THREE.Group {
     const white = new THREE.Color(0.75, 0.85, 1.0), warm = new THREE.Color(1.0, 0.9, 0.7);
     for (const s of this.shards) {
       // the crack front reaches this piece; it comes loose a little after; it folds into a star
-      const front = t0 + s.d / 160;
+      const front = t0 + Math.min(0.9, s.d / 90);
       const cr = clamp((t - front) / 0.12);
-      const loose = ease.inOutCubic(clamp((t - (t1 + s.d / 220 + (s.seed % 1) * 0.25)) / 0.6));
+      const loose = ease.inOutCubic(clamp((t - (t1 + s.d / 160 + (s.seed % 1) * 0.25)) / 0.6));
       const morph = ease.inOutCubic(clamp((t - (t2 - 0.45 + (s.seed % 1) * 0.2 + s.d / 400)) / 0.5));
       const rise = Math.max(0, t - t2 - (s.seed % 1) * 0.2);
-      // motion: drop a little toward the viewers as it comes loose, tumble, then rise and drift outward
-      const centre = s.c.clone().addScaledVector(s.n, -2.5 * loose + rise * 2.0).add(new THREE.Vector3(0, rise * rise * 0.6 + rise * 3, 0));
+      // motion: drop a little toward the viewers as it comes loose, tumble, then rise and spread out over the city
+      const centre = this.flight(s, loose, rise);
       centre.addScaledVector(s.u, noise1(s.seed + t * 0.3, 1) * 1.5 * loose).addScaledVector(s.v, noise1(s.seed + t * 0.3, 2) * 1.5 * loose);
       const tumble = loose * (1 - morph) * (0.9 + 0.6 * Math.sin(s.seed)) * Math.min(1, (t - t1) * 0.8);
       q.setFromAxisAngle(s.axis, tumble * 1.2 + morph * 0.0);
       // the stars turn to face the city below (toward the dome centre) and slowly spin
       const spin = new THREE.Quaternion().setFromAxisAngle(s.n, morph * (t - t2) * 0.4);
       q.premultiply(spin);
-      const shrink = 1 - 0.45 * clamp(rise / 3);
+      const shrink = (1 - 0.55 * clamp(rise / 2.5)) * 0.72;
       const k = morph;
       // colours: dark glass (only its glints) → bright star
       const nrm = s.n.clone().applyQuaternion(q);
@@ -150,7 +150,7 @@ export class SkyShards extends THREE.Group {
       const refl = nrm.clone().reflect(view).multiplyScalar(-1);
       const glint = Math.pow(Math.max(0, refl.dot(moonDir)), 30) * 1.5 + 0.04 * Math.pow(1 - Math.abs(nrm.dot(view)), 3);
       const glass = (0.02 + glint) * loose * (1 - k);
-      const starC = warm.clone().lerp(white, 0.3).multiplyScalar(k * (1.3 + 0.3 * Math.sin(t * 3 + s.seed)));
+      const starC = warm.clone().lerp(white, 0.15).multiplyScalar(k * (0.75 + 0.25 * Math.sin(t * 3 + s.seed)) * (1 - 0.5 * clamp(rise / 4)));
       const edgeK = cr * (1 - loose * 0.7) * (1 - k);
       for (let i = 0; i < RIM; i++) {
         const a = s.poly[i]!.clone().lerp(s.star[i]!, k).multiplyScalar(shrink), b = s.poly[(i + 1) % RIM]!.clone().lerp(s.star[(i + 1) % RIM]!, k).multiplyScalar(shrink);
@@ -170,9 +170,9 @@ export class SkyShards extends THREE.Group {
       if (edgeK > 0.01) for (const [ea, eb] of s.edges) {
         if (ne >= this.nEdges) break;
         const fresh = 1 + 3 * Math.exp(-(t - front) * 8);
-        this.cracks.set(ne++, ea.clone().addScaledVector(s.n, -2.5 * loose), eb.clone().addScaledVector(s.n, -2.5 * loose), white, edgeK * 0.9 * fresh * gain);
+        this.cracks.set(ne++, ea.clone().addScaledVector(s.n, -2.5 * loose), eb.clone().addScaledVector(s.n, -2.5 * loose), white, edgeK * 0.55 * fresh * gain);
       }
-      if (k > 0.05) this.glints.set(ng++, centre.x, centre.y, centre.z, warm, k * 0.8 * gain, 6 * shrink);
+      if (k > 0.05) this.glints.set(ng++, centre.x, centre.y, centre.z, warm, k * 0.6 * gain, 5 * shrink + 4 * clamp(rise / 3));
       else if (glint * loose > 0.2) this.glints.set(ng++, centre.x, centre.y, centre.z, white, glint * loose * 0.5 * gain, 3);
     }
     const g = this.mesh.geometry;
@@ -184,10 +184,11 @@ export class SkyShards extends THREE.Group {
     this.visible = t > t0 - 0.05;
   }
 
-  /** Where the stars are (for the threads to reach up to, or the camera to rise through). */
-  starAt(i: number, t: number, t2: number) {
-    const s = this.shards[i]!, rise = Math.max(0, t - t2 - (s.seed % 1) * 0.2);
-    return s.c.clone().addScaledVector(s.n, -2.5 + rise * 2.0).add(new THREE.Vector3(0, rise * rise * 0.6 + rise * 3, 0));
+  /** A piece's centre: loose → a little toward the viewers; rising → up and out, spreading over the city. */
+  private flight(s: Shard, loose: number, rise: number) {
+    const out = s.c.clone().sub(this.o).setY(0);
+    const spread = rise * rise * 4 + rise * 6;
+    return s.c.clone().addScaledVector(s.n, -2.5 * loose).addScaledVector(out.normalize(), spread).add(new THREE.Vector3(0, rise * 9 + rise * rise * 3, 0));
   }
 }
 
