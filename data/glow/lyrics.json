@@ -1022,7 +1022,7 @@
    "section": "verse2",
    "text": "Then we'll light up the spot",
    "start": 104.88,
-   "end": 112.205,
+   "end": 106.885,
    "words": [
     {
      "w": "Then",
@@ -1057,26 +1057,173 @@
     {
      "w": "spot",
      "start": 106.55,
-     "end": 112.205,
-     "conf": 0.36
+     "end": 106.885,
+     "conf": 0.35
     }
    ]
   },
   {
    "i": 22,
    "section": "pre2",
-   "text": "Oh, here we go, here we go",
-   "start": 117.405,
+   "text": "Put your hands up if you've ever felt low",
+   "start": 107.708,
+   "end": 111.478,
+   "words": [
+    {
+     "w": "Put",
+     "start": 107.708,
+     "end": 108.082,
+     "conf": 0.3
+    },
+    {
+     "w": "your",
+     "start": 108.082,
+     "end": 108.332,
+     "conf": 0.3
+    },
+    {
+     "w": "hands",
+     "start": 108.332,
+     "end": 108.697,
+     "conf": 0.3
+    },
+    {
+     "w": "up",
+     "start": 108.697,
+     "end": 109.177,
+     "conf": 0.3
+    },
+    {
+     "w": "if",
+     "start": 109.177,
+     "end": 109.322,
+     "conf": 0.3
+    },
+    {
+     "w": "you've",
+     "start": 109.322,
+     "end": 109.596,
+     "conf": 0.3
+    },
+    {
+     "w": "ever",
+     "start": 109.596,
+     "end": 109.901,
+     "conf": 0.3
+    },
+    {
+     "w": "felt",
+     "start": 109.901,
+     "end": 110.235,
+     "conf": 0.3
+    },
+    {
+     "w": "low",
+     "start": 110.235,
+     "end": 111.478,
+     "conf": 0.3
+    }
+   ]
+  },
+  {
+   "i": 23,
+   "section": "pre2",
+   "text": "Tonight we let it all go",
+   "start": 111.478,
+   "end": 114.456,
+   "words": [
+    {
+     "w": "Tonight",
+     "start": 111.478,
+     "end": 112.011,
+     "conf": 0.3
+    },
+    {
+     "w": "we",
+     "start": 112.175,
+     "end": 112.455,
+     "conf": 0.3
+    },
+    {
+     "w": "let",
+     "start": 112.559,
+     "end": 112.953,
+     "conf": 0.3
+    },
+    {
+     "w": "it",
+     "start": 112.953,
+     "end": 113.153,
+     "conf": 0.3
+    },
+    {
+     "w": "all",
+     "start": 113.153,
+     "end": 113.426,
+     "conf": 0.3
+    },
+    {
+     "w": "go",
+     "start": 113.426,
+     "end": 114.456,
+     "conf": 0.3
+    }
+   ]
+  },
+  {
+   "i": 24,
+   "section": "pre2",
+   "text": "Turn the pain into gold, oh",
+   "start": 114.456,
+   "end": 117.907,
+   "words": [
+    {
+     "w": "Turn",
+     "start": 114.456,
+     "end": 114.795,
+     "conf": 0.3
+    },
+    {
+     "w": "the",
+     "start": 114.795,
+     "end": 114.92,
+     "conf": 0.3
+    },
+    {
+     "w": "pain",
+     "start": 114.92,
+     "end": 116.049,
+     "conf": 0.3
+    },
+    {
+     "w": "into",
+     "start": 116.049,
+     "end": 116.489,
+     "conf": 0.3
+    },
+    {
+     "w": "gold,",
+     "start": 116.489,
+     "end": 117.208,
+     "conf": 0.3
+    },
+    {
+     "w": "oh",
+     "start": 117.388,
+     "end": 117.907,
+     "conf": 0.3
+    }
+   ]
+  },
+  {
+   "i": 25,
+   "section": "pre2",
+   "text": "Here we go, here we go",
+   "start": 117.91,
    "end": 120.53,
    "words": [
     {
-     "w": "Oh,",
-     "start": 117.405,
-     "end": 117.91,
-     "conf": 0.0
-    },
-    {
-     "w": "here",
+     "w": "Here",
      "start": 117.91,
      "end": 118.18,
      "conf": 0.0
@@ -1114,7 +1261,7 @@
    ]
   },
   {
-   "i": 23,
+   "i": 26,
    "section": "chorus2",
    "text": "We don't gotta be okay to dance",
    "start": 120.53,
@@ -1165,7 +1312,7 @@
    ]
   },
   {
-   "i": 24,
+   "i": 27,
    "section": "chorus2",
    "text": "We'll be glowing in the dark, take my hand",
    "start": 124.2,
@@ -1228,7 +1375,7 @@
    ]
   },
   {
-   "i": 25,
+   "i": 28,
    "section": "chorus2",
    "text": "Every broken piece becomes a star",
    "start": 127.47,
@@ -1273,7 +1420,7 @@
    ]
   },
   {
-   "i": 26,
+   "i": 29,
    "section": "chorus2",
    "text": "Look how beautiful we are",
    "start": 130.37,
@@ -1312,7 +1459,7 @@
    ]
   },
   {
-   "i": 27,
+   "i": 30,
    "section": "chorus2",
    "text": "So sing it like we're never coming down",
    "start": 133.985,
@@ -1369,7 +1516,7 @@
    ]
   },
   {
-   "i": 28,
+   "i": 31,
    "section": "chorus2",
    "text": "Loud enough to wake the whole town",
    "start": 137.19,
@@ -1420,7 +1567,7 @@
    ]
   },
   {
-   "i": 29,
+   "i": 32,
    "section": "chorus2",
    "text": "We don't gotta be okay to dance",
    "start": 140.205,
@@ -1471,7 +1618,7 @@
    ]
   },
   {
-   "i": 30,
+   "i": 33,
    "section": "chorus2",
    "text": "We'll be glo-glo-glo-glowing in the dark",
    "start": 143.4,
@@ -1516,7 +1663,7 @@
    ]
   },
   {
-   "i": 31,
+   "i": 34,
    "section": "bridge",
    "text": "And if you fall, I'll fall with you",
    "start": 159.12,
@@ -1573,7 +1720,7 @@
    ]
   },
   {
-   "i": 32,
+   "i": 35,
    "section": "bridge",
    "text": "Through the colors and the blue",
    "start": 162.32,
@@ -1618,7 +1765,7 @@
    ]
   },
   {
-   "i": 33,
+   "i": 36,
    "section": "bridge",
    "text": "We'll be golden, me and you",
    "start": 165.695,
@@ -1663,7 +1810,7 @@
    ]
   },
   {
-   "i": 34,
+   "i": 37,
    "section": "bridge",
    "text": "We'll be golden, me and you",
    "start": 168.855,
@@ -1708,7 +1855,7 @@
    ]
   },
   {
-   "i": 35,
+   "i": 38,
    "section": "chorus3",
    "text": "We don't gotta be okay to dance",
    "start": 171.73,
@@ -1759,7 +1906,7 @@
    ]
   },
   {
-   "i": 36,
+   "i": 39,
    "section": "chorus3",
    "text": "We'll be glowing in the dark, take my hand",
    "start": 175.28,
@@ -1822,7 +1969,7 @@
    ]
   },
   {
-   "i": 37,
+   "i": 40,
    "section": "chorus3",
    "text": "Every broken piece becomes a star",
    "start": 178.47,
@@ -1867,7 +2014,7 @@
    ]
   },
   {
-   "i": 38,
+   "i": 41,
    "section": "chorus3",
    "text": "Look how beautiful we are",
    "start": 181.425,
@@ -1906,7 +2053,7 @@
    ]
   },
   {
-   "i": 39,
+   "i": 42,
    "section": "chorus3",
    "text": "We'll be glowing in the dark!",
    "start": 184.631,
@@ -1951,7 +2098,7 @@
    ]
   },
   {
-   "i": 40,
+   "i": 43,
    "section": "outro",
    "text": "Take my hand",
    "start": 218.87,

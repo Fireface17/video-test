@@ -5,8 +5,8 @@
                   probability mixture.
 2. this script  : the lyrics AS SUNG (the sheet's sections in the order and
                   shape the track actually has: transcribe.py showed that the
-                  second pre-chorus is only "here we go, here we go" and that
-                  the drops are vocal chops), each line constrained to a window
+                  drops are vocal chops; the second pre-chorus's first lines
+                  are sung but too buried for it, see TEMPLATE), each line constrained to a window
                   around where the free transcription heard it, aligned in one
                   Viterbi pass with a "star" garbage token between lines that
                   absorbs chops, echoes and ad-libs.  Then word starts are
@@ -55,7 +55,10 @@ LINES = [
     ("verse2", "Holding on to the friends that we've got", 98.69),
     ("verse2", "If the night's gonna swallow the moon", 101.89),
     ("verse2", "Then we'll light up the spot", 104.93),
-    ("pre2", "Oh, here we go, here we go", 117.46),
+    ("pre2", "Put your hands up if you've ever felt low", 107.69),
+    ("pre2", "Tonight we let it all go", 111.46),
+    ("pre2", "Turn the pain into gold, oh", 114.44),
+    ("pre2", "Here we go, here we go", 117.9),
     ("chorus2", "We don't gotta be okay to dance", 120.74),
     ("chorus2", "We'll be glowing in the dark, take my hand", 124.18),
     ("chorus2", "Every broken piece becomes a star", 127.54),
@@ -84,12 +87,13 @@ ANCHOR = 0.18
 # below this mean CTC probability a word's start comes from the transcription
 LOW_CONF = 0.12
 # Lines the models cannot hear (the final "We'll be glowing in the dark!" is
-# buried under the big drop's build): sung like the same line of an earlier
+# buried under the big drop's build; the second pre-chorus's first three lines
+# are sung behind the build's filter, too quiet in the stem for the models): sung like the same line of an earlier
 # chorus, so they take its word times in beats, counted back from the drop
 # that follows each of them ("in the dark" lands just before the drop).
 # target line -> (template line, section after the template, section after
 # the target).
-TEMPLATE = {39: (15, "drop1", "drop3")}
+TEMPLATE = {42: (15, "drop1", "drop3"), 22: (4, "chorus1", "chorus2"), 23: (5, "chorus1", "chorus2"), 24: (6, "chorus1", "chorus2")}
 
 
 def load_vocab():
