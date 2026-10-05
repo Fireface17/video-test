@@ -1,10 +1,12 @@
 // Chorus 1, "Every broken piece becomes a star": the dark sky over the city is a pane of black glass; it cracks
-// from a point above the two of them (bright cracks running outward), the pieces come loose, tumble (catching the
-// moon and the city's glow on their faces), fold into five-pointed stars and rise. Built as a Voronoi tiling of
-// a dome above the bridge; each piece is a fan of 10 triangles whose rim morphs from its cell's outline to a
-// star's. "Look how beautiful we are" then has them as stars in the sky.
+// from a point above the two of them — cracks that catch the moon and split it into colour, glittering along
+// their length — then the pieces come loose: thick slabs of black glass with glossy faces (the moon and the
+// city's glow slide across them as they tumble, their edges lit green-cyan like real glass), a few falling right
+// past the camera; the rest fold into five-pointed stars and rise. Behind the broken dark: the real stars.
+// Built as a shattered-pane tiling of a dome above the bridge; each piece is a prism (front, back, sides) whose
+// rim morphs from its cell's outline to a star's.
 import * as THREE from 'three';
-import { clamp, ease, mulberry32, noise1, smoothstep } from '../../engine/util';
+import { clamp, ease, hash, mulberry32, noise1, smoothstep } from '../../engine/util';
 import { GlowLines } from '../lib/stars';
 import { GlowPoints } from '../lib/points';
 
@@ -18,6 +20,8 @@ interface Shard {
   d: number; // distance from the impact (for the crack front and the order things happen)
   seed: number;
   axis: THREE.Vector3;
+  /** falls past the camera (toward `pass`) instead of becoming a star */
+  fall: THREE.Vector3 | null;
 }
 
 const RIM = 10;
@@ -30,9 +34,10 @@ export class SkyShards extends THREE.Group {
   private pos: Float32Array;
   private col: Float32Array;
   private nEdges = 0;
+  private impactP = new THREE.Vector3();
 
   /** A dome of radius R around `o`, from elevation `el0` up; the cracks start above `impact` (a direction). */
-  constructor(public o: THREE.Vector3, public R = 70, el0 = 0.42, n = 130, seed = 3, impact = new THREE.Vector3(0.1, 1, -0.2).normalize()) {
+  constructor(public o: THREE.Vector3, public R = 70, el0 = 0.42, n = 130, seed = 3, impact = new THREE.Vector3(0.1, 1, -0.2).normalize(), pass: { cam: THREE.Vector3; look: THREE.Vector3; n: number } | null = null) {
     super();
     const r = mulberry32(seed);
     // seeds on the projected disc (direction (x, 1, z) normalised): rings around the point of impact with
@@ -52,6 +57,7 @@ export class SkyShards extends THREE.Group {
     }
     const toDome = (q: THREE.Vector2) => new THREE.Vector3(q.x, 1, q.y).normalize().multiplyScalar(this.R).add(this.o);
     const ip = impact.clone().multiplyScalar(this.R).add(this.o);
+    this.impactP.copy(ip);
     let ne = 0;
     for (let i = 0; i < S.length; i++) {
       const si = S[i]!;
@@ -102,19 +108,28 @@ export class SkyShards extends THREE.Group {
       for (let k = 0; k < RIM; k++) { const rr = (k % 2 === 0 ? 1 : 0.42) * size * 1.15, a = a0 + (k / RIM) * Math.PI * 2; star.push(new THREE.Vector2(Math.cos(a) * rr, Math.sin(a) * rr)); }
       const edges: [THREE.Vector3, THREE.Vector3][] = world.map((p, k) => [p, world[(k + 1) % world.length]!]);
       ne += edges.length;
-      this.shards.push({ c: cw, n: nrm, u, v, poly: rim, star, edges, d: cw.distanceTo(ip), seed: r() * 100, axis: new THREE.Vector3(r() - 0.5, r() - 0.5, r() - 0.5).normalize() });
+      this.shards.push({ c: cw, n: nrm, u, v, poly: rim, star, edges, d: cw.distanceTo(ip), seed: r() * 100, axis: new THREE.Vector3(r() - 0.5, r() - 0.5, r() - 0.5).normalize(), fall: null });
     }
-    // geometry: per shard a fan of RIM triangles (centre + rim pairs), written every frame
-    const nt = this.shards.length * RIM;
+    // the pieces nearest the camera's line of sight fall at it and past it
+    if (pass) {
+      const dir = pass.look.clone().sub(pass.cam).normalize();
+      const near = this.shards.map((sh, i) => [i, sh.c.clone().sub(pass.cam).normalize().dot(dir)] as [number, number]).sort((a, b) => b[1] - a[1]).slice(0, pass.n);
+      near.forEach(([i], j) => {
+        const side = new THREE.Vector3(Math.cos(j * 2.4), 0, Math.sin(j * 2.4)).multiplyScalar(1.2 + (j % 3) * 0.9);
+        this.shards[i]!.fall = pass.cam.clone().add(side).add(new THREE.Vector3(0, -6, 0)).addScaledVector(dir, -4);
+      });
+    }
+    // geometry: per shard a prism — front fan, back fan, side quads (RIM × 4 triangles), written every frame
+    const nt = this.shards.length * RIM * 4;
     this.pos = new Float32Array(nt * 9);
     this.col = new Float32Array(nt * 9);
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute('color', new THREE.BufferAttribute(this.col, 3).setUsage(THREE.DynamicDrawUsage));
-    this.mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false }));
+    this.mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, fog: false }));
     this.mesh.frustumCulled = false;
-    this.cracks = new GlowLines(ne + 8, 0.06);
-    this.glints = new GlowPoints(this.shards.length * 2, 1);
+    this.cracks = new GlowLines(ne * 4 + 8, 0.035);
+    this.glints = new GlowPoints(this.shards.length * 2 + 16, 1);
     this.nEdges = ne;
     this.add(this.mesh, this.cracks, this.glints);
   }
@@ -127,56 +142,101 @@ export class SkyShards extends THREE.Group {
     const camPos = cam.position;
     const P = this.pos, C = this.col;
     let o = 0, ne = 0, ng = 0;
-    const tmp = new THREE.Vector3(), q = new THREE.Quaternion(), V = new THREE.Vector3();
-    const white = new THREE.Color(0.75, 0.85, 1.0), warm = new THREE.Color(1.0, 0.8, 0.5);
+    const q = new THREE.Quaternion(), V = new THREE.Vector3(), N = new THREE.Vector3(), R = new THREE.Vector3(), view = new THREE.Vector3();
+    const white = new THREE.Color(0.8, 0.9, 1.0), warm = new THREE.Color(1.0, 0.8, 0.5);
+    const sky = [0.004, 0.006, 0.014], edgeTint = [0.05, 0.11, 0.1];
+    const fr: number[] = [], bk: number[] = [];
+    // the light a glossy face of black glass shows: what it reflects (the sky, the city's glow, the moon)
+    const shade = (n: THREE.Vector3, at: THREE.Vector3, out: number[], base: number[], k = 1) => {
+      view.copy(at).sub(camPos).normalize();
+      if (n.dot(view) > 0) N.copy(n).negate(); else N.copy(n);
+      R.copy(view).reflect(N);
+      const cosi = Math.max(0, -view.dot(N)), fres = 0.04 + 0.96 * Math.pow(1 - cosi, 5);
+      const m = Math.max(0, R.dot(moonDir));
+      const spec = Math.pow(m, 220) * 9 + Math.pow(m, 18) * 0.25;
+      const env = R.y < 0 ? [0.06, 0.04, 0.032] : [0.012 + 0.02 * (1 - R.y), 0.016 + 0.02 * (1 - R.y), 0.03];
+      out[0] = (base[0]! + (env[0]! * fres + spec * 0.85) * k); out[1] = (base[1]! + (env[1]! * fres + spec * 0.9) * k); out[2] = (base[2]! + (env[2]! * fres + spec) * k);
+      return spec;
+    };
+    const put = (p: THREE.Vector3, c: number[]) => { P[o] = p.x; P[o + 1] = p.y; P[o + 2] = p.z; C[o] = c[0]! * gain; C[o + 1] = c[1]! * gain; C[o + 2] = c[2]! * gain; o += 3; };
+    const ra: THREE.Vector3[] = [], rb: THREE.Vector3[] = [];
     for (const s of this.shards) {
-      // the crack front reaches this piece; it comes loose a little after; it folds into a star
+      // the crack front reaches this piece; it comes loose a little after; it folds into a star (or falls)
       const front = t0 + Math.min(0.9, s.d / 90);
       const cr = clamp((t - front) / 0.12);
+      if (cr <= 0) continue;
       const loose = ease.inOutCubic(clamp((t - (t1 + s.d / 160 + (s.seed % 1) * 0.25)) / 0.6));
-      const morph = ease.inOutCubic(clamp((t - (t2 - 0.45 + (s.seed % 1) * 0.2 + s.d / 400)) / 0.5));
+      const morph = s.fall ? 0 : ease.inOutCubic(clamp((t - (t2 - 0.45 + (s.seed % 1) * 0.2 + s.d / 400)) / 0.5));
       const rise = Math.max(0, t - t2 - (s.seed % 1) * 0.2);
-      // motion: drop a little toward the viewers as it comes loose, tumble, then rise and spread out over the city
-      const centre = this.flight(s, loose, rise);
+      let centre = this.flight(s, loose, s.fall ? 0 : rise);
       centre.addScaledVector(s.u, noise1(s.seed + t * 0.3, 1) * 1.5 * loose).addScaledVector(s.v, noise1(s.seed + t * 0.3, 2) * 1.5 * loose);
-      const tumble = loose * (1 - morph) * (0.9 + 0.6 * Math.sin(s.seed)) * Math.min(1, (t - t1) * 0.8);
-      q.setFromAxisAngle(s.axis, tumble * 1.2 + morph * 0.0);
-      // the stars turn to face the city below (toward the dome centre) and slowly spin
-      const spin = new THREE.Quaternion().setFromAxisAngle(s.n, morph * (t - t2) * 0.4);
-      q.premultiply(spin);
-      const shrink = (1 - 0.55 * clamp(rise / 2.5)) * 0.72;
-      const k = morph;
-      // colours: dark glass (only its glints) → bright star
+      let tumble = loose * (1 - morph) * (0.9 + 0.6 * Math.sin(s.seed)) * Math.min(1, Math.max(0, t - t1) * 0.8);
+      let scale = 1;
+      if (s.fall) {
+        // a piece falling at the camera and past it, spinning
+        const u = clamp((t - t1 - 0.15 - (s.seed % 1) * 0.3) / 1.4);
+        if (u >= 1) continue;
+        centre = centre.lerp(s.fall, ease.inQuad(u));
+        tumble += u * u * 9;
+        scale = 0.45;
+      }
+      q.setFromAxisAngle(s.axis, tumble * 1.2);
+      q.premultiply(new THREE.Quaternion().setFromAxisAngle(s.n, morph * (t - t2) * 0.4));
+      const shrink = (1 - 0.55 * clamp(rise / 2.5)) * (0.72 + 0.28 * (1 - morph)) * scale;
+      const k = morph, thick = 0.45 * (1 - k) * scale;
+      const fadeStar = 1 - clamp((rise - 1.6) / 0.6);
       const nrm = s.n.clone().applyQuaternion(q);
-      const view = tmp.copy(camPos).sub(centre).normalize();
-      const refl = nrm.clone().reflect(view).multiplyScalar(-1);
-      const glint = Math.pow(Math.max(0, refl.dot(moonDir)), 30) * 1.5 + 0.04 * Math.pow(1 - Math.abs(nrm.dot(view)), 3);
-      const glass = (0.02 + glint) * loose * (1 - k);
-      const starC = warm.clone().lerp(white, 0.1).multiplyScalar(k * (0.5 + 0.2 * Math.sin(t * 3 + s.seed)) * (1 - clamp((rise - 1.6) / 0.6)));
-      const edgeK = cr * (1 - loose * 0.7) * (1 - k);
+      // the face colours: black glass catching light → a warm star
+      const spec = shade(nrm, centre, fr, sky, loose * 0.85 + 0.15);
+      const starK = k * (0.5 + 0.2 * Math.sin(t * 3 + s.seed)) * fadeStar;
+      const mix = (c: number[], sk: number, w: THREE.Color) => [c[0]! * (1 - k) + w.r * sk, c[1]! * (1 - k) + w.g * sk, c[2]! * (1 - k) + w.b * sk];
+      const face = mix(fr, starK * 1.5, warm), rimC = mix(fr, starK * 0.6, warm);
+      shade(nrm.clone().negate(), centre, bk, sky, loose);
+      const back = mix(bk, starK * 0.8, warm);
+      if (k > 0.98 && fadeStar <= 0) continue;
+      ra.length = rb.length = 0;
+      const off = nrm.clone().multiplyScalar(thick);
       for (let i = 0; i < RIM; i++) {
-        const a = s.poly[i]!.clone().lerp(s.star[i]!, k).multiplyScalar(shrink), b = s.poly[(i + 1) % RIM]!.clone().lerp(s.star[(i + 1) % RIM]!, k).multiplyScalar(shrink);
-        const pa = V.copy(s.u).multiplyScalar(a.x).addScaledVector(s.v, a.y).applyQuaternion(q).add(centre);
-        P[o] = centre.x; P[o + 1] = centre.y; P[o + 2] = centre.z;
-        P[o + 3] = pa.x; P[o + 4] = pa.y; P[o + 5] = pa.z;
-        const pb = V.copy(s.u).multiplyScalar(b.x).addScaledVector(s.v, b.y).applyQuaternion(q).add(centre);
-        P[o + 6] = pb.x; P[o + 7] = pb.y; P[o + 8] = pb.z;
-        // the star is brighter at its heart, the glass at its rim
-        const cc = starC.r * 1.4 + glass, rr = starC.r * 0.6 + glass * 1.6;
-        C[o] = (starC.r * 1.4 + glass * 0.6) * gain; C[o + 1] = (starC.g * 1.4 + glass * 0.7) * gain; C[o + 2] = (starC.b * 1.4 + glass) * gain;
-        for (const j of [3, 6]) { C[o + j] = (starC.r * 0.55 + glass * 1.4) * gain; C[o + j + 1] = (starC.g * 0.55 + glass * 1.5) * gain; C[o + j + 2] = (starC.b * 0.55 + glass * 1.8) * gain; }
-        void cc; void rr;
-        o += 9;
+        const a = s.poly[i]!.clone().lerp(s.star[i]!, k).multiplyScalar(shrink);
+        const p = V.copy(s.u).multiplyScalar(a.x).addScaledVector(s.v, a.y).applyQuaternion(q).add(centre);
+        ra.push(p.clone().sub(off.clone().multiplyScalar(0.5))); rb.push(p.clone().add(off.clone().multiplyScalar(0.5)));
       }
-      // the cracks along the cell's edges, white-hot as the front passes, then fading as the pieces part
-      if (edgeK > 0.01) for (const [ea, eb] of s.edges) {
-        if (ne >= this.nEdges) break;
-        const fresh = 1 + 3 * Math.exp(-(t - front) * 8);
-        this.cracks.set(ne++, ea.clone().addScaledVector(s.n, -2.5 * loose), eb.clone().addScaledVector(s.n, -2.5 * loose), white, edgeK * 0.55 * fresh * gain);
+      const ca = centre.clone().sub(off.clone().multiplyScalar(0.5)), cb = centre.clone().add(off.clone().multiplyScalar(0.5));
+      // the lit edges: green-cyan glass, brighter where the moon grazes them, hot while the crack is fresh
+      const fresh = Math.exp(-(t - front) * 5);
+      for (let i = 0; i < RIM; i++) {
+        const j = (i + 1) % RIM;
+        put(ca, face); put(ra[i]!, rimC); put(ra[j]!, rimC);
+        put(cb, back); put(rb[j]!, back); put(rb[i]!, back);
+        const sideN = ra[j]!.clone().sub(ra[i]!).cross(nrm).normalize();
+        const e: number[] = [0, 0, 0];
+        const es = shade(sideN, ra[i]!, e, [edgeTint[0]! * 0.4, edgeTint[1]! * 0.4, edgeTint[2]! * 0.4], 1);
+        const ek = 1 + 6 * es + 3 * fresh;
+        const ec = mix([e[0]! * ek * 0.6 + edgeTint[0]! * loose, e[1]! * ek * 0.6 + edgeTint[1]! * loose, e[2]! * ek * 0.6 + edgeTint[2]! * loose], starK * 0.9, warm);
+        put(ra[i]!, ec); put(rb[i]!, ec); put(rb[j]!, ec);
+        put(ra[i]!, ec); put(rb[j]!, ec); put(ra[j]!, ec);
       }
-      if (k > 0.05) this.glints.set(ng++, centre.x, centre.y, centre.z, warm, k * 0.5 * gain * (1 - clamp((rise - 1.6) / 0.6)), 5 * shrink + 4 * clamp(rise / 3));
-      else if (glint * loose > 0.2) this.glints.set(ng++, centre.x, centre.y, centre.z, white, glint * loose * 0.5 * gain, 3);
+      // the cracks: thin lines of split light along the cell's edges, glittering along their length
+      const edgeK = cr * (1 - loose * 0.8) * (1 - k);
+      if (edgeK > 0.01 && !s.fall) for (const [ea, eb] of s.edges) {
+        if (ne >= this.cracks.n - 4) break;
+        const fr2 = 1 + 3 * Math.exp(-(t - front) * 7);
+        for (let m = 0; m < 4; m++) {
+          const a = ea.clone().lerp(eb, m / 4).addScaledVector(s.n, -2.5 * loose - 0.05), b = ea.clone().lerp(eb, (m + 1) / 4).addScaledVector(s.n, -2.5 * loose - 0.05);
+          const h = hash(s.seed, m, Math.floor(ea.x * 7));
+          // refraction: each bit of a crack splits the moonlight into a different colour
+          const hue = new THREE.Color().setHSL((h + 0.55) % 1, 0.55, 0.62);
+          const sparkle = 0.35 + 0.65 * Math.pow(0.5 + 0.5 * Math.sin(t * 9 + h * 40), 3);
+          this.cracks.set(ne++, a, b, white.clone().lerp(hue, 0.6), edgeK * 0.5 * fr2 * sparkle * gain);
+        }
+      }
+      if (k > 0.05) this.glints.set(ng++, centre.x, centre.y, centre.z, warm, k * 0.5 * gain * fadeStar, 5 * shrink + 4 * clamp(rise / 3));
+      else if (spec * loose > 0.3) this.glints.set(ng++, centre.x, centre.y, centre.z, white, Math.min(2, spec * loose) * 0.6 * gain, 4 * scale);
     }
+    // the impact: a white star of light where the first crack starts
+    const ip = this.impactP;
+    const ik = clamp((t - t0) / 0.05) * Math.exp(-Math.max(0, t - t0) * 2.5);
+    if (ik > 0.01) { this.glints.set(ng++, ip.x, ip.y, ip.z, white, 2.5 * ik * gain, 7); this.glints.set(ng++, ip.x, ip.y, ip.z, white, 0.6 * ik * gain, 24); }
     const g = this.mesh.geometry;
     (g.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     (g.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
