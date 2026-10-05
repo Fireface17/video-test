@@ -54,7 +54,9 @@ export class Earth extends THREE.Group {
           float ml = max(dot(vN, moon), 0.0);
           vec3 c = d * vec3(0.03, 0.045, 0.09) * (0.2 + ml);
           vec3 hv = normalize(moon + vV);
-          c += vec3(0.06, 0.08, 0.14) * pow(max(dot(vN, hv), 0.0), 60.0) * (1.0 - land) * 0.6;
+          // (tight: a broad glint read as a grey smudge on the Atlantic)
+          float gl = max(dot(vN, hv), 0.0);
+          c += (vec3(0.05, 0.075, 0.15) * pow(gl, 260.0) * 0.8 + vec3(0.01, 0.016, 0.035) * pow(gl, 24.0)) * (1.0 - land);
           // city lights, waking in a wave from wakeDir
           float L = texture2D(lights, vUv).r;
           float ang = acos(clamp(dot(vObjN, normalize(wakeDir)), -1.0, 1.0));

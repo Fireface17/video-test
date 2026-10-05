@@ -285,8 +285,9 @@ export default class Ceiling extends Scene {
       S.add(this.titleGrp);
       await this.earth.init();
       S.add(this.earth);
-      // dive at the lights of western Europe: that point of the globe faces the camera from below
-      const lat = 49 * Math.PI / 180, lon = 6 * Math.PI / 180;
+      // dive at the lights of New York (the video's city: its avenues, its el, its taxis): that point of the
+      // globe faces the camera from below, the Atlantic dark on one side
+      const lat = 40.7 * Math.PI / 180, lon = -74.0 * Math.PI / 180;
       const th = Math.PI / 2 - lat, ph = lon + Math.PI;
       this.earthDir.set(-Math.cos(ph) * Math.sin(th), Math.cos(th), Math.sin(ph) * Math.sin(th));
       this.earth.quaternion.setFromUnitVectors(this.earthDir, new THREE.Vector3(0, 1, 0));
