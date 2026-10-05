@@ -22,7 +22,7 @@ import { loadSpan, type CycleMotion } from './run-motion';
 import { Pigeons, mirrorOnly, placeKit, shiftRender } from './run-props';
 import { Handprints } from './run-prints';
 import { Breath, DawnBand, Tug, walkwayKit } from './overpass-props';
-import { DeckDress } from './overpass-deck';
+import { standardDeck, type DeckDress } from './overpass-deck';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const UP = V(0, 1, 0);
@@ -90,11 +90,9 @@ export default class Overpass extends Scene {
     if (!ov?.walk) this.world.add(placeKit(this.city, walkwayKit(this.railX, this.deckY, 60, 200, this.spot.z), 0, 0, 0));
     // the deck dressed for the close shots: paving, coping, barrier, asphalt, railing, lamps, signs, a call box,
     // and across the river the far bank's skyline and shore lights
-    const z = this.spot.z;
-    const gaps = ((ov as { gaps?: [number, number][] } | null)?.gaps ?? [[119.5, 122.5], [145, 150]]) as [number, number][];
-    this.deck = new DeckDress(this.city, this.railX, this.deckY, z - 70, z + 80, gaps, { lamps: [z - 50, z - 14, z + 13, z + 49], gantry: z + 11, call: z - 4.5 });
+    this.deck = standardDeck(this.city);
     this.world.add(this.deck);
-    this.lampPos = this.deck.lampHeads;
+    this.lampPos = this.deck.lampHeads.filter((p) => Math.abs(p.z - this.spot.z) < 60);
     // their handprints, still glowing down there along the street they ran
     const pc = [col('cyan', 0.8), col('white', 0.8).lerp(col('cyan', 0.8), 0.4), col('violet', 0.8).lerp(col('white', 0.8), 0.4), heColor().multiplyScalar(0.7), sheColor().multiplyScalar(0.7)];
     this.prints.scatter(80, V(645, 0, 129.47), V(1100, 0, 129.47), V(0, 0, -1), 0, 1, pc, 61, 0.8, 2.0);
@@ -222,8 +220,8 @@ export default class Overpass extends Scene {
     dk.update(t, dawn);
     dk.lights.set(fr, this.lantern.position, col('gold', 0.9), 1.6);
     dk.lights.set(fr + 1, this.star.position, col('phosphor', 0.35 * starK), 0.8);
-    dk.lights.set(fr + 2, he.position, heColor().multiplyScalar(0.25), 1.8);
-    dk.lights.set(fr + 3, she.position, sheColor().multiplyScalar(0.25), 1.8);
+    dk.lights.set(fr + 2, he.position, heColor().multiplyScalar(0.25), 1.8, 0.2);
+    dk.lights.set(fr + 3, she.position, sheColor().multiplyScalar(0.25), 1.8, 0.2);
 
     this.camera(t, mid);
     // the east starting to lighten behind them; the river's reflection only in the shots that look at it
@@ -273,8 +271,8 @@ export default class Overpass extends Scene {
       // together at the railing, seen from beyond the edge: the deck, the river and the dawn coming up behind them
       // (rising slowly: over the barrier the lanes and their traffic, the river with its lights, the far bank)
       const k = ease.inOutCubic(clamp((t - bar(4)) / (bar(6) - bar(4))));
-      pos = ground.clone().addScaledVector(this.F, 4.4 - 0.4 * k).addScaledVector(this.R, -1.6 + 3.0 * k).add(V(0, 1.2 + 1.5 * k, 0));
-      tgt = ground.clone().addScaledVector(this.F, -3).add(V(0, 1.75 - 0.1 * k, 0));
+      pos = ground.clone().addScaledVector(this.F, 4.4 + 0.2 * k).addScaledVector(this.R, -1.6 + 3.0 * k).add(V(0, 1.2 + 1.5 * k, 0));
+      tgt = ground.clone().addScaledVector(this.F, -3).add(V(0, 1.75 - 0.55 * k, 0));
       fov = 46 - 2 * k;
     } else {
       // behind them, low: they look at each other, take hands, and step up onto the edge, the city before them

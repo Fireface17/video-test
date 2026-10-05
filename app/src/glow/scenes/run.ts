@@ -34,6 +34,7 @@ import { BrokenWindow, Pigeons, Splashes, cityKitMat, mirrorOnly, placeKit, shif
 import { StreetCars, TAXI_PAINT, hideCityInstances } from './run-cars';
 import { kitBatch } from '../lib/city-build';
 import { heroCarGeometry } from './run-carbody';
+import { standardDeck, type DeckDress } from './overpass-deck';
 
 /** The two cabs stopped at the red light on avenue 2 (leg G), noses north. */
 const CABS_G = [{ x: 619.6, z: 112.5, yaw: 0 }, { x: 624.4, z: 111.4, yaw: 0 }];
@@ -91,6 +92,7 @@ export default class Run extends Scene {
   tracks: { he: HeroTrack; she: HeroTrack } | null = null;
   freezes: [number, number][] = [];
   street!: StreetCars;
+  deck!: DeckDress;
   heC = heColor();
   sheC = sheColor();
 
@@ -205,6 +207,9 @@ export default class Run extends Scene {
     this.street = new StreetCars(this.city, [[388, 70, 45], [400, 112, 30], [415, 122, 35], [440, 127, 35], [620, 118, 35], [700, 122, 70], [1120, 135, 40]], { exclude: byCab.map((p) => [p.x, p.z] as [number, number]) });
     this.world.add(this.street);
     hideCityInstances(this.city, byCab.map((p) => [p.x, 0, p.z] as [number, number, number]));
+    // the overpass deck dressed as the break sees it (paving, barrier, asphalt, railing, lamps, signs, the far bank)
+    this.deck = standardDeck(this.city);
+    this.world.add(this.deck);
     // the steel stairs up to the overpass (the el station's stairs are the city's)
     this.world.add(placeKit(this.city, stairKit(V(1133.6, oy, 147.5), V(1133.6, 0.15, 132.5), 1.8), 0, 0, 0));
     // the smashed window (FOR RENT, street 1 south side)
@@ -246,7 +251,7 @@ export default class Run extends Scene {
     // the wet street's reflection (the city renders the scene again, mirrored): only the two of them in it
     // (the people draw after the shop interior seen through the broken window: run-props BrokenWindow)
     for (const o of [this.he, this.she, this.star, this.lantern, this.folk.crowd]) o.traverse((q) => { q.renderOrder = Math.max(q.renderOrder, 3); });
-    mirrorOnly(this.city, [this.folk.crowd, this.prints, this.splashes, this.pigeons, this.trails, this.window]);
+    mirrorOnly(this.city, [this.folk.crowd, this.prints, this.splashes, this.pigeons, this.trails, this.window, this.deck]);
   }
 
   // ------------------------------------------------------------------ setup helpers
@@ -460,6 +465,12 @@ export default class Run extends Scene {
     this.city.setGlows([...glows, ...this.folk.glows(S.cam.position, 9)]);
     this.city.update(t, S.cam.position);
     this.street.update(S.cam.position);
+    // the deck's lamps and the two of them lighting its paving
+    const dk = this.deck, fr = dk.free;
+    dk.update(t, 0);
+    dk.lights.set(fr, this.he.position, heColor().multiplyScalar(0.25), 1.8, 0.2);
+    dk.lights.set(fr + 1, this.she.position, sheColor().multiplyScalar(0.25), 1.8, 0.2);
+    dk.lights.set(fr + 2, this.lantern.position, col('gold', 0.9), 1.6);
     this.prints.time = t;
     this.window.update(tm, S.cam);
     this.window.visible = leg.id === 'E' || leg.id === 'F';

@@ -201,6 +201,19 @@ export class DeckDress extends THREE.Group {
 }
 
 /**
+ * The riverside overpass as both the run's end (chorus 2) and the break (overpass.ts) see it: the walkway dressed
+ * from z 51 to 330, its lamps every 36 m, the sign gantry and the call box by where the two stop (z 121).
+ */
+export function standardDeck(city: City) {
+  const ov = city.overpass as ({ y: number; walk?: [number, number]; gaps?: [number, number][] }) | null;
+  const railX = ov?.walk?.[0] ?? 1135, y = ov?.y ?? 8.5, z = 121;
+  const gaps = (ov?.gaps ?? [[119.5, 122.5], [145, 150]]) as [number, number][];
+  const lamps: number[] = [];
+  for (let lz = z - 50; lz < 330; lz += 36) lamps.push(lz);
+  return new DeckDress(city, railX, y, z - 70, 330, gaps, { lamps, gantry: z + 11, call: z - 4.5 });
+}
+
+/**
  * The far bank: a wall of buildings across the river at x = xb (facing west), z0..z1: silhouettes of varied
  * heights, windows lit warm and cool, red lights on the tallest; hazy at the foot.
  */

@@ -16,10 +16,11 @@ export class SurfLights {
   P = Array.from({ length: MAXL }, () => new THREE.Vector4(0, -1e5, 0, 1));
   C = Array.from({ length: MAXL }, () => new THREE.Vector4());
   n = { value: 0 };
-  set(i: number, p: THREE.Vector3Like, c: THREE.Color, r: number) {
+  /** `spec`: how much it shows in the wet (0 for soft pools of light, like the glow round a person's feet). */
+  set(i: number, p: THREE.Vector3Like, c: THREE.Color, r: number, spec = 1) {
     if (i >= MAXL || !Number.isFinite(p.x + p.y + p.z + c.r + c.g + c.b + r)) return;
     this.P[i]!.set(p.x, p.y, p.z, r);
-    this.C[i]!.set(c.r, c.g, c.b, 0);
+    this.C[i]!.set(c.r, c.g, c.b, spec);
     this.n.value = Math.max(this.n.value, i + 1);
   }
   clear() { this.n.value = 0; }
@@ -140,7 +141,7 @@ export function surfaceMaterial(city: City, kind: SurfKind, lights: SurfLights, 
           float dd = dot(d, d), r = uLP[i].w;
           vec3 dir = d * inversesqrt(max(dd, 1e-4));
           L += uLC[i].rgb * (0.15 + 0.85 * max(dot(N, dir), 0.0)) / (1.0 + dd / (r * r));
-          spec += uLC[i].rgb * pow(max(dot(R, dir), 0.0), 90.0) * 6.0 / (1.0 + dd / (r * r * 16.0));
+          spec += uLC[i].rgb * uLC[i].w * pow(max(dot(R, dir), 0.0), 90.0) * 6.0 / (1.0 + dd / (r * r * 16.0));
         }
         float fres = 0.04 + 0.96 * pow(1.0 - clamp(abs(dot(V, N)), 0.0, 1.0), 5.0);
         vec3 c = alb * L * (1.0 - 0.5 * wet);

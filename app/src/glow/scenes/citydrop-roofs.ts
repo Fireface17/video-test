@@ -321,7 +321,7 @@ export class RoofParty extends THREE.Group {
       const fl = q.flick ? 1 + q.flick * Math.sin(t * 11 + i * 3.7) * Math.sin(t * 7.3 + i) : 1;
       L.set(i++, q.p, q.c.clone().multiplyScalar(fl * (1 + 0.25 * kick)), q.r);
     }
-    for (const f of feet) { if (i >= 16) break; L.set(i++, f.p, f.c, 1.1); }
+    for (const f of feet) { if (i >= 16) break; L.set(i++, f.p, f.c, 1.1, 0.1); }
     const B = this.bulbs;
     this.bulbPos.forEach((p, j) => {
       const c = [[1.0, 0.72, 0.38], [1.0, 0.55, 0.25], [1.0, 0.85, 0.6], [1.0, 0.45, 0.55]][j % 4]! as [number, number, number];
