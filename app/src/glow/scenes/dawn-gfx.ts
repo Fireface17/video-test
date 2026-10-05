@@ -343,28 +343,42 @@ export class Steam extends GlowPoints {
 /**
  * The low sun on a flat roof: a quad just above the roof that multiplies what is under it — a warm lift where the
  * sun reaches, cooler and darker in the long shadows of the things standing on it (soft-edged strips from each
- * caster away from the sun, widening with distance). Casters: (x, z, half-width, length).
+ * caster away from the sun, widening with distance). Casters: (x, z, half-width, length). The still things' shadows
+ * are baked once into a small mask (the sun's bearing hardly moves over the chorus); only the few moving casters
+ * (the two of them) are computed per pixel — cheap on the software renderer.
  */
 export class SunPool extends THREE.Mesh {
   declare material: THREE.ShaderMaterial;
-  static readonly CAP = 32;
-  constructor(x0: number, z0: number, x1: number, z1: number, y: number) {
+  static readonly DYN = 4;
+  mask: THREE.DataTexture;
+  constructor(x0: number, z0: number, x1: number, z1: number, y: number, statics: THREE.Vector4[], sun: THREE.Vector3) {
     const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0).rotateX(-Math.PI / 2).translate((x0 + x1) / 2, y, (z0 + z1) / 2);
+    // bake: 10 cm texels
+    const W = Math.max(8, Math.round((x1 - x0) / 0.1)), H = Math.max(8, Math.round((z1 - z0) / 0.1));
+    const data = new Uint8Array(W * H), dir = new THREE.Vector2(-sun.x, -sun.z).normalize();
+    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+      const x = x0 + (i + 0.5) / W * (x1 - x0), z = z0 + (j + 0.5) / H * (z1 - z0);
+      let sh = 0;
+      for (const c of statics) sh = Math.max(sh, SunPool.shade(x - c.x, z - c.y, dir, c.z, c.w));
+      data[j * W + i] = Math.round(clamp(sh) * 255);
+    }
+    const mask = new THREE.DataTexture(data, W, H, THREE.RedFormat, THREE.UnsignedByteType);
+    mask.magFilter = THREE.LinearFilter; mask.minFilter = THREE.LinearFilter; mask.needsUpdate = true;
     const mat = new THREE.ShaderMaterial({
       uniforms: {
-        uC: { value: Array.from({ length: SunPool.CAP }, () => new THREE.Vector4()) }, uN: { value: 0 },
-        uDir: { value: new THREE.Vector2(-1, 0) }, uCol: { value: new THREE.Color() }, uRect: { value: new THREE.Vector4(x0, z0, x1, z1) },
+        uMask: { value: mask }, uC: { value: Array.from({ length: SunPool.DYN }, () => new THREE.Vector4()) }, uN: { value: 0 },
+        uDir: { value: dir.clone() }, uCol: { value: new THREE.Color() }, uRect: { value: new THREE.Vector4(x0, z0, x1, z1) },
       },
       vertexShader: /* glsl */ `
         varying vec2 vXZ;
         void main() { vec4 w = modelMatrix * vec4(position, 1.0); vXZ = w.xz; gl_Position = projectionMatrix * viewMatrix * w; }`,
       fragmentShader: /* glsl */ `
-        uniform vec4 uC[${SunPool.CAP}]; uniform int uN; uniform vec2 uDir; uniform vec3 uCol; uniform vec4 uRect;
+        uniform sampler2D uMask; uniform vec4 uC[${SunPool.DYN}]; uniform int uN; uniform vec2 uDir; uniform vec3 uCol; uniform vec4 uRect;
         varying vec2 vXZ;
         void main() {
           vec2 q = vXZ, pr = vec2(-uDir.y, uDir.x);
-          float sh = 0.0;
-          for (int i = 0; i < ${SunPool.CAP}; i++) {
+          float sh = texture2D(uMask, (q - uRect.xy) / (uRect.zw - uRect.xy)).r;
+          for (int i = 0; i < ${SunPool.DYN}; i++) {
             if (i >= uN) break;
             vec4 c = uC[i];
             vec2 d = q - c.xy;
@@ -384,15 +398,23 @@ export class SunPool extends THREE.Mesh {
       blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
     });
     super(g, mat);
+    this.mask = mask;
     this.renderOrder = -2;
     this.frustumCulled = false;
   }
-  /** sun: direction to the sun; col: the light added (× the roof's own colour); casters as (x, z, half-width, length) */
-  set(sun: THREE.Vector3, col: THREE.Color, casters: THREE.Vector4[]) {
+  /** One caster's shadow at offset (dx, dz) from it (the shader's formula). */
+  static shade(dx: number, dz: number, dir: THREE.Vector2, hw: number, len: number) {
+    const ss = (e0: number, e1: number, x: number) => { const k = clamp((x - e0) / (e1 - e0)); return k * k * (3 - 2 * k); };
+    const a = dx * dir.x + dz * dir.y, b = Math.abs(-dx * dir.y + dz * dir.x);
+    const aa = Math.max(a, 0), w = hw + aa * 0.03;
+    const s = ss(-0.05, 0.1, a) * (1 - ss(len * 0.4, len + 0.01, aa)) * (1 - ss(Math.max(w - 0.03 - aa * 0.02, 0), w + 0.05 + aa * 0.035, b));
+    return s * (1 - 0.35 * ss(0, len + 0.01, aa));
+  }
+  /** col: the light added (× the roof's own colour); the moving casters as (x, z, half-width, length) */
+  set(col: THREE.Color, casters: THREE.Vector4[]) {
     const u = this.material.uniforms;
-    (u.uDir!.value as THREE.Vector2).set(-sun.x, -sun.z).normalize();
     (u.uCol!.value as THREE.Color).copy(col);
-    const n = Math.min(casters.length, SunPool.CAP);
+    const n = Math.min(casters.length, SunPool.DYN);
     for (let i = 0; i < n; i++) (u.uC!.value as THREE.Vector4[])[i]!.copy(casters[i]!);
     u.uN!.value = n;
   }

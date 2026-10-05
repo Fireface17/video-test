@@ -139,7 +139,7 @@ export default class Dawn extends Scene {
     S.add(this.dust, this.pts, this.threads, this.stars, this.mist, this.birds, this.birds2, this.steam, this.flares);
     // the first sun across his roof: long shadows from the garden, the posts, the table, the washing, the bulkhead
     const H = set.his, C4 = (x: number, z: number, hw: number, len: number) => new THREE.Vector4(x, z, hw, len);
-    this.pool = new SunPool(H.x0 + 0.3, H.z0 + 0.3, H.x1 - 0.3, H.z1 - 0.3, this.roof + 0.08);
+    
     const tx = GAP_X + 2.4, tz = H.z0 + 8.5;
     this.casters = [
       ...[0, 1, 2, 3].map((k) => C4(H.x1 - 1.0, H.z0 + 5.0 + k * 2.0, 0.85, k === 3 ? 7 : 4)),
@@ -150,6 +150,7 @@ export default class Dawn extends Scene {
       C4(H.x0 + 4.5, H.z1 - 1.5, 0.08, 6), C4(H.x0 + 5.0, H.z1 - 1.2, 0.08, 5), C4(GAP_X + 3.0, H.z1 - 1.0, 0.08, 5.5), C4(H.x1 - 2.0, H.z0 + 4.2, 0.15, 1.6), C4(H.x0 + 1.4, H.z0 + 2.4, 0.45, 6),
     ];
     for (const l of set.laundry) if (l.a.z > 0 && Math.abs(l.a.y - (this.roof + 2.0)) < 0.05) for (const it of l.items) { const p = l.a.clone().lerp(l.b, it.u); this.casters.push(C4(p.x, p.z, it.w * 0.48, 7)); }
+    this.pool = new SunPool(H.x0 + 0.3, H.z0 + 0.3, H.x1 - 0.3, H.z1 - 0.3, this.roof + 0.08, this.casters, V(Math.cos(0.05), Math.sin(0.05), -0.04).normalize());
     S.add(this.pool);
   }
 
@@ -323,7 +324,7 @@ export default class Dawn extends Scene {
     w.setSun(this.sun, sunC.clone().multiplyScalar(2.3));
     const dawnK = lerp(0.82, 1, smoothstep(this.ctx.start - 0.5, T.beautiful + 2, t));
     w.dawn = dawnK;
-    this.pool.set(this.sun, sunC.clone().multiplyScalar(0.35 * dawnK), [...this.casters,
+    this.pool.set(sunC.clone().multiplyScalar(0.35 * dawnK), [
       new THREE.Vector4(this.he.position.x, this.he.position.z, 0.22, 9), new THREE.Vector4(this.she.position.x, this.she.position.z, 0.2, 9)]);
     const U = w.city.U as unknown as Record<string, THREE.IUniform>;
     (U.fogC!.value as THREE.Color).setRGB(0.5, 0.3, 0.16);
