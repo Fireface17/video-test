@@ -172,12 +172,12 @@ export default class Dawn extends Scene {
     for (const [f, c] of [[he, heColor()], [she, sheColor()]] as [RealFigure, THREE.Color][]) {
       const u = f.mat.uniforms;
       (u.color!.value as THREE.Color).copy(c);
-      (u.tint!.value as THREE.Color).copy(col('gold', 1.2).lerp(col('white', 1.2), 0.15));
-      u.tintK!.value = 0.88 * gk;
+      (u.tint!.value as THREE.Color).copy(col('gold', 1.25).lerp(col('ember', 1.25), 0.1));
+      u.tintK!.value = 0.95 * Math.min(1, gk * 1.3);
       (u.gold!.value as THREE.Color).copy(col('gold', 1.3));
       (u.goldO!.value as THREE.Vector3).copy(g);
       u.goldR!.value = lerp(0.5, 2.5, ease.outCubic(prog(t, T.take, T.hand + 1.0)));
-      u.level!.value = (shot0 ? 0.42 : 0.62) + 0.3 * pulse(t, T.hand, 0.4);
+      u.level!.value = (shot0 ? 0.5 : 0.62) + 0.3 * pulse(t, T.hand, 0.4);
       f.time = t;
     }
     return g;
@@ -205,9 +205,9 @@ export default class Dawn extends Scene {
       }
       case 1: { // B: side view along the parapet, her building across the street, the sun to the right
         const u = k(cuts[1]!, cuts[2]!);
-        pos.copy(m).add(V(-2.4 + 0.6 * u, 1.3 + 0.1 * u, 4.2 - 0.3 * u));
-        tgt.copy(m).add(V(0.3 + 0.2 * u, 0.95, -0.6));
-        fov = 40;
+        pos.copy(m).add(V(-2.0 + 0.6 * u, 1.55 + 0.1 * u, 3.6 - 0.3 * u));
+        tgt.copy(m).add(V(0.3 + 0.2 * u, 1.38, -0.6));
+        fov = 30;
         break;
       }
       case 2: { // C: low, from beyond the parapet, looking up at them against the morning sky
@@ -260,9 +260,9 @@ export default class Dawn extends Scene {
       }
       case 8: { // G: the two of them, close, against the sun
         const u = k(cuts[8]!, cuts[9]!);
-        pos.copy(m).add(V(-3.0 + 0.5 * u, 1.05, 1.0 - 0.3 * u));
-        tgt.copy(m).add(V(0, 1.1, -0.15));
-        fov = 38;
+        pos.copy(m).add(V(2.3 - 0.3 * u, 1.45, 1.2 - 0.2 * u));
+        tgt.copy(m).add(V(0, 1.42, 0));
+        fov = 30;
         break;
       }
       default: { // H: the rise — along the golden threads, over the golden city, through the mist and the clouds
@@ -271,7 +271,7 @@ export default class Dawn extends Scene {
         pos.copy(m).add(V(lerp(-4.0, -150, h), lerp(1.6, 760, hh), lerp(-0.9, 40, h)));
         // the eye: past them toward the sun, then out over the city, then the horizon
         const look = smoothstep(0.1, 0.6, u);
-        tgt.copy(m).add(V(6, 1.0, 0)).lerp(V(500, lerp(0, pos.y * 0.8, smoothstep(0.35, 1, u)), -20), look);
+        tgt.copy(m).add(V(6, 0.9, -2.8)).lerp(V(500, lerp(0, pos.y * 0.8, smoothstep(0.35, 1, u)), -20), look);
         fov = lerp(44, 58, smoothstep(0, 0.6, u));
         roll = 0.08 * Math.sin(u * Math.PI);
         break;
@@ -359,7 +359,12 @@ export default class Dawn extends Scene {
     if (fl > 0.02) glows.push({ pos: g.clone(), color: col('white', 1.2 * fl), radius: 3 });
     w.glows(glows);
     w.cat.visible = false;
-    w.update(t, cam, { wind: 0.45 }); w.city.life.visible = true; for (const l of w.city.lods) l.visible = false;
+    w.update(t, cam, { wind: 0.45 });
+    // (cheaper: street life — traffic, street furniture, passers-by — only where the street is in the shot; the
+    // far city cut where the haze has swallowed it anyway)
+    w.city.life.visible = (shot === 3 || shot === 6 || (shot === 9 && t < T.beautiful + 1.0)) || shot === 4 || shot === 5;
+    cam.far = shot === 9 ? 7000 : shot === 6 || shot === 3 ? 2600 : 1400;
+    cam.updateProjectionMatrix();
 
     S.render(this.ctx.renderer, this.grade.scene);
     // (shafts: strong in the wide shots, gentle close up and among the stars; only the sun and the sky make them)

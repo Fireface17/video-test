@@ -68,8 +68,8 @@ export function makeTimeline(ly: Lyrics, au: AudioData): TimelineEntry[] {
     E('train', 'train', b.verse2, b.chorus2, X('glitch', 0.4, { seed: 7 })),
     // out of the station and running: a whip pan on the downbeat into the street
     E('chorus2', 'run', b.chorus2, b.break2, X('whip', 0.4, { dir: [1, 0] })),
-    // the chorus's last light swells and settles into the blue hour on the overpass
-    E('break2', 'overpass', b.break2, b.bridge, X('light', 0.7, { color: lin('#bcd4ff', 0.9) })),
+    // the chorus's last light settles: a slow dissolve into the quiet blue hour on the overpass
+    E('break2', 'overpass', b.break2, b.bridge, X('crossfade', 0.9)),
     // up and through, into space
     E('bridge', 'fall', b.bridge, b.chorus3, X('zoom', 0.9, { centre: [0.5, 0.62], color: lin('blue', 1.2) })),
     // a golden star opens onto the final chorus: dawn on the rooftop, the whole city takes hands
