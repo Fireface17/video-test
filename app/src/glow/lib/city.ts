@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import { mulberry32 } from '../../engine/util';
 import { GlowPoints } from './points';
 import { CityPlan, F, Grid, GRID, ST, faceNormal, type Building, type Tier } from './city-plan';
-import { CITY_GLSL, cityUniforms, type CityUniforms } from './city-glsl';
+import { CITY_GLSL, OPEN_GLSL, cityUniforms, type CityUniforms } from './city-glsl';
 import {
   CityLOD, KitBuilder, M, TileSet, deckGeometry, planterGeometry, skylightGeometry, solarGeometry, antennaGeometry, balconyGeometry, buildingBatch, buildingMeshes, facadeMaterial, plantMaterial, roofMaterial, buildingMaterial, fireEscapeGeometry, kitBatch, kitMaterial, ringBatch, ringGeometry, ringMaterial, roofBoxGeometry, waterTowerGeometry,
   type BInst, type KInst, type RInst,
@@ -54,6 +54,12 @@ export interface CityOpts {
   sky?: boolean;
   /** The distant skyline bands. Default true. */
   skyline?: boolean;
+  /**
+   * Hidden surfaces skip their shading: a depth prepass of the facades, roofs and sidewalks, then each city shader
+   * returns early for 2×2 pixel quads behind it. Pixels are unchanged. 'auto' (default) = only on software WebGL
+   * (SwiftShader, which shades every fragment it rasterizes); GPUs remove hidden surfaces themselves.
+   */
+  occlusion?: boolean | 'auto';
   /** Wet streets reflect the city (an extra low-res render). Default true. */
   mirror?: boolean;
   /** Street detail density 0..1 (trees, parked cars, props). Default 1. */
@@ -201,6 +207,8 @@ export class City extends THREE.Group {
   /** The highway overpass along the river (if any): its centre x, deck height, extent along z, lane centres, the walkway. */
   overpass: OverpassInfo | null = null;
   rail: Rail;
+  /** The occluder depth prepass (see Occluders). */
+  occ!: Occluders;
   /** Multipliers for the lamps' glow and the shop signs (e.g. pulses on the kicks). */
   lampGain = 1;
   /** Draw the wet-street reflections (when the camera is low enough). */
@@ -427,18 +435,33 @@ export class City extends THREE.Group {
       }
     }
     // ---- the wet ground's reflections ----
+    // ---- per render: the occluder depth prepass (software renderers), then the wet streets' reflection ----
+    this.occ = new Occluders(this, slabs, o.occlusion ?? 'auto');
     if (o.mirror !== false) {
       this.mirror = new Mirror(this, mirrorHide);
       this.mirrorOn = true;
-      // a sentinel drawn before any city surface renders the reflection for this frame's camera
-      const sg = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute([0, -1e4, 0, 0, -1e4, 0, 0, -1e4, 0], 3));
-      const sentinel = new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
-      sentinel.frustumCulled = false;
-      sentinel.renderOrder = -3;
-      sentinel.onBeforeRender = (renderer, scene, camera) => { if (this.mirrorOn) this.mirror!.update(renderer, scene, camera as THREE.PerspectiveCamera); else this.U.uMirrorOn.value = 0; };
-      this.add(sentinel);
-      mirrorHide.push(sentinel);
     }
+    // a sentinel drawn before anything else of the city's (renderOrder -1000) does both for this render's camera
+    const sg = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute([0, -1e4, 0, 0, -1e4, 0, 0, -1e4, 0], 3));
+    const sentinel = new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
+    sentinel.frustumCulled = false;
+    sentinel.renderOrder = -1000;
+    sentinel.onBeforeRender = (renderer, scene, camera) => {
+      this.occ.render(renderer, camera);
+      if (this.mirror && this.mirrorOn) {
+        const on = this.U.uOccOn.value;
+        this.U.uOccOn.value = 0; // (the reflection is seen from below: the prepass doesn't apply)
+        this.mirror.update(renderer, scene, camera as THREE.PerspectiveCamera);
+        this.U.uOccOn.value = on;
+      } else this.U.uMirrorOn.value = 0;
+    };
+    // ... and one drawn after everything (the last transparent) switches the prepass off again
+    const after = new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, transparent: true }));
+    after.frustumCulled = false;
+    after.renderOrder = 1e9;
+    after.onAfterRender = () => { this.U.uOccOn.value = 0; };
+    this.add(sentinel, after);
+    mirrorHide.push(sentinel, after);
   }
 
   /** Building → instances in its tile. */
@@ -562,6 +585,13 @@ export class City extends THREE.Group {
       U.uOpenA.value[slot]!.set(0, -1e5, 0, 0); U.uOpenB.value[slot]!.set(0, 0, 0, 0);
       U.uOpenN.value = Math.max(0, ...this.rooms.map((r, i) => (r ? i + 1 : 0)));
       return null;
+    }
+    // the facades compile the cut (a discard) only once a window has been opened: a discard costs GPUs their
+    // hidden-surface removal
+    for (const m of [this.mat, ...this.facM.flat(), this.occ.facM]) {
+      if (m.defines?.OPEN_CUT) continue;
+      m.defines = { ...(m.defines ?? {}), OPEN_CUT: 1 };
+      m.needsUpdate = true;
     }
     const [w, h] = a.size, n = a.facing, depth = o.depth ?? 4.2, rw = o.width ?? Math.max(w + 2.2, 3.6);
     const cx = a.pos.x, cy = a.pos.y + h / 2, cz = a.pos.z;
@@ -756,6 +786,177 @@ export class City extends THREE.Group {
     if (cor) grp.add(ringBatch(ringGeometry([[0, 0, 0], [0.22, 0.25, 0], [0.3, 0.3, 0], [0.42, 0.38, 0], [0.7, 0.92, 0], [0.82, 1, 0], [1, 1, 0]], 0.35, false), [{ x, y0: h - 1.0, z, hx: w / 2, hz: d / 2, h: 1.3, proj: 0.7, col, fancy: 1 }], ringMaterial(this.U), origin));
     else grp.add(ringBatch(ringGeometry([[0, 0, 0.0], [1, 0, 0.0], [1, 0, 0.06]], 0.32, true), [{ x, y0: h, z, hx: w / 2, hz: d / 2, h: 0.95, proj: 0, col, fancy: 0 }], ringMaterial(this.U), origin));
     return grp;
+  }
+}
+
+/**
+ * Depth-only copies of the city's big opaque surfaces (facades, roofs, bulkheads, sidewalk slabs): same geometry, same
+ * position math, rendered into a float depth texture just before the city draws, then reduced to a max-depth
+ * pyramid. The city's vertex shaders drop faces / instances that lie wholly behind it (HZB_GLSL), so those are never
+ * rasterized; fragment shaders skip loop work in 2×2 quads behind it (OCC_GLSL). SwiftShader has no early depth
+ * test and runs every instruction of a shader for every rasterized fragment, so hidden surfaces cost as much as
+ * visible ones there; on GPUs (hidden-surface removal) this would only add work, so 'auto' turns it on for
+ * software renderers only.
+ */
+class Occluders {
+  scene = new THREE.Scene();
+  root = new THREE.Group();
+  rt: THREE.WebGLRenderTarget | null = null;
+  /** the facades' depth material (cut open where a window was opened, like the facades) */
+  facM: THREE.ShaderMaterial;
+  private on: boolean | null;
+  private pairs: [THREE.Object3D, THREE.Object3D][] = [];
+  // the max-depth pyramid: one target per level (each reduced from the one before), all copied into one atlas
+  private levels: THREE.WebGLRenderTarget[] = [];
+  private atlas: THREE.WebGLRenderTarget | null = null;
+  private quadScene = new THREE.Scene();
+  private quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  private quad: THREE.Mesh;
+  private reduceM: THREE.ShaderMaterial;
+  private copyM: THREE.ShaderMaterial;
+  constructor(private city: City, slabs: THREE.Mesh, mode: boolean | 'auto') {
+    this.on = mode === 'auto' ? null : mode;
+    this.scene.add(this.root);
+    this.root.matrixAutoUpdate = false;
+    const depthFS = 'void main() { gl_FragColor = vec4(0.0); }';
+    const boxVS = /* glsl */ `
+      attribute vec3 aPos; attribute vec3 aSize;
+      void main() { vec4 w = modelMatrix * vec4(aPos + position * aSize, 1.0); gl_Position = projectionMatrix * viewMatrix * w; }`;
+    const slabVS = /* glsl */ `
+      attribute vec4 aRect;
+      void main() {
+        vec3 p = vec3(mix(aRect.x, aRect.z, position.x + 0.5), position.y * 0.15, mix(aRect.y, aRect.w, position.z + 0.5));
+        vec4 w = modelMatrix * vec4(p, 1.0);
+        gl_Position = projectionMatrix * viewMatrix * w;
+      }`;
+    const boxM = new THREE.ShaderMaterial({ vertexShader: boxVS, fragmentShader: depthFS });
+    const slabM = new THREE.ShaderMaterial({ vertexShader: slabVS, fragmentShader: depthFS });
+    const U = city.U as unknown as Record<string, THREE.IUniform>;
+    this.facM = new THREE.ShaderMaterial({
+      uniforms: { uOrigin: U.uOrigin!, uOpenA: U.uOpenA!, uOpenB: U.uOpenB!, uOpenN: U.uOpenN! },
+      vertexShader: /* glsl */ `
+        attribute vec3 aPos; attribute vec3 aSize; varying vec3 vW;
+        void main() { vec4 w = modelMatrix * vec4(aPos + position * aSize, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+      fragmentShader: /* glsl */ `
+        uniform vec3 uOrigin; uniform vec4 uOpenA[6]; uniform vec4 uOpenB[6]; uniform int uOpenN; varying vec3 vW;
+        ${OPEN_GLSL}
+        void main() { openCut(vW); gl_FragColor = vec4(0.0); }`,
+    });
+    const copy = (src: THREE.Mesh, mat: THREE.Material, pos: THREE.Vector3, vis: THREE.Object3D) => {
+      const m = new THREE.Mesh(src.geometry, mat);
+      m.position.copy(pos);
+      m.frustumCulled = src.frustumCulled;
+      m.matrixAutoUpdate = false;
+      m.updateMatrix();
+      this.root.add(m);
+      this.pairs.push([m, vis]);
+    };
+    for (const c of city.children) {
+      if (c instanceof CityLOD) copy(c.levels[0]!.object as THREE.Mesh, this.facM, c.position, c);
+      else if ((c as THREE.Mesh).isMesh && ((c as THREE.Mesh).material === city.roofM || ((c as THREE.Mesh).material as THREE.ShaderMaterial).fragmentShader?.includes('doorFace'))) copy(c as THREE.Mesh, boxM, c.position, c);
+    }
+    copy(slabs, slabM, slabs.position, slabs);
+    // the pyramid's passes: a full-screen triangle pair; level n+1 = max of 2×2 texels of level n (edges clamped)
+    const quadVS = 'void main() { gl_Position = vec4(position.xy * 2.0, 0.0, 1.0); }';
+    this.reduceM = new THREE.ShaderMaterial({
+      uniforms: { uSrc: { value: null }, uMaxP: { value: new THREE.Vector2() } },
+      vertexShader: quadVS,
+      fragmentShader: /* glsl */ `
+        uniform sampler2D uSrc; uniform vec2 uMaxP;
+        void main() {
+          ivec2 p = ivec2(gl_FragCoord.xy) * 2, m = ivec2(uMaxP);
+          float z = max(max(texelFetch(uSrc, min(p, m), 0).r, texelFetch(uSrc, min(p + ivec2(1, 0), m), 0).r),
+                        max(texelFetch(uSrc, min(p + ivec2(0, 1), m), 0).r, texelFetch(uSrc, min(p + ivec2(1, 1), m), 0).r));
+          gl_FragColor = vec4(z, 0.0, 0.0, 1.0);
+        }`,
+      depthTest: false, depthWrite: false,
+    });
+    this.copyM = new THREE.ShaderMaterial({
+      uniforms: { uSrc: { value: null }, uOff: { value: new THREE.Vector2() } },
+      vertexShader: quadVS,
+      fragmentShader: /* glsl */ `
+        uniform sampler2D uSrc; uniform vec2 uOff;
+        void main() { gl_FragColor = vec4(texelFetch(uSrc, ivec2(gl_FragCoord.xy - uOff), 0).r, 0.0, 0.0, 1.0); }`,
+      depthTest: false, depthWrite: false,
+    });
+    this.quad = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), this.reduceM);
+    this.quad.frustumCulled = false;
+    this.quadScene.add(this.quad);
+  }
+  /** Is this a software renderer (SwiftShader)? */
+  private detect(renderer: THREE.WebGLRenderer) {
+    const gl = renderer.getContext();
+    let name = '';
+    try {
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      name = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+    } catch { name = ''; }
+    return /swiftshader|llvmpipe|software/i.test(name);
+  }
+  private resize(w: number, h: number) {
+    this.rt?.dispose();
+    this.rt = new THREE.WebGLRenderTarget(w, h, { format: THREE.RedFormat, type: THREE.UnsignedByteType, depthBuffer: true, depthTexture: new THREE.DepthTexture(w, h, THREE.FloatType) });
+    this.levels.forEach((l) => l.dispose());
+    this.atlas?.dispose();
+    this.levels = [];
+    const opt = { format: THREE.RedFormat, type: THREE.FloatType, depthBuffer: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false } as const;
+    const U = this.city.U;
+    let lw = w, lh = h, y = 0;
+    const sizes: [number, number][] = [];
+    while ((lw > 1 || lh > 1) && sizes.length < 12) { lw = Math.ceil(lw / 2); lh = Math.ceil(lh / 2); sizes.push([lw, lh]); }
+    const [w1, h1] = sizes[0]!, w2 = sizes[1]?.[0] ?? 0;
+    sizes.forEach(([sw, sh], i) => {
+      this.levels.push(new THREE.WebGLRenderTarget(sw, sh, opt));
+      const L = U.uHzbL.value[i + 1]!;
+      if (i === 0) L.set(0, 0, sw, sh);
+      else { L.set(w1, y, sw, sh); y += sh; }
+    });
+    this.atlas = new THREE.WebGLRenderTarget(w1 + w2, Math.max(h1, y), opt);
+    U.uHzbSize.value.set(w, h);
+    U.uHzbMax.value = sizes.length;
+  }
+  render(renderer: THREE.WebGLRenderer, camera: THREE.Camera) {
+    const U = this.city.U;
+    if (this.on === null) this.on = this.detect(renderer);
+    if (!this.on || !this.city.visible) { U.uOccOn.value = 0; return; }
+    const cur = renderer.getRenderTarget();
+    const size = cur ? new THREE.Vector2(cur.width, cur.height) : renderer.getDrawingBufferSize(new THREE.Vector2());
+    if (!this.rt || this.rt.width !== size.x || this.rt.height !== size.y) this.resize(size.x, size.y);
+    this.root.matrix.copy(this.city.matrixWorld);
+    for (const [m, src] of this.pairs) m.visible = src.visible;
+    U.uOccOn.value = 0;
+    const clearC = new THREE.Color(); renderer.getClearColor(clearC); const clearA = renderer.getClearAlpha();
+    const autoClear = renderer.autoClear;
+    renderer.autoClear = false;
+    renderer.setRenderTarget(this.rt);
+    renderer.setClearColor(0x000000, 0);
+    renderer.clear(true, true, true);
+    renderer.render(this.scene, camera);
+    // the max-depth pyramid
+    let src: THREE.Texture = this.rt!.depthTexture!, sw = size.x, sh = size.y;
+    this.quad.material = this.reduceM;
+    for (const l of this.levels) {
+      this.reduceM.uniforms.uSrc!.value = src;
+      this.reduceM.uniforms.uMaxP!.value.set(sw - 1, sh - 1);
+      renderer.setRenderTarget(l);
+      renderer.render(this.quadScene, this.quadCam);
+      src = l.texture; sw = l.width; sh = l.height;
+    }
+    this.quad.material = this.copyM;
+    this.levels.forEach((l, i) => {
+      const L = U.uHzbL.value[i + 1]!;
+      this.copyM.uniforms.uSrc!.value = l.texture;
+      this.copyM.uniforms.uOff!.value.set(L.x, L.y);
+      this.atlas!.viewport.set(L.x, L.y, L.z, L.w);
+      renderer.setRenderTarget(this.atlas);
+      renderer.render(this.quadScene, this.quadCam);
+    });
+    renderer.setRenderTarget(cur);
+    renderer.setClearColor(clearC, clearA);
+    renderer.autoClear = autoClear;
+    U.uOccDepth.value = this.rt!.depthTexture;
+    U.uHzb.value = this.atlas!.texture;
+    U.uOccOn.value = 1;
   }
 }
 

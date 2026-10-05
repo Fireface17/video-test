@@ -3,7 +3,7 @@
 // curbs; rear yards; the static street light baked into a light map (lamp pools, shopfront spill), which every
 // city material samples, scaled by the power at the place.
 import * as THREE from 'three';
-import { CITY_GLSL, type CityUniforms } from './city-glsl';
+import { CITY_GLSL, OCC_GLSL, type CityUniforms } from './city-glsl';
 import { SHOP, type CityPlan, type Lamp, type Shop } from './city-plan';
 import { KitBuilder, M } from './city-build';
 
@@ -132,10 +132,12 @@ export function groundMaterial(U: CityUniforms, gridGlsl: string, riverX: number
       ${CITY_GLSL}
       ${gridGlsl}
       ${WET_GLSL}
+      ${OCC_GLSL}
       uniform vec4 uVein; uniform vec3 uVeinC;
       varying vec3 vW;
       const float RIVER_X = ${(riverX ?? 1e9).toFixed(1)};
       void main() {
+        OCCLUDED_RETURN
         vec2 xz = vW.xz - uOrigin.xz;
         vec2 an = avNear(xz.x), sn = stNear(xz.y);
         float wide = stWide(sn.x);
@@ -238,7 +240,9 @@ export function slabMaterial(U: CityUniforms) {
       ${CITY_GLSL}
       ${WET_GLSL}
       varying vec3 vW, vN; varying vec4 vRect, vWalk; varying vec2 vKind;
+      ${OCC_GLSL}
       void main() {
+        OCCLUDED_RETURN
         vec3 N = normalize(vN);
         vec2 xz = vW.xz - uOrigin.xz;
         float p = power(vW.xz);

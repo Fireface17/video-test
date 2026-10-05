@@ -5,7 +5,7 @@
 //   fire escapes, lamp posts, hydrants, cars…) with per-vertex materials and per-instance position, yaw,
 //   scale, colour and light level.
 import * as THREE from 'three';
-import { CITY_GLSL, FACADE_GLSL, FACADE_VS, OPEN_GLSL, ROOF_GLSL, type CityUniforms } from './city-glsl';
+import { CITY_GLSL, FACADE_GLSL, FACADE_VS, HZB_GLSL, OCC_GLSL, OPEN_GLSL, ROOF_GLSL, type CityUniforms } from './city-glsl';
 
 // ---------------------------------------------------------------- buildings
 
@@ -24,19 +24,23 @@ export function facadeMaterial(U: CityUniforms, lod: number, glass: boolean) {
     vertexShader: /* glsl */ `
       attribute vec3 aPos; attribute vec3 aSize; attribute vec4 aF0, aF1, aF2, aF3;
       ${BUILDING_VS_HEAD}
+      ${HZB_GLSL}
       void main() {
         vec4 w = modelMatrix * vec4(aPos + position * aSize, 1.0);
         vW = w.xyz; vN = normalize(mat3(modelMatrix) * normal);
         vF0 = aF0; vF1 = aF1; vF2 = aF2; vF3 = aF3;
         facadeVertex(vW, vN, (modelMatrix * vec4(aPos, 1.0)).xyz, aSize, aF0, aF1, aF3);
         gl_Position = projectionMatrix * viewMatrix * w;
+        if (hzbBoxFace(aPos, aSize)) HZB_COLLAPSE
       }`,
     fragmentShader: /* glsl */ `
       varying vec3 vW, vN; varying vec4 vF0, vF1, vF2, vF3;
       ${CITY_GLSL}
+      ${OCC_GLSL}
       ${OPEN_GLSL}
       ${FACADE_GLSL}
       void main() {
+        OCCLUDED_RETURN
         openCut(vW);
         vec3 N = normalize(vN), V = normalize(vW - cameraPosition);
         vec3 c = facade(vW, N, V, vF0, vF1, vF2, vF3);
@@ -53,16 +57,19 @@ export function roofMaterial(U: CityUniforms) {
       attribute vec3 aPos; attribute vec3 aSize; attribute vec4 aF0;
       varying vec3 vW, vC, vS; varying float vSeed, vP;
       ${CITY_GLSL}
+      ${HZB_GLSL}
       void main() {
         vec4 w = modelMatrix * vec4(aPos + position * aSize, 1.0);
         vW = w.xyz; vC = (modelMatrix * vec4(aPos, 1.0)).xyz; vS = aSize; vSeed = aF0.x; vP = power(vW.xz);
         gl_Position = projectionMatrix * viewMatrix * w;
+        if (hzbBoxFace(aPos, aSize)) HZB_COLLAPSE
       }`,
     fragmentShader: /* glsl */ `
       varying vec3 vW, vC, vS; varying float vSeed, vP;
       ${CITY_GLSL}
+      ${OCC_GLSL}
       ${ROOF_GLSL}
-      void main() { gl_FragColor = vec4(cityFog(roofShade(vW, vC, vS, vSeed, vP), vW, vP), 1.0); }`,
+      void main() { OCCLUDED_RETURN gl_FragColor = vec4(cityFog(roofShade(vW, vC, vS, vSeed, vP), vW, vP), 1.0); }`,
   });
 }
 
@@ -74,15 +81,19 @@ export function plantMaterial(U: CityUniforms) {
       attribute vec3 aPos; attribute vec3 aSize; attribute vec4 aF0, aF1, aF2;
       varying vec3 vW, vN, vC; varying vec4 vF0, vF1, vF2; varying float vP;
       ${CITY_GLSL}
+      ${HZB_GLSL}
       void main() {
         vec4 w = modelMatrix * vec4(aPos + position * aSize, 1.0);
         vW = w.xyz; vN = normal; vC = (modelMatrix * vec4(aPos, 1.0)).xyz; vF0 = aF0; vF1 = aF1; vF2 = aF2; vP = power(vW.xz);
         gl_Position = projectionMatrix * viewMatrix * w;
+        if (hzbBoxFace(aPos, aSize)) HZB_COLLAPSE
       }`,
     fragmentShader: /* glsl */ `
       varying vec3 vW, vN, vC; varying vec4 vF0, vF1, vF2; varying float vP;
       ${CITY_GLSL}
+      ${OCC_GLSL}
       void main() {
+        OCCLUDED_RETURN
         vec3 N = normalize(vN);
         vec3 T = vec3(N.z, 0.0, -N.x);
         float u = dot(vW.xz - vC.xz, T.xz), v = vW.y - vC.y;
@@ -133,10 +144,12 @@ export function buildingMaterial(U: CityUniforms) {
     fragmentShader: /* glsl */ `
       varying vec3 vW, vN, vC, vS; varying vec4 vF0, vF1, vF2, vF3;
       ${CITY_GLSL}
+      ${OCC_GLSL}
       ${OPEN_GLSL}
       ${FACADE_GLSL}
       ${ROOF_GLSL}
       void main() {
+        OCCLUDED_RETURN
         openCut(vW);
         vec3 N = normalize(vN), V = normalize(vW - cameraPosition);
         vec3 c = N.y > 0.5 ? roofShade(vW, vC, vS, vF0.x, vPG.x) : vF0.y > 6.5 ? vF2.rgb * (ambient(N) + streetLight(vW.xz + N.xz * 2.0, vW.y, vPG.x) * 0.4) : facade(vW, N, V, vF0, vF1, vF2, vF3);
@@ -288,7 +301,9 @@ export function ringMaterial(U: CityUniforms) {
     fragmentShader: /* glsl */ `
       varying vec3 vL, vW; varying vec4 vCol; varying float vY; varying vec2 vU, vFk; varying float vP;
       ${CITY_GLSL}
+      ${OCC_GLSL}
       void main() {
+        OCCLUDED_RETURN
         vec3 alb = vCol.rgb;
         // dentils and brackets on cornices
         float px = fwidth(vU.x);
@@ -462,7 +477,11 @@ export function kitMaterial(U: CityUniforms, o: { side?: THREE.Side; streetK?: n
       attribute vec4 aV; attribute vec3 aL;
       attribute vec4 iPos; attribute vec3 iScale; attribute vec4 iCol; attribute vec4 iX;
       varying vec3 vW, vN, vL, vLight; varying vec4 vV, vCol, vX; varying vec2 vFk; varying float vP, vOn;
+      #ifdef KIT_HZB
+        attribute vec3 aBMin, aBMax;
+      #endif
       ${CITY_GLSL}
+      ${HZB_GLSL}
       ${o.extraHead ?? ''}
       void main() {
         vec4 ip = iPos; vec3 isc = iScale; vec4 icol = iCol;
@@ -486,39 +505,72 @@ export function kitMaterial(U: CityUniforms, o: { side?: THREE.Side; streetK?: n
           vec3 iw = (modelMatrix * vec4(ip.xyz, 1.0)).xyz;
           if (distance(iw.xz, cameraPosition.xz) < uCullNear) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
         #endif
+        #ifdef KIT_HZB
+          // the whole instance (its geometry's box) behind the occluders: not rasterized
+          if (uOccOn > 0.5) {
+            mat4 PV = projectionMatrix * viewMatrix;
+            vec4 lohi = vec4(1e9, 1e9, -1e9, -1e9); vec2 zw = vec2(1e9);
+            for (int i = 0; i < 8; i++) {
+              vec3 b = mix(aBMin, aBMax, vec3(float(i & 1), float((i >> 1) & 1), float((i >> 2) & 1))) * isc;
+              hzbAdd(PV * (modelMatrix * vec4(vec3(c * b.x + s * b.z, b.y, -s * b.x + c * b.z) + ip.xyz, 1.0)), lohi, zw);
+            }
+            if (hzbTest(lohi, zw)) HZB_COLLAPSE
+          }
+        #endif
       }`,
     fragmentShader: /* glsl */ `
       varying vec3 vW, vN, vL, vLight; varying vec4 vV, vCol, vX; varying vec2 vFk; varying float vP, vOn;
       ${CITY_GLSL}
+      ${OCC_GLSL}
       ${CAR_PAINT_GLSL}
+      // (a variant for one geometry compiles only the modes it uses: see kitBatch)
+      #ifndef KIT_VARIANT
+        #define KF_CUT 1
+        #define KF_LEAF 1
+        #define KF_CARD 1
+        #define KF_PAINT 1
+        #define KF_SIG 1
+        #define KF_GLASS 1
+      #endif
       void main() {
+        OCCLUDED_RETURN
         float mode = vV.a;
-        // cut-outs: iron bars (vertical, with a top and bottom rail) / stair treads (horizontal)
-        float ry = vL.y - 0.05;
-        if (mode > 4.5 && mode < 5.5 && fract((vL.x + vL.z) * 8.0) > 0.2 && ry > 0.06 && ry < 0.82) discard;
-        if (mode > 5.5 && mode < 6.5 && fract(vL.y * 4.2) > 0.3) discard;
-        // lattice girders (an X web between flanges), open ties of the el's deck
-        if (mode > 10.5 && mode < 11.5) {
-          float a1 = abs(fract((vL.z + vL.y) * 0.85) - 0.5), a2 = abs(fract((vL.z - vL.y) * 0.85) - 0.5);
-          float web = step(min(a1, a2), 0.07);
-          float flange = step(vL.y, 0.12) + step(0.88, vL.y);
-          if (web + flange < 0.5) discard;
-        }
-        if (mode > 11.5 && mode < 12.5 && fract(vL.z / 0.62) > 0.42) discard;
-        // leaves: a ragged canopy (holes where the noise is low), lighter and darker clumps
-        float leafN = vnoise(vL.xz * 2.2 + vL.y * 1.7 + vCol.a * 9.0);
-        if (mode > 9.5 && mode < 10.5 && leafN < 0.36) discard;
-        // leaf cards: clusters of leaves (alpha-tested), denser in the middle of the card
-        vec2 cu = vL.xy / max(vX.y, 0.3);
-        float leafA = vnoise(cu * 9.0 + vX.z * 13.0) * 0.7 + vnoise(cu * 23.0 + 5.0) * 0.45 - length(cu) * 1.25;
-        if (mode > 12.5 && mode < 13.5 && leafA < 0.08) discard;
+        #ifdef KF_CUT
+          // cut-outs: iron bars (vertical, with a top and bottom rail) / stair treads (horizontal)
+          float ry = vL.y - 0.05;
+          if (mode > 4.5 && mode < 5.5 && fract((vL.x + vL.z) * 8.0) > 0.2 && ry > 0.06 && ry < 0.82) discard;
+          if (mode > 5.5 && mode < 6.5 && fract(vL.y * 4.2) > 0.3) discard;
+          // lattice girders (an X web between flanges), open ties of the el's deck
+          if (mode > 10.5 && mode < 11.5) {
+            float a1 = abs(fract((vL.z + vL.y) * 0.85) - 0.5), a2 = abs(fract((vL.z - vL.y) * 0.85) - 0.5);
+            float web = step(min(a1, a2), 0.07);
+            float flange = step(vL.y, 0.12) + step(0.88, vL.y);
+            if (web + flange < 0.5) discard;
+          }
+          if (mode > 11.5 && mode < 12.5 && fract(vL.z / 0.62) > 0.42) discard;
+        #endif
+        #ifdef KF_LEAF
+          // leaves: a ragged canopy (holes where the noise is low), lighter and darker clumps
+          float leafN = vnoise(vL.xz * 2.2 + vL.y * 1.7 + vCol.a * 9.0);
+          if (mode > 9.5 && mode < 10.5 && leafN < 0.36) discard;
+        #endif
+        #ifdef KF_CARD
+          // leaf cards: clusters of leaves (alpha-tested), denser in the middle of the card
+          vec2 cu = vL.xy / max(vX.y, 0.3);
+          float leafA = vnoise(cu * 9.0 + vX.z * 13.0) * 0.7 + vnoise(cu * 23.0 + 5.0) * 0.45 - length(cu) * 1.25;
+          if (mode > 12.5 && mode < 13.5 && leafA < 0.08) discard;
+        #endif
         float paintM = step(13.5, mode) * step(mode, 14.5);
         vec3 alb = mode < 0.5 || paintM > 0.5 ? vCol.rgb * mix(vV.rgb, vec3(1.0), paintM) : vV.rgb;
         // deck planks
         alb *= mix(1.0, (0.75 + 0.45 * h11(floor(vL.x * 7.0) + floor(vL.z * 0.8) * 3.0)) * (1.0 - 0.5 * step(fract(vL.x * 7.0), 0.08)), step(14.5, mode));
         alb *= mix(1.0, 0.8 + 0.4 * h11(floor(vL.z / 0.62) + 2.0), step(11.5, mode) * step(mode, 12.5));
-        alb *= mix(1.0, 0.65 + 0.7 * clamp(leafA * 2.0, 0.0, 1.0), step(12.5, mode) * step(mode, 13.5));
-        alb *= mix(1.0, 0.6 + 0.8 * leafN, step(9.5, mode) * step(mode, 10.5));
+        #ifdef KF_CARD
+          alb *= mix(1.0, 0.65 + 0.7 * clamp(leafA * 2.0, 0.0, 1.0), step(12.5, mode) * step(mode, 13.5));
+        #endif
+        #ifdef KF_LEAF
+          alb *= mix(1.0, 0.6 + 0.8 * leafN, step(9.5, mode) * step(mode, 10.5));
+        #endif
         // stripes (awnings with k > 0.5; Con Ed stacks: orange and white bands)
         float stripeM = step(7.5, mode) * step(mode, 8.5);
         float isBand = step(vV.g, 0.9);
@@ -526,30 +578,37 @@ export function kitMaterial(U: CityUniforms, o: { side?: THREE.Side; streetK?: n
         alb = mix(alb, mix(vec3(0.9, 0.3, 0.04), vec3(0.85, 0.84, 0.8), step(0.5, fract(vL.y * 1.6))), stripeM * isBand);
         // the wooden barrel of a water tank: staves, iron hoops
         float sv = (vL.x * 3.0 + vL.z * 7.0);
-        float wood = step(6.5, mode);
+        float wood = step(6.5, mode) * step(mode, 7.5);
         alb *= mix(1.0, (0.8 + 0.35 * h11(floor(sv) + 3.0)) * (1.0 - 0.8 * step(abs(fract(vL.y / 0.78) - 0.5), 0.05)), wood);
         vec3 c = alb * vLight;
-        // car paint: door seams and handles, clear-coat reflections
-        if (paintM > 0.5) c = carPaint(c, alb, vL, vN, vW, vLight);
+        #ifdef KF_PAINT
+          // car paint: door seams and handles, clear-coat reflections
+          if (paintM > 0.5) c = carPaint(c, alb, vL, vN, vW, vLight);
+        #endif
         // emissive: powered lamps, unpowered car / aviation lights; glass reflects the sky
-        float lampM = step(1.5, mode) * step(mode, 2.5), lightM = step(3.5, mode) * step(mode, 4.5), glassM = step(2.5, mode) * step(mode, 3.5);
+        float lampM = step(1.5, mode) * step(mode, 2.5), lightM = step(3.5, mode) * step(mode, 4.5);
         c += vV.rgb * mix(vec3(1.0, 0.25, 0.1), vec3(1.0), vOn) * vOn * fract(vCol.a) * 4.0 * lampM;
         c = mix(c, vV.rgb * vCol.a, lightM);
-        vec3 V = normalize(vW - cameraPosition), N = normalize(vN);
-        c = mix(c, alb * vLight * 0.4 + skyRefl(reflect(V, N)) * (0.15 + 0.6 * pow(1.0 - clamp(abs(dot(V, N)), 0.0, 1.0), 3.0)) + vLight * 0.02, glassM);
-        // traffic-signal lenses: the cycle (vX.x = this intersection's offset), the power
-        float sigM = step(8.5, mode) * step(mode, 9.5);
-        float ph = mod(uTime - vX.x, SIG_P);
-        float stA = ph < 16.0 ? 2.0 : ph < 19.0 ? 1.0 : 0.0, stS = ph >= 20.0 && ph < 27.0 ? 2.0 : ph >= 27.0 && ph < 29.0 ? 1.0 : 0.0;
-        float lensId = vV.r * 2.0;
-        float st = vV.g < 0.25 ? stA : vV.g > 0.75 ? stS : -5.0;
-        vec3 lc = lensId > 1.5 ? vec3(0.15, 1.0, 0.55) : lensId > 0.5 ? vec3(1.0, 0.55, 0.05) : vec3(1.0, 0.07, 0.03);
-        float pOn = step(0.0, vP - 0.12 - 0.3 * fract(vX.x * 0.37));
-        float lit = step(abs(st - lensId), 0.1) * pOn;
-        // the walk signal: a white figure while the avenue is green, the orange hand otherwise
-        float walk = step(abs(vV.g - 0.5), 0.1);
-        vec3 pedC = stA > 1.5 ? vec3(0.9, 0.95, 1.0) : vec3(1.0, 0.45, 0.08);
-        c = mix(c, mix(lc * (lit * 3.2 + 0.03), pedC * pOn * 1.6, walk), sigM);
+        #ifdef KF_GLASS
+          float glassM = step(2.5, mode) * step(mode, 3.5);
+          vec3 V = normalize(vW - cameraPosition), N = normalize(vN);
+          c = mix(c, alb * vLight * 0.4 + skyRefl(reflect(V, N)) * (0.15 + 0.6 * pow(1.0 - clamp(abs(dot(V, N)), 0.0, 1.0), 3.0)) + vLight * 0.02, glassM);
+        #endif
+        #ifdef KF_SIG
+          // traffic-signal lenses: the cycle (vX.x = this intersection's offset), the power
+          float sigM = step(8.5, mode) * step(mode, 9.5);
+          float ph = mod(uTime - vX.x, SIG_P);
+          float stA = ph < 16.0 ? 2.0 : ph < 19.0 ? 1.0 : 0.0, stS = ph >= 20.0 && ph < 27.0 ? 2.0 : ph >= 27.0 && ph < 29.0 ? 1.0 : 0.0;
+          float lensId = vV.r * 2.0;
+          float st = vV.g < 0.25 ? stA : vV.g > 0.75 ? stS : -5.0;
+          vec3 lc = lensId > 1.5 ? vec3(0.15, 1.0, 0.55) : lensId > 0.5 ? vec3(1.0, 0.55, 0.05) : vec3(1.0, 0.07, 0.03);
+          float pOn = step(0.0, vP - 0.12 - 0.3 * fract(vX.x * 0.37));
+          float lit = step(abs(st - lensId), 0.1) * pOn;
+          // the walk signal: a white figure while the avenue is green, the orange hand otherwise
+          float walk = step(abs(vV.g - 0.5), 0.1);
+          vec3 pedC = stA > 1.5 ? vec3(0.9, 0.95, 1.0) : vec3(1.0, 0.45, 0.08);
+          c = mix(c, mix(lc * (lit * 3.2 + 0.03), pedC * pOn * 1.6, walk), sigM);
+        #endif
         gl_FragColor = vec4(applyFog(c, vFk, vP), 1.0);
       }`,
   });
@@ -557,10 +616,52 @@ export function kitMaterial(U: CityUniforms, o: { side?: THREE.Side; streetK?: n
 
 export interface KInst { x: number; y: number; z: number; yaw: number; sx: number; sy: number; sz: number; col: [number, number, number]; k: number; x4?: [number, number, number, number] }
 
+/** The kit-material features a kit geometry's modes need (KF_* defines of the kit fragment shader). */
+function kitFeatures(geo: THREE.BufferGeometry) {
+  const cached = geo.userData.kitFeatures as string[] | undefined;
+  if (cached) return cached;
+  const aV = geo.attributes.aV as THREE.BufferAttribute | undefined;
+  const modes = new Set<number>();
+  if (aV) for (let i = 0; i < aV.count; i++) modes.add(Math.round(aV.getW(i)));
+  const has = (...m: number[]) => m.some((k) => modes.has(k));
+  const f = !aV ? ['KF_CUT', 'KF_LEAF', 'KF_CARD', 'KF_PAINT', 'KF_SIG', 'KF_GLASS'] : [
+    ...(has(M.BARS, M.SLATS, M.LATTICE, M.TIES) ? ['KF_CUT'] : []), ...(has(M.LEAVES) ? ['KF_LEAF'] : []), ...(has(M.CARD) ? ['KF_CARD'] : []),
+    ...(has(M.PAINT) ? ['KF_PAINT'] : []), ...(has(M.SIGNAL) ? ['KF_SIG'] : []), ...(has(M.GLASS) ? ['KF_GLASS'] : []),
+  ];
+  geo.userData.kitFeatures = f;
+  return f;
+}
+
+/**
+ * The kit material compiled for one geometry: only the modes it uses (same uniforms object). Exact: the parts left
+ * out are ×1, +0 or mix(c, x, 0) for its pixels. (SwiftShader runs every line of a shader for every pixel, whatever
+ * the branches; on GPUs, kits without cut-outs lose their discard, so hidden-surface removal works on them.)
+ */
+export function kitVariant(mat: THREE.Material, geo: THREE.BufferGeometry) {
+  const m = mat as THREE.ShaderMaterial;
+  if (!m.isShaderMaterial || !m.fragmentShader.includes('KIT_VARIANT') || m.defines?.KIT_VARIANT) return mat;
+  const f = [...kitFeatures(geo), ...(geo.attributes.aBMin ? ['KIT_HZB'] : [])], key = f.join(',');
+  const cache = (m.userData.kitVariants ??= new Map<string, THREE.ShaderMaterial>()) as Map<string, THREE.ShaderMaterial>;
+  let v = cache.get(key);
+  if (!v) {
+    v = new THREE.ShaderMaterial({ uniforms: m.uniforms, vertexShader: m.vertexShader, fragmentShader: m.fragmentShader, defines: { ...m.defines, KIT_VARIANT: 1, ...Object.fromEntries(f.map((k) => [k, 1])) } });
+    v.side = m.side; v.transparent = m.transparent; v.depthWrite = m.depthWrite; v.depthTest = m.depthTest; v.blending = m.blending;
+    cache.set(key, v);
+  }
+  return v;
+}
+
 export function kitBatch(geo: THREE.BufferGeometry, list: KInst[], mat: THREE.Material, origin: THREE.Vector3, radius = 4) {
   const g = new THREE.InstancedBufferGeometry();
   g.index = geo.index;
-  for (const k of ['position', 'normal', 'aV', 'aL']) g.setAttribute(k, geo.attributes[k]!);
+  if (!geo.attributes.aBMin) {
+    // the geometry's box on every vertex (for the occlusion test of whole instances, see kitMaterial)
+    geo.computeBoundingBox();
+    const bb = geo.boundingBox!, nv = geo.attributes.position!.count;
+    geo.setAttribute('aBMin', new THREE.Float32BufferAttribute(new Float32Array(nv * 3).map((_, i) => bb.min.getComponent(i % 3)), 3));
+    geo.setAttribute('aBMax', new THREE.Float32BufferAttribute(new Float32Array(nv * 3).map((_, i) => bb.max.getComponent(i % 3)), 3));
+  }
+  for (const k of ['position', 'normal', 'aV', 'aL', 'aBMin', 'aBMax']) g.setAttribute(k, geo.attributes[k]!);
   const n = list.length, iPos = new Float32Array(n * 4), iScale = new Float32Array(n * 3), iCol = new Float32Array(n * 4), iX = new Float32Array(n * 4);
   let r = 0, hMax = 0;
   list.forEach((q, i) => {
@@ -577,7 +678,7 @@ export function kitBatch(geo: THREE.BufferGeometry, list: KInst[], mat: THREE.Ma
   g.setAttribute('iX', new THREE.InstancedBufferAttribute(iX, 4));
   g.instanceCount = n;
   g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, hMax / 2, 0), r + hMax / 2 + 2);
-  const m = new THREE.Mesh(g, mat);
+  const m = new THREE.Mesh(g, kitVariant(mat, geo));
   m.position.copy(origin);
   m.matrixAutoUpdate = false;
   m.updateMatrix();

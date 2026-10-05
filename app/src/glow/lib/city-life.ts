@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { mulberry32 } from '../../engine/util';
 import type { City, CityOpts } from './city';
-import { CITY_GLSL, type CityUniforms } from './city-glsl';
+import { CITY_GLSL, OCC_GLSL, type CityUniforms } from './city-glsl';
 import { CAR_PAINT_GLSL, KitBuilder, M, TileSet, kitBatch, kitMaterial, type KInst } from './city-build';
 import { carDetailGeometry } from './city-cars';
 import { SHOP } from './city-plan';
@@ -48,6 +48,7 @@ function shopMaterial(U: CityUniforms, atlas: SignAtlas, near: boolean) {
       uniform sampler2D uAtlas; uniform vec2 uAtlasGrid;
       varying vec3 vW, vN; varying vec2 vS, vFk; varying vec4 vSize, vSign; varying float vP;
       ${CITY_GLSL}
+      ${OCC_GLSL}
       float atlas(float cell, vec2 uv) {
         if (cell < 0.0) return 0.0;
         vec2 cr = vec2(mod(cell, uAtlasGrid.x), floor(cell / uAtlasGrid.x));
@@ -55,6 +56,7 @@ function shopMaterial(U: CityUniforms, atlas: SignAtlas, near: boolean) {
         return texture2D(uAtlas, vec2(q.x, 1.0 - (cr.y + 1.0 - clamp(uv.y, 0.0, 1.0)) / uAtlasGrid.y)).a * step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
       }
       void main() {
+        OCCLUDED_RETURN
         float w = vSize.x, h = vSize.y, kind = vSize.z, seed = vSize.w;
         float sx = vS.x, sy = vS.y;
         vec3 N = normalize(vN), V = normalize(vW - cameraPosition);
@@ -430,8 +432,10 @@ function carMaterial(U: CityUniforms) {
     fragmentShader: /* glsl */ `
       varying vec3 vW, vN, vLight, vL; varying vec4 vV, vCol; varying vec2 vFk; varying float vP;
       ${CITY_GLSL}
+      ${OCC_GLSL}
       ${CAR_PAINT_GLSL}
       void main() {
+        OCCLUDED_RETURN
         float mode = vV.a;
         vec3 N = normalize(vN), V = normalize(vW - cameraPosition);
         vec3 alb = mode < 0.5 || mode > 13.5 ? vCol.rgb : vV.rgb;

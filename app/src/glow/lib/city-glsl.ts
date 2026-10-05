@@ -36,6 +36,11 @@ export function cityUniforms(o: { fog: number; fogColor: THREE.Color }) {
     uOpenA: { value: Array.from({ length: 6 }, () => new THREE.Vector4(0, -1e5, 0, 0)) },
     uOpenB: { value: Array.from({ length: 6 }, () => new THREE.Vector4(0, 0, 0, 0)) },
     uOpenN: { value: 0 },
+    // the occluder depth prepass (software renderers only, see City): its depth texture, on/off, the depth tolerance
+    uOccDepth: { value: null as THREE.Texture | null }, uOccOn: { value: 0 }, uOccEps: { value: 2.5e-7 },
+    // ... and its max-depth pyramid (levels 1.. packed in one texture: per level x, y offset and width, height)
+    uHzb: { value: null as THREE.Texture | null }, uHzbSize: { value: new THREE.Vector2(1, 1) }, uHzbMax: { value: 0 },
+    uHzbL: { value: Array.from({ length: 13 }, () => new THREE.Vector4()) },
     // glowing people light the walls, windows and streets near them: (x, y, z, radius), (r, g, b, -)
     uPGlowP: { value: Array.from({ length: 16 }, () => new THREE.Vector4(0, -1e5, 0, 1)) },
     uPGlowC: { value: Array.from({ length: 16 }, () => new THREE.Vector4(0, 0, 0, 0)) },
@@ -486,12 +491,81 @@ export const FACADE_GLSL = /* glsl */ `
 
 `;
 
+/**
+ * (fragment only) True when this fragment's whole 2×2 pixel quad lies behind the city's occluders (the depth
+ * prepass): such quads skip their shading. SwiftShader (the cloud renderer) has no early depth test, so without
+ * this every rasterized fragment of every hidden facade is shaded; it does skip a branch that a whole quad agrees
+ * on. Every lane tests all four pixels of its quad (their depths from this one's plane), so the quad agrees and
+ * derivatives in the code that does run stay valid.
+ */
+export const OCC_GLSL = /* glsl */ `
+  uniform sampler2D uOccDepth; uniform float uOccOn, uOccEps;
+  bool quadOccluded() {
+    float z = gl_FragCoord.z, zx = dFdx(z), zy = dFdy(z);
+    if (uOccOn < 0.5) return false;
+    ivec2 p = ivec2(gl_FragCoord.xy), b = (p / 2) * 2;
+    vec2 o = vec2(p - b);
+    float z00 = z - o.x * zx - o.y * zy;
+    return z00 > texelFetch(uOccDepth, b, 0).r + uOccEps
+      && z00 + zx > texelFetch(uOccDepth, b + ivec2(1, 0), 0).r + uOccEps
+      && z00 + zy > texelFetch(uOccDepth, b + ivec2(0, 1), 0).r + uOccEps
+      && z00 + zx + zy > texelFetch(uOccDepth, b + ivec2(1, 1), 0).r + uOccEps;
+  }
+  #define OCCLUDED_RETURN if (quadOccluded()) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+`;
+
+/**
+ * (vertex only) Is a primitive hidden behind the city's occluders (the depth prepass)? Feed the clip-space corners
+ * of a convex hull of it to hzbAdd, then hzbTest: true when its nearest depth lies behind the farthest occluder
+ * depth over its screen rectangle (a 2×2 lookup in the max-depth pyramid). The caller then collapses the primitive
+ * (gl_Position outside the clip volume), so it is not rasterized at all: SwiftShader shades every rasterized
+ * fragment in full (no early depth test, and branches don't skip work), so this is the only real saving there.
+ * Exact: a primitive is dropped only when every pixel it could cover already holds something nearer.
+ */
+export const HZB_GLSL = /* glsl */ `
+  uniform sampler2D uHzb; uniform vec2 uHzbSize; uniform float uHzbMax; uniform vec4 uHzbL[13];
+  uniform float uOccOn, uOccEps;
+  void hzbAdd(vec4 c, inout vec4 lohi, inout vec2 zw) {
+    vec3 n = c.xyz / c.w;
+    lohi = vec4(min(lohi.xy, n.xy), max(lohi.zw, n.xy));
+    zw = vec2(min(zw.x, n.z), min(zw.y, c.w));
+  }
+  bool hzbTest(vec4 lohi, vec2 zw) {
+    if (uOccOn < 0.5 || zw.y < 1e-3) return false;
+    vec2 lo = (lohi.xy * 0.5 + 0.5) * uHzbSize, hi = (lohi.zw * 0.5 + 0.5) * uHzbSize;
+    if (hi.x < 0.0 || hi.y < 0.0 || lo.x > uHzbSize.x || lo.y > uHzbSize.y) return false;
+    ivec2 q0 = ivec2(clamp(floor(lo) - 1.0, vec2(0.0), uHzbSize - 1.0)), q1 = ivec2(clamp(floor(hi) + 1.0, vec2(0.0), uHzbSize - 1.0));
+    int m = max(q1.x - q0.x, q1.y - q0.y), L = 1;
+    for (int i = 1; i < 13; i++) if ((1 << L) <= m) L++;
+    if (float(L) > uHzbMax) return false;
+    ivec2 o = ivec2(uHzbL[L].xy), r0 = q0 >> L, r1 = q1 >> L;
+    float z = max(max(texelFetch(uHzb, o + r0, 0).r, texelFetch(uHzb, o + ivec2(r1.x, r0.y), 0).r),
+                  max(texelFetch(uHzb, o + ivec2(r0.x, r1.y), 0).r, texelFetch(uHzb, o + r1, 0).r));
+    return zw.x * 0.5 + 0.5 > z + uOccEps;
+  }
+  // the face of an instanced unit box (x, z in -0.5..0.5, y in 0..1; corner P, size S) that this vertex is on
+  bool hzbBoxFace(vec3 P, vec3 S) {
+    if (uOccOn < 0.5) return false;
+    vec3 an = abs(normal), f = position * an;
+    mat4 PV = projectionMatrix * viewMatrix;
+    vec4 lohi = vec4(1e9, 1e9, -1e9, -1e9); vec2 zw = vec2(1e9);
+    for (int i = 0; i < 8; i++) {
+      vec3 c = mix(vec3(-0.5, 0.0, -0.5), vec3(0.5, 1.0, 0.5), vec3(float(i & 1), float((i >> 1) & 1), float((i >> 2) & 1))) * (1.0 - an) + f;
+      hzbAdd(PV * (modelMatrix * vec4(P + c * S, 1.0)), lohi, zw);
+    }
+    return hzbTest(lohi, zw);
+  }
+  #define HZB_COLLAPSE gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
+`;
+
 /** (fragment only) Cut the facade open where a window was opened for people inside (city.openWindow). */
 export const OPEN_GLSL = /* glsl */ `
   // cut the facade open where a window was opened for people inside (city.openWindow)
   void openCut(vec3 W) {
-    vec3 q = W - uOrigin;
-    for (int i = 0; i < uOpenN; i++) { vec3 d = abs(q - uOpenA[i].xyz) - uOpenB[i].xyz; if (max(d.x, max(d.y, d.z)) < 0.0) discard; }
+    #ifdef OPEN_CUT
+      vec3 q = W - uOrigin;
+      for (int i = 0; i < uOpenN; i++) { vec3 d = abs(q - uOpenA[i].xyz) - uOpenB[i].xyz; if (max(d.x, max(d.y, d.z)) < 0.0) discard; }
+    #endif
   }
 `;
 

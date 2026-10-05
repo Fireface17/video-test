@@ -2,7 +2,7 @@
 // stars (more of them when the power is out), dawn colours and the low sun; a cloud deck lit from below by the
 // city; a distant skyline beyond the generated blocks and across the river; the river itself, reflecting.
 import * as THREE from 'three';
-import { CITY_GLSL, type CityUniforms } from './city-glsl';
+import { CITY_GLSL, OCC_GLSL, type CityUniforms } from './city-glsl';
 
 export function skyMaterial(U: CityUniforms) {
   return new THREE.ShaderMaterial({
@@ -14,8 +14,10 @@ export function skyMaterial(U: CityUniforms) {
     fragmentShader: /* glsl */ `
       ${CITY_GLSL}
       varying vec3 vD;
+      ${OCC_GLSL}
       vec3 h33(vec3 p) { p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return fract((p.xxy + p.yxx) * p.zyx); }
       void main() {
+        OCCLUDED_RETURN
         vec3 d = normalize(vD);
         float y = d.y;
         // night: deep navy overhead, the city's sodium glow low down (less when the power is out); the horizon is
@@ -94,8 +96,10 @@ export function skylineMaterial(U: CityUniforms, o: { ring: boolean; tall: numbe
     fragmentShader: /* glsl */ `
       ${CITY_GLSL}
       varying vec3 vW; varying vec2 vUv;
+      ${OCC_GLSL}
       const float TALL = ${o.tall.toFixed(1)}, SEED = ${o.seed.toFixed(1)};
       void main() {
+        OCCLUDED_RETURN
         float u = ${o.ring ? 'atan(vW.z, vW.x + 1e-4) * 5200.0' : 'vW.z'};
         float y = vW.y;
         // buildings: runs of widths, heights clustered
@@ -128,7 +132,9 @@ export function waterMaterial(U: CityUniforms) {
       ${CITY_GLSL}
       uniform sampler2D uMirror; uniform mat4 uMirrorMat;
       varying vec3 vW;
+      ${OCC_GLSL}
       void main() {
+        OCCLUDED_RETURN
         vec2 xz = vW.xz;
         float p = power(xz);
         vec2 n = vec2(vnoise(xz * 0.21 + vec2(uTime * 0.35, 0.0)), vnoise(xz * 0.17 + 9.0 - vec2(0.0, uTime * 0.3))) - 0.5;

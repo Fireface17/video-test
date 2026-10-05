@@ -4,7 +4,7 @@
 // Center (a square that turns into a square rotated 45°, eight triangular glass faces, the spire with its beacon).
 // Facades use the city's interior-mapped windows (lib/city.ts FACADE_GLSL); crowns are floodlit or emissive.
 import * as THREE from 'three';
-import { CITY_GLSL, FACADE_GLSL, FACADE_VS } from './city-glsl';
+import { CITY_GLSL, FACADE_GLSL, FACADE_VS, OCC_GLSL } from './city-glsl';
 import type { City } from './city';
 import { GlowPoints } from './points';
 
@@ -43,8 +43,10 @@ function towerMaterial(city: City, B: [number, number, number, number], flood: {
       uniform float floodY; uniform vec3 floodC;
       varying vec3 vW, vN; varying vec4 vF0, vF1, vF2, vF3;
       ${CITY_GLSL}
+      ${OCC_GLSL}
       ${FACADE_GLSL}
       void main() {
+        OCCLUDED_RETURN
         vec3 N = normalize(vN), V = normalize(vW - cameraPosition);
         vec3 c;
         if (abs(N.y) > 0.8) c = vec3(0.012, 0.012, 0.015) + floodC * 0.3 * step(floodY, vW.y);
