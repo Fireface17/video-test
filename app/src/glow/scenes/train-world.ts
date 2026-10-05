@@ -10,7 +10,7 @@ import { hash, mulberry32 } from '../../engine/util';
 import { F, font } from '../../engine/type';
 import { City } from '../lib/city';
 import { GlowPoints } from '../lib/points';
-import { FLOOR_Y, boxG, canvasTex, glowMat, litMat, moonMat, skyMat, type LightU } from './train-gfx';
+import { FLOOR_Y, ST_LIGHT, boxG, canvasTex, glowMat, litMat, moonMat, skyMat, type LightU } from './train-gfx';
 
 /** Lamp posts along the line: one per beat, sides alternating. */
 export const PITCH = 6;
@@ -48,8 +48,10 @@ export class Ride {
 
 /** Station layout (world). */
 export const ST = {
-  x0: -10, x1: 24, zWall: -9.2, zEdge: -1.56, canopy: FLOOR_Y + 3.9,
-  stairX: 6.5, stairN: 49, run: 0.305, sz0: -8.6, sz1: -4.4,
+  x0: ST_LIGHT.x0, x1: ST_LIGHT.x1, zWall: -9.2, zEdge: -1.56, canopy: FLOOR_Y + 3.9,
+  stairX: 6.5, stairN: 49, run: 0.305, sz0: -8.8, sz1: -3.2,
+  /** the painted words on the risers span this part of the stair's width (the near side is the runners' lane) */
+  tz0: -8.75, tz1: -4.55,
 };
 export const RISE = FLOOR_Y / ST.stairN;
 /** World x of the stair foot. */
@@ -400,119 +402,3 @@ function billboardTextures() {
   });
   return [t1, t2, t3, glyph('#001a10', '#30ff9a', 'cross'), glyph('#200008', '#ff4060', 'cup'), glyph('#1a1000', '#ffb030', 'arrow')];
 }
-
-// ------------------------------------------------------------------------------------------------- the station
-
-export class Station extends THREE.Group {
-  lightsOn = new Float32Array(8);
-  fixtures: THREE.InstancedMesh;
-  lampPos: THREE.Vector3[] = [];
-  riserMat: THREE.ShaderMaterial;
-
-  constructor(U: LightU, riser: { sharp: THREE.Texture; glow: THREE.Texture; boxes: THREE.Vector4[] }) {
-    super();
-    const Y = FLOOR_Y;
-    const concrete = litMat(U, { color: new THREE.Color(0.12, 0.12, 0.125), pattern: 5 });
-    const tiles = litMat(U, { color: new THREE.Color(0.2, 0.2, 0.19), pattern: 4 });
-    const steel = litMat(U, { color: new THREE.Color(0.07, 0.075, 0.085), spec: 0.6, shin: 40 });
-    const yellow = litMat(U, { color: new THREE.Color(0.6, 0.42, 0.03), pattern: 5 });
-    const band = litMat(U, { color: new THREE.Color(0.03, 0.12, 0.3) });
-    // platform (with the stairwell cut out of it)
-    const { x0, x1, zWall, zEdge, stairX, sz0, sz1 } = ST;
-    const pf: THREE.BufferGeometry[] = [
-      boxG(x0, x1, Y - 0.3, Y, sz1, zEdge - 0.5),
-      boxG(x0, stairX, Y - 0.3, Y, zWall, sz1),
-      boxG(x0, x1, Y - 0.3, Y, zWall, sz0),
-    ];
-    this.add(new THREE.Mesh(mergeGeometries(pf), concrete));
-    this.add(new THREE.Mesh(boxG(x0, x1, Y - 0.3, Y + 0.004, zEdge - 0.5, zEdge), yellow));
-    // the wall: tiles, a blue band; it runs down to the street (the station's side)
-    this.add(new THREE.Mesh(boxG(x0, x1, Y - 0.3, ST.canopy, zWall - 0.3, zWall), tiles));
-    this.add(new THREE.Mesh(boxG(x0, x1, Y + 0.95, Y + 1.12, zWall + 0.0, zWall + 0.02), band));
-    // the canopy and its light fixtures (four rows of tubes in segments that switch on one after another)
-    this.add(new THREE.Mesh(boxG(x0, x1, ST.canopy, ST.canopy + 0.25, zWall, zEdge + 0.4), steel));
-    const nSeg = 8, segL = (x1 - x0) / nSeg;
-    this.fixtures = new THREE.InstancedMesh(new THREE.BoxGeometry(segL * 0.8, 0.05, 0.16), new THREE.MeshBasicMaterial({ color: 0xffffff }), nSeg * 2);
-    for (let i = 0; i < nSeg; i++) for (let r = 0; r < 2; r++) {
-      const x = x0 + (i + 0.5) * segL, z = r ? -6.4 : -3.0;
-      this.fixtures.setMatrixAt(i * 2 + r, new THREE.Matrix4().makeTranslation(x, ST.canopy - 0.03, z));
-      this.fixtures.setColorAt(i * 2 + r, new THREE.Color(0, 0, 0));
-      if (r === 0) this.lampPos.push(new THREE.Vector3(x, ST.canopy - 0.3, -4.6));
-    }
-    this.add(this.fixtures);
-    // canopy columns against the wall and at the platform's back
-    const cols: THREE.BufferGeometry[] = [];
-    for (let x = x0 + 2; x < x1; x += 8) cols.push(boxG(x - 0.12, x + 0.12, Y, ST.canopy, zWall + 0.05, zWall + 0.3));
-    // the structure under the platform
-    for (let x = x0 + 1; x < x1; x += 7) for (const z of [-3.0, -8.9]) cols.push(boxG(x - 0.25, x + 0.25, 0, Y - 0.3, z - 0.25, z + 0.25));
-    this.add(new THREE.Mesh(mergeGeometries(cols), steel));
-    // benches and a bin on the platform
-    const furn: THREE.BufferGeometry[] = [];
-    for (const x of [-6.5, -1.5]) furn.push(boxG(x - 0.9, x + 0.9, Y + 0.42, Y + 0.48, zWall + 0.3, zWall + 0.75), boxG(x - 0.9, x + 0.9, Y + 0.48, Y + 0.9, zWall + 0.3, zWall + 0.36), boxG(x - 0.8, x - 0.7, Y, Y + 0.42, zWall + 0.4, zWall + 0.7), boxG(x + 0.7, x + 0.8, Y, Y + 0.42, zWall + 0.4, zWall + 0.7));
-    this.add(new THREE.Mesh(mergeGeometries(furn), steel));
-    // the stair: solid steps whose risers carry the painted words
-    this.riserMat = riserMaterial(U, riser);
-    const steps: THREE.BufferGeometry[] = [];
-    for (let i = 0; i < ST.stairN - 1; i++) {
-      const xa = stairX + i * ST.run, xb = xa + ST.run, yTop = Y - (i + 1) * RISE;
-      steps.push(boxG(xa, xb, Math.max(0, yTop - RISE - 0.3), yTop, sz0, sz1));
-    }
-    this.add(new THREE.Mesh(mergeGeometries(steps), this.riserMat));
-    // the stairwell: the balustrade toward the line follows the slope; nosings
-    const L = Math.hypot(STAIR_FOOT - stairX, Y), ang = Math.atan2(Y, STAIR_FOOT - stairX);
-    const bal = new THREE.Mesh(boxG(-L / 2, L / 2, 0, 1.05, -0.08, 0.08), steel);
-    bal.position.set((stairX + STAIR_FOOT) / 2, Y / 2, sz1 - 0.08);
-    bal.rotation.z = -ang;
-    const rail = new THREE.Mesh(boxG(-L / 2, L / 2, 0.95, 1.02, -0.05, 0.05), litMat(U, { color: new THREE.Color(0.4, 0.4, 0.42), spec: 1.2, shin: 50 }));
-    rail.position.set((stairX + STAIR_FOOT) / 2, Y / 2, sz0 + 0.12);
-    rail.rotation.z = -ang;
-    const bal2 = bal.clone();
-    bal2.position.z = sz0 - 0.08;
-    // the stair's underside
-    const under = new THREE.Mesh(boxG(-L / 2, L / 2, -0.5, 0, sz0, sz1), concrete);
-    under.position.set((stairX + STAIR_FOOT) / 2, Y / 2 - 0.2, 0);
-    under.rotation.z = -ang;
-    this.add(bal, bal2, rail, under);
-    // the railing around the opening on the platform
-    this.add(new THREE.Mesh(boxG(stairX, x1, Y, Y + 1.05, sz1 - 0.04, sz1 + 0.04), steel));
-  }
-
-  /** Station lights: segment levels 0..1 (the canopy fixtures in pairs). */
-  update() {
-    const c = new THREE.Color();
-    for (let i = 0; i < this.lightsOn.length; i++) for (let r = 0; r < 2; r++) this.fixtures.setColorAt(i * 2 + r, c.setRGB(0.85, 0.92, 1.0).multiplyScalar(0.03 + 1.6 * this.lightsOn[i]!));
-    this.fixtures.instanceColor!.needsUpdate = true;
-  }
-}
-
-/**
- * Concrete steps whose risers (the faces toward +x) carry words painted in light: the words are laid out in the
- * stair's elevation (z across, y up), so seen from the foot of the stair they read as one image.
- */
-function riserMaterial(U: LightU, riser: { sharp: THREE.Texture; glow: THREE.Texture; boxes: THREE.Vector4[] }) {
-  const m = litMat(U, { color: new THREE.Color(0.1, 0.1, 0.105), pattern: 5 });
-  const boxes = riser.boxes.slice(0, 8);
-  while (boxes.length < 8) boxes.push(new THREE.Vector4());
-  m.uniforms.uSharp = { value: riser.sharp };
-  m.uniforms.uGlowT = { value: riser.glow };
-  m.uniforms.uBox = { value: boxes };
-  m.uniforms.uLv = { value: new Float32Array(8) };
-  m.uniforms.uWC = { value: new THREE.Color(0.2, 0.9, 1.0) };
-  m.fragmentShader = m.fragmentShader
-    .replace('void main() {', /* glsl */ `
-      uniform sampler2D uSharp, uGlowT; uniform vec4 uBox[8]; uniform float uLv[8]; uniform vec3 uWC;
-      void main() {`)
-    .replace('gl_FragColor = vec4(fogged(c, vW), 1.0);', /* glsl */ `
-        // the painted words: elevation coordinates (u across the stair, v up)
-        vec2 e = vec2((${ST.sz1.toFixed(3)} - vW.z) / ${(ST.sz1 - ST.sz0).toFixed(3)}, vW.y / ${FLOOR_Y.toFixed(3)});
-        if (e.x > 0.0 && e.x < 1.0 && e.y > 0.0 && e.y < 1.0) {
-          float lv = 0.0;
-          for (int i = 0; i < 8; i++) { vec4 b = uBox[i]; if (e.x > b.x && e.x < b.z && e.y > b.y && e.y < b.w) lv = uLv[i]; }
-          float riser = smoothstep(0.5, 0.8, n.x);
-          float s = texture2D(uSharp, e).r, g = texture2D(uGlowT, e).r;
-          c += uWC * lv * (s * 1.3 * riser + g * 0.32 * (0.35 + 0.65 * riser)) + vec3(lv * s * riser * 0.25);
-        }
-        gl_FragColor = vec4(fogged(c, vW), 1.0);`);
-  return m;
-}
-

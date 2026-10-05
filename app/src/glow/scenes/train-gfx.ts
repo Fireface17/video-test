@@ -7,6 +7,8 @@ import * as THREE from 'three';
 /** World height of the car floor (the car's local origin is on the floor, x along the car, z across). */
 export const FLOOR_Y = 9.1;
 export const MAXL = 10;
+/** The station's fluorescent fixtures: segments along x in two rows under the canopy (line lights). */
+export const ST_LIGHT = { x0: -30, x1: 28, n: 12, z: [-3.0, -6.4] as const, y: FLOOR_Y + 3.78 };
 
 export function lightUniforms() {
   return {
@@ -23,6 +25,11 @@ export function lightUniforms() {
     uFogC: { value: new THREE.Color() },
     uFogD: { value: 0.01 },
     uTime: { value: 0 },
+    uSt: { value: new Array(ST_LIGHT.n).fill(0) as number[] },
+    uStC: { value: new THREE.Color(0.75, 0.82, 0.9) },
+    /** the neon on the station wall washing the tiles: centre x, centre y, half width, level */
+    uNeon: { value: new THREE.Vector4(0, 0, 1, 0) },
+    uNeonC: { value: new THREE.Color(1.0, 0.25, 0.55) },
   };
 }
 export type LightU = ReturnType<typeof lightUniforms>;
@@ -31,6 +38,7 @@ export const GLSL_LIGHT = /* glsl */ `
   uniform vec4 uPts[${MAXL}]; uniform vec3 uPtC[${MAXL}]; uniform int uN;
   uniform float uCarX, uCarY; uniform float uFix[10]; uniform vec3 uCeilC;
   uniform vec3 uMoonD, uMoonC, uAmb, uFogC; uniform float uFogD, uTime;
+  uniform float uSt[${ST_LIGHT.n}]; uniform vec3 uStC; uniform vec4 uNeon; uniform vec3 uNeonC;
   // diffuse light at p (world) with normal n; spec adds a highlight toward the viewer v
   vec3 lightAt(vec3 p, vec3 n, vec3 v, float spec, float shin) {
     vec3 L = uAmb;
@@ -63,6 +71,29 @@ export const GLSL_LIGHT = /* glsl */ `
       vec3 l = d * inversesqrt(max(dd, 1e-5));
       L += uPtC[i] * att * (max(dot(n, l), 0.0) * 0.85 + 0.15);
       S += uPtC[i] * att * pow(max(dot(reflect(-l, n), v), 0.0), shin);
+    }
+    // the station: two rows of fluorescent fixtures under the canopy (pools of light under each), the neon's wash
+    if (p.x > ${(ST_LIGHT.x0 - 3).toFixed(1)} && p.x < ${(ST_LIGHT.x1 + 3).toFixed(1)} && p.z > -9.8 && p.z < 1.6 && p.y > ${(FLOOR_Y - 1.5).toFixed(1)} && p.y < ${(ST_LIGHT.y + 0.5).toFixed(2)}) {
+      float segL = ${((ST_LIGHT.x1 - ST_LIGHT.x0) / ST_LIGHT.n).toFixed(4)};
+      float fi = clamp(floor((p.x - ${ST_LIGHT.x0.toFixed(1)}) / segL), 0.0, ${(ST_LIGHT.n - 1).toFixed(1)});
+      float lv = uSt[int(fi)];
+      float cx = ${ST_LIGHT.x0.toFixed(1)} + (fi + 0.5) * segL;
+      float xc = clamp(p.x, cx - 0.4 * segL, cx + 0.4 * segL);
+      float k = inCar ? 0.2 : 1.0;
+      for (int s = 0; s < 2; s++) {
+        vec3 d = vec3(xc, ${ST_LIGHT.y.toFixed(2)}, s == 0 ? ${ST_LIGHT.z[0].toFixed(2)} : ${ST_LIGHT.z[1].toFixed(2)}) - p;
+        float dd = dot(d, d);
+        vec3 l = d * inversesqrt(max(dd, 1e-4));
+        vec3 c = uStC * lv * k * 3.2 / (1.0 + dd * 0.55);
+        L += c * (max(dot(n, l), 0.0) * 0.85 + 0.15);
+        S += c * pow(max(dot(reflect(-l, n), v), 0.0), shin);
+      }
+      if (uNeon.w > 0.0) {
+        float dz = max(p.z + 9.2, 0.0);
+        float dx = (p.x - uNeon.x) / uNeon.z, dy = (p.y - uNeon.y) / 1.5;
+        float w = exp(-dx * dx - dy * dy) * exp(-dz * 0.7);
+        L += uNeonC * uNeon.w * w * (max(n.z, 0.0) * 0.8 + 0.2 + max(n.y, 0.0) * 0.5);
+      }
     }
     L += uMoonC * (max(dot(n, uMoonD), 0.0) * 0.8 + 0.2);
     return L + S * spec;
@@ -98,7 +129,8 @@ const LIT_VERT = /* glsl */ `
 export interface LitOpts {
   color: THREE.Color;
   map?: THREE.Texture;
-  /** Procedural pattern: 1 floor, 2 seats, 3 steel flutes (car skin), 4 wall tiles, 5 concrete, 6 asphalt-free deck. */
+  /** Procedural pattern: 1 floor, 2 seats, 3 steel flutes (car skin), 4 wall tiles, 5 concrete, 6 car wall panels,
+   * 7 car ceiling, 8 riveted green steel, 9 platform concrete, 10 tactile strip. */
   pattern?: number;
   spec?: number;
   shin?: number;
@@ -153,13 +185,60 @@ export function litMat(U: LightU, o: LitOpts) {
         float fl = 0.5 + 0.5 * sin(vW.y * 90.0);
         base *= 0.75 + 0.35 * fl;
       #elif PATTERN == 4
-        // white subway tiles with dark grout
+        // cream subway tiles, dark grout, grime: darker toward the floor, streaks running down, odd stained tiles
         vec2 tq = vec2(vW.x + vW.z, vW.y) * vec2(1.0 / 0.15, 1.0 / 0.075);
         tq.x += step(1.0, mod(floor(tq.y), 2.0)) * 0.5;
         vec2 g = abs(fract(tq) - 0.5);
-        base *= mix(0.35, 1.0, smoothstep(0.47, 0.44, max(g.x * 1.0, g.y)));
-        base *= 0.9 + 0.2 * hsh(floor(tq));
-        spec = 0.35;
+        float grout = smoothstep(0.47, 0.43, max(g.x, g.y));
+        float hy = vW.y - ${FLOOR_Y.toFixed(2)};
+        float streak = hsh(vec2(floor((vW.x + vW.z) * 4.0), 7.0));
+        float grime = 0.55 + 0.45 * smoothstep(-0.3, 1.4, hy);
+        grime *= 1.0 - 0.3 * step(0.7, streak) * smoothstep(3.2, 0.5, hy) * (0.5 + 0.5 * sin(vW.y * 3.0 + streak * 20.0));
+        float stain = step(0.94, hsh(floor(tq) + 3.0)) * 0.35;
+        base *= mix(0.3, 1.0, grout) * (0.88 + 0.18 * hsh(floor(tq))) * grime * (1.0 - stain);
+        base = mix(base, base * vec3(0.85, 0.75, 0.6), stain + 0.3 * (1.0 - grime));
+        spec = 0.45;
+      #elif PATTERN == 6
+        // the car's wall panels: seams, rows of rivets along them, fine scratches, grime low down
+        vec3 q = vW - vec3(uCarX, uCarY, 0.0);
+        float along = q.x + q.z * 0.0;
+        float sx = abs(fract(along / 0.92) - 0.5) * 0.92;
+        float seam = smoothstep(0.004, 0.0015, abs(sx - 0.46));
+        float hseam = smoothstep(0.004, 0.0015, abs(q.y - 0.5)) + smoothstep(0.004, 0.0015, abs(q.y - 2.0));
+        vec2 rv = vec2(abs(sx - 0.46) - 0.02, fract(q.y / 0.1) - 0.5);
+        float rivet = smoothstep(0.009, 0.005, length(vec2(rv.x, rv.y * 0.1)));
+        float scr = step(0.985, hsh(floor(vec2(along * 40.0 + q.y * 25.0, q.y * 3.0))));
+        base *= (1.0 - 0.6 * min(1.0, seam + hseam)) * (1.0 + 0.4 * rivet) * (0.75 + 0.25 * smoothstep(0.0, 0.6, q.y));
+        base += vec3(0.04) * scr;
+        spec = 0.25 + 0.4 * rivet;
+      #elif PATTERN == 7
+        // the ceiling: panel joints across, vent slots between the light strips
+        vec3 q = vW - vec3(uCarX, uCarY, 0.0);
+        float dj = 0.6 - abs(fract(q.x / 1.2) - 0.5) * 1.2;
+        float j = smoothstep(0.006, 0.002, dj);
+        float slot = step(abs(q.z), 0.16) * step(0.5, fract(q.x * 12.0)) * step(abs(fract(q.x / 1.8) - 0.5), 0.3) * step(abs(abs(q.z) - 0.1), 0.03);
+        base *= (1.0 - 0.5 * j) * (1.0 - 0.45 * slot);
+      #elif PATTERN == 8
+        // riveted steel painted green: rivet rows on the flanges (columns stand at z = -5.6, -9.0, -2.65), chipped
+        float cz = abs(vW.z + 5.6) < 1.0 ? -5.6 : abs(vW.z + 9.0) < 1.0 ? -9.0 : -2.65;
+        float dz = abs(abs(vW.z - cz) - 0.085);
+        float ry = fract(vW.y / 0.11) - 0.5;
+        float rv = smoothstep(0.016, 0.009, length(vec2(dz, ry * 0.11)));
+        float chip = step(0.93, hsh(floor(vW.yz * vec2(14.0, 30.0)) + floor(vW.x)));
+        base = mix(base * (1.0 + 0.8 * rv), vec3(0.09, 0.06, 0.04), chip * 0.7);
+        spec = 0.4 + 0.8 * rv;
+      #elif PATTERN == 9
+        // the platform: worn concrete, flattened gum, a painted white line inside the yellow strip
+        vec2 gq = vW.xz * 2.3;
+        float gum = step(0.965, hsh(floor(gq))) * smoothstep(0.35, 0.2, length(fract(gq) - 0.5));
+        base *= (0.8 + 0.35 * hsh(floor(vW.xz * 9.0)) * 0.6) * (1.0 - 0.5 * gum);
+        base = mix(base, vec3(0.5), smoothstep(0.04, 0.02, abs(vW.z + 2.2)) * 0.8);
+      #elif PATTERN == 10
+        // the yellow tactile strip: rows of truncated domes
+        vec2 dq = fract(vW.xz / 0.06) - 0.5;
+        float dome = smoothstep(0.32, 0.22, length(dq));
+        base *= 0.75 + 0.45 * dome;
+        spec = 0.3 * dome;
       #elif PATTERN == 5
         // concrete
         base *= 0.75 + 0.5 * hsh(floor(vW.xz * 7.0 + vW.y * 3.0)) * 0.6;

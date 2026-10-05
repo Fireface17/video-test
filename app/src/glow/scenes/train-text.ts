@@ -345,27 +345,31 @@ export class MoteLetters extends GlowPoints {
  * Words painted in light onto a surface through a canvas texture: rows of words (Archivo black), each word a
  * uv box with its own level. `glowTex` blurs the same layout for the halo.
  */
-export function wordCanvas(rows: { words: string[]; size: number }[], W: number, H: number, family = F.archivo(100, 900)) {
+export function wordCanvas(rows: { words: string[]; size: number }[], W: number, H: number, family = F.archivo(100, 900), stretch = 1, fill = 1) {
   const boxes: THREE.Vector4[] = [];
   const draw = (c: CanvasRenderingContext2D, blur: number) => {
     c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
     if (blur) c.filter = `blur(${blur}px)`;
-    const totalH = rows.reduce((a, r) => a + r.size, 0) * 1.12;
-    let y = (H - totalH) / 2;
-    for (const r of rows) {
-      y += r.size * 1.0;
-      c.font = font(family, r.size);
+    // each row as big as fits the width (at most its given size), letters stretched tall by `stretch`
+    const sizes = rows.map((r) => { c.font = font(family, r.size); return Math.min(r.size, (r.size * W * 0.95) / c.measureText(r.words.join(' ')).width); });
+    // (laid out in the lower `fill` of the canvas)
+    const totalH = sizes.reduce((a, s) => a + s * stretch * 0.86 + s * 0.16, 0);
+    let y = H * (1 - fill) + (H * fill - totalH) / 2;
+    rows.forEach((r, ri) => {
+      const sz = sizes[ri]!, cap = sz * 0.74 * stretch;
+      y += sz * stretch * 0.86;
+      c.font = font(family, sz);
       const text = r.words.join(' ');
       let x = (W - c.measureText(text).width) / 2;
       for (const wd of r.words) {
         const ww = c.measureText(wd).width;
         c.fillStyle = '#fff';
-        c.fillText(wd, x, y);
-        if (!blur) boxes.push(new THREE.Vector4((x - 10) / W, 1 - (y + r.size * 0.12) / H, (x + ww + 10) / W, 1 - (y - r.size * 0.85) / H));
+        c.save(); c.translate(x, y); c.scale(1, stretch); c.fillText(wd, 0, 0); c.restore();
+        if (!blur) boxes.push(new THREE.Vector4((x - 10) / W, 1 - (y + sz * 0.1) / H, (x + ww + 10) / W, 1 - (y - cap - sz * 0.12) / H));
         x += ww + c.measureText(' ').width;
       }
-      y += r.size * 0.12;
-    }
+      y += sz * 0.16;
+    });
     c.filter = 'none';
   };
   const mk = (blur: number) => {

@@ -19,7 +19,8 @@
 //   H  "Turn the pain into gold, oh"           high over the avenue: neon on the asphalt, gold on "gold" (and
 //                                              the city with it)
 //   I  "Here we go, here we go"                street level: they burst into the avenue under HERE WE GO
-// The full city (lib/city.ts) is drawn only in H and I; from the train a cheap stand-in (train-world.ts) is used.
+// The full city (lib/city.ts) is drawn only from the stair and the street (G–I); from the train a cheap stand-in
+// (train-world.ts) is used.
 import * as THREE from 'three';
 import { Scene, type Frame } from '../../engine/scene';
 import { norm, type Line } from '../../engine/lyrics';
@@ -33,9 +34,10 @@ import { displayTextGeometry, loadDisplayFont } from '../lib/fonts';
 import { PaperLantern, StarSticker, holdIn, makeHeroes } from '../lib/heroes';
 import { GlowPoints } from '../lib/points';
 import { F } from '../../engine/type';
-import { FLOOR_Y, MAXL, lightUniforms } from './train-gfx';
+import { FLOOR_Y, MAXL, ST_LIGHT, lightUniforms } from './train-gfx';
 import { CAR, Car } from './train-car';
-import { Outside, Ride, ST, STAIR_FOOT, Station } from './train-world';
+import { Outside, Ride, ST, STAIR_FOOT } from './train-world';
+import { Station } from './train-station';
 import { Headphones, Phone, blendReach, clipFacing, facingDir, lerpAngle, lighten, passengerMaterial, playCues, prepassMeshes, type Cue } from './train-people';
 import { DotMatrix, FogWriting, LineMap, MoteLetters, subLine, wordCanvas } from './train-text';
 
@@ -104,6 +106,9 @@ export default class Train extends Scene {
   riserBoxes: THREE.Vector4[] = [];
   hereGo: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; t0: number }[] = [];
   lights: { p: THREE.Vector3; r: number; c: THREE.Color; k: number }[] = [];
+  /** pools of light on the ground under the people of light (platform and street), and under the road neon */
+  pools = new Pools(16);
+  roadGlow!: THREE.Mesh;
   bars: number[] = [];
 
   override async init() {
@@ -155,7 +160,7 @@ export default class Train extends Scene {
     this.out = new Outside(U, this.ride, moonDir);
     // the riser words: TONIGHT / WE LET / IT ALL / GO
     const pw = L.p2.words.map((w) => w.w.replace(/[,.]/g, '').toUpperCase());
-    const riser = wordCanvas([{ words: [pw[0]!], size: 300 }, { words: [pw[1]!, pw[2]!], size: 330 }, { words: [pw[3]!, pw[4]!], size: 330 }, { words: [pw[5]!], size: 440 }], 920, 1990, F.archivo(62, 900));
+    const riser = wordCanvas([{ words: [pw[0]!], size: 400 }, { words: [pw[1]!, pw[2]!], size: 400 }, { words: [pw[3]!, pw[4]!], size: 400 }, { words: [pw[5]!], size: 400 }], 920, 1990, F.archivo(62, 900), 1.3, 0.78);
     this.riserBoxes = riser.boxes;
     this.station = new Station(U, riser);
     S.add(this.car, this.out, this.station);
@@ -220,6 +225,8 @@ export default class Train extends Scene {
     this.byId.get('HE')!.tLight = tl0; this.byId.get('SHE')!.tLight = tl0 + 0.03;
     const sixteenth = (k: number) => audio.timeOfBeat(Math.round(audio.beatAt(tl0)) + 0.5 + k * 0.5);
     CHAIN.forEach((id, k) => (this.byId.get(id)!.tLight = sixteenth(k <= 2 ? k : 2 + (k - 2) * 0.5)));
+    // the power is back: the car's lights come on again as the train stops, with the station's
+    T.relight = Math.max(...this.people.map((p) => p.tLight)) + 0.25;
     // exit paths (car-local; the car stands at x = 0 when the doors open)
     EXIT.forEach((id, r) => this.buildPath(this.byId.get(id)!, r));
     // the run clips
@@ -291,8 +298,12 @@ export default class Train extends Scene {
     const hc = this.shotH(this.T.cH + 0.5);
     const fwd = hc.tgt.clone().sub(hc.pos).setY(0).normalize(), right = V3(-fwd.z, 0, fwd.x);
     this.roadNeon.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right, fwd, UP));
-    this.roadNeon.position.set(31.0, 0.06, -6.8);
+    this.roadNeon.position.set(28.2, 0.06, -9.4);
     S.add(this.roadNeon);
+    this.roadGlow = new THREE.Mesh(new THREE.PlaneGeometry(14, 7.5), poolMaterial());
+    this.roadGlow.quaternion.copy(this.roadNeon.quaternion);
+    this.roadGlow.position.copy(this.roadNeon.position).add(V3(0, 0.02, 0)).addScaledVector(V3(0, 1, 0).applyQuaternion(this.roadNeon.quaternion), 0.9);
+    S.add(this.roadGlow, this.pools);
     // P4: HERE WE GO, twice, in Tilt Neon on the station's end, over the avenue
     const tilt = await loadDisplayFont('tiltneon');
     const p4 = L.p4;
@@ -319,7 +330,7 @@ export default class Train extends Scene {
   private buildPath(p: P, r: number) {
     const T = this.T;
     const lane = [0, 1, -1][r % 3]!;
-    const lz = -6.5 + 0.72 * lane;
+    const lz = -3.95 + 0.3 * lane; // (the near side of the stair: the words stay clear)
     const street = p.hero ? (p.s.id === 'HE' ? -8.3 : -7.5) : -6.5 + [0.0, -2.2, 1.6, -3.6, 0.9, -1.2, -4.6, 2.2, -2.9, -0.4][r]!;
     const pts: THREE.Vector3[] = [
       p.home.clone(),
@@ -328,11 +339,12 @@ export default class Train extends Scene {
       V3(6.0, 0, lz + 0.6),
       V3(6.8, 0, lz),
       V3(STAIR_FOOT + 0.4, -FLOOR_Y, lz),
-      V3(STAIR_FOOT + 7, -FLOOR_Y, lerp(lz, street, 0.6)),
+      V3(STAIR_FOOT + 6, -FLOOR_Y, lerp(lz, street, 0.5) - 2.2),
+      V3(STAIR_FOOT + 14, -FLOOR_Y, street - 1.5),
       V3(160, -FLOOR_Y, street),
     ];
     const hero = p.hero;
-    const speed = [3.2, 3.6, 4.0, 4.0, 3.7, hero ? 5.4 : 4.1, hero ? 6.2 : 4.1];
+    const speed = [3.2, 3.6, 4.0, 4.0, 4.3, hero ? 5.4 : 4.3, hero ? 5.6 : 4.1, hero ? 6.2 : 4.1];
     // arrival at the door spaced out in exit order
     const dDoor = Math.hypot(pts[1]!.x - pts[0]!.x, pts[1]!.z - pts[0]!.z);
     const arrive = T.cF + 0.25 + 0.27 * r;
@@ -385,36 +397,41 @@ export default class Train extends Scene {
   }
   private shotE(t: number): Shot {
     const k = ease.inOutQuad(prog(t, this.T.cE, this.T.cF));
-    return { pos: V3(4.58, 0.95, 0.4).lerp(V3(4.6, 0.98, 0.18), k), tgt: V3(4.6, 2.15, -6.0), fov: 54, roll: 0.0, local: true };
+    return { pos: V3(4.58, 0.95, 0.4).lerp(V3(4.6, 0.98, 0.18), k), tgt: V3(4.6, 2.2, -6.0), fov: 48, roll: 0.0, local: true };
   }
   private shotF(t: number): Shot {
     const T = this.T, k = ease.inOutQuad(prog(t, T.cF, T.cG));
-    // low on the platform by the doors, the neon wall ahead; panning right after the runners; whip at the end
-    const pos = V3(3.0, FLOOR_Y + 0.75, -2.15).lerp(V3(3.6, FLOOR_Y + 0.8, -2.3), k);
-    const tgt = V3(4.6, FLOOR_Y + 2.0, ST.zWall).lerp(V3(6.6, FLOOR_Y + 1.6, ST.zWall), k);
+    // on the platform past the stairwell: the train with its lit windows and open doors on the left, the neon wall
+    // ahead, the crowd pouring out toward us and down the stair; whip pan down into the stairwell at the end
+    const pos = V3(11.4, FLOOR_Y + 1.3, -2.05).lerp(V3(10.4, FLOOR_Y + 1.35, -2.1), k);
+    const tgt = V3(2.4, FLOOR_Y + 1.8, -7.6).lerp(V3(1.8, FLOOR_Y + 1.75, -7.4), k);
     const w = ease.inQuad(prog(t, T.cG - 0.24, T.cG));
     const yaw = -1.2 * w;
     const d = tgt.clone().sub(pos).applyAxisAngle(UP, yaw);
     d.y -= 4 * w;
-    return { pos, tgt: pos.clone().add(d), fov: 52, roll: -0.15 * w, local: false };
+    return { pos, tgt: pos.clone().add(d), fov: 56, roll: -0.15 * w, local: false };
   }
   private shotG(t: number): Shot {
     const T = this.T, k = ease.inOutCubic(prog(t, T.cG, T.cH));
-    const pos = V3(25.5, 8.4, -6.6).lerp(V3(24.6, 2.0, -6.5), k);
-    const tgt = V3(8, 7.6, -6.5).lerp(V3(10, 5.6, -6.5), k);
+    // a crane down the stair ahead of the runners: the painted words big and clear of them (they keep to the
+    // near side)
+    // (starting level with the top, where TONIGHT is, and craning down with the words)
+    const pos = V3(22.8, 6.4, -6.55).lerp(V3(27.4, 2.4, -6.6), k);
+    const tgt = V3(9.0, 6.0, -6.6).lerp(V3(12.0, 3.4, -6.6), k);
     // landing from the whip
     const w = 1 - ease.outCubic(prog(t, T.cG, T.cG + 0.3));
     const d = tgt.clone().sub(pos).applyAxisAngle(UP, 0.9 * w);
     d.y += 3 * w;
-    return { pos, tgt: pos.clone().add(d), fov: 52, roll: 0.12 * w, local: false };
+    return { pos, tgt: pos.clone().add(d), fov: 48, roll: 0.12 * w, local: false };
   }
   shotH(t: number): Shot {
     const T = this.T, k = ease.inOutQuad(prog(t, T.cH, T.cI));
     const up = ease.inOutCubic(prog(t, T.gold - 0.1, T.cI));
-    const pos = V3(40, 14.5, -14).lerp(V3(37.5, 13, -13.5), k);
-    pos.y += 2 * up;
-    const tgt = V3(27.5, 0, -6.5).add(V3(-3, 2.6, 1.5).multiplyScalar(up));
-    return { pos, tgt, fov: 50, roll: 0.0, local: false };
+    // a low crane in front of them as they burst out of the stair over the neon; it lifts with the gold
+    const pos = V3(34.5, 4.0, -15.0).lerp(V3(36.5, 3.8, -14.4), k);
+    pos.y += 1.6 * up;
+    const tgt = V3(23.0, 1.3, -6.9).lerp(V3(27.0, 1.0, -7.4), k).add(V3(-2, 2.2, 1.0).multiplyScalar(up));
+    return { pos, tgt, fov: 54, roll: 0.0, local: false };
   }
   private shotI(t: number): Shot {
     const T = this.T, k = ease.inOutQuad(prog(t, T.cI, this.ctx.end + 0.2));
@@ -564,6 +581,7 @@ export default class Train extends Scene {
         const on = hash(Math.floor(fi / 3), i, 5) > 0.25 + 0.75 * g;
         l = t > T.gap1 ? 0 : on ? 0.6 + 0.4 * hash(fi, i) : 0.04;
       }
+      if (t > T.relight) l = Math.min(1, flickerOn(t, T.relight + 0.04 * ((i * 7) % 10), i + 40));
       this.car.fixLevel[i] = l;
     }
     (U.uFix.value as number[]).splice(0, 10, ...this.car.fixLevel);
@@ -581,7 +599,7 @@ export default class Train extends Scene {
     const moonLight = (1 - prog(t, T.swallow + 0.1, T.moon + 0.15)) * moonK;
     U.uMoonC.value.setRGB(0.3, 0.33, 0.45).multiplyScalar(0.12 * moonLight);
     // the full city only where the street is the picture (the crane over the avenue, the run); elsewhere the stand-in
-    const street = shot.id === 'H' || shot.id === 'I';
+    const street = shot.id === 'G' || shot.id === 'H' || shot.id === 'I';
     this.out.city.mirrorOn = false;
     this.out.update(t, cam, moonK, street);
 
@@ -627,23 +645,45 @@ export default class Train extends Scene {
     }
     // the lamps outside sweep through the car; the station's lights come on with the chain of people
     if (cx < ST.x0 + 6) for (const lp of this.out.nearLamps(cam.position.x, 4)) lights.push({ p: lp, r: -2.8, c: new THREE.Color(1.0, 0.6, 0.3), k: 2.4 });
-    const chainEnd = Math.max(...this.people.map((p) => p.tLight));
-    for (let i = 0; i < this.station.lightsOn.length; i++) {
-      const t0 = lerp(T.light + 0.25, chainEnd + 0.15, i / (this.station.lightsOn.length - 1));
+    // (the platform's fixtures light on in order along the train, from where the two are)
+    const chainEnd = T.relight - 0.25;
+    const nSt = this.station.lightsOn.length;
+    for (let i = 0; i < nSt; i++) {
+      const xc = ST_LIGHT.x0 + (i + 0.5) * (ST_LIGHT.x1 - ST_LIGHT.x0) / nSt;
+      const t0 = lerp(T.light + 0.25, chainEnd + 0.15, Math.min(1, Math.abs(xc) / 24));
       this.station.lightsOn[i] = Math.min(1, flickerOn(t, t0, i * 3 + 2));
     }
-    this.station.update();
-    this.station.lampPos.forEach((lp, i) => lights.push({ p: lp, r: -3.0, c: new THREE.Color(0.8, 0.88, 1.0), k: 0.6 * this.station.lightsOn[i]! }));
-    // the wall's neon throws pink on the tiles and the people
+    this.station.update(t);
+    (U.uSt.value as number[]).splice(0, nSt, ...this.station.lightsOn);
+    // the wall's neon washes the tiles (and whoever passes) pink
     const nOn = L4lit(this.L.p1!, t);
-    if (nOn > 0) lights.push({ p: V3(4.6, FLOOR_Y + 1.7, ST.zWall + 0.9), r: -2.6, c: col('pink', 1), k: 0.35 * nOn });
+    U.uNeon.value.set(4.6, FLOOR_Y + 1.9, 3.8, 0.55 * nOn);
+    // the entrance globes at the stair's foot
+    if (shot.id === 'H' || shot.id === 'G') for (const gp of this.station.globePos) lights.push({ p: gp, r: 2.2, c: new THREE.Color(0.3, 1.0, 0.45), k: 0.7 });
+    if (shot.id === 'G' || shot.id === 'F') for (const sp of this.station.stairLamps) lights.push({ p: sp, r: 2.0, c: new THREE.Color(1.0, 0.7, 0.4), k: 0.9 });
     // the display
     const dispOn = t > T.cB - 0.6 && t < T.cC + 0.2;
     if (dispOn) lights.push({ p: this.car.localToWorld(V3(8.6, 2.0, 0)), r: 0.6, c: new THREE.Color(1.0, 0.45, 0.1), k: 0.6 });
     // (outside, where the light falls mostly on the city's own surfaces, only the strongest few)
-    this.applyLights(lights, cam.position, 'GHI'.includes(shot.id) ? 4 : MAXL);
+    this.applyLights(lights, cam.position, shot.id === 'G' ? 6 : 'HI'.includes(shot.id) ? 4 : MAXL);
     U.uCeilC.value.setRGB(0.5, 0.56, 0.7).multiplyScalar(0.2);
     U.uAmb.value.setRGB(0.004, 0.005, 0.009).multiplyScalar(1 + 2 * ceil);
+
+    // ---- pools of light under the people on the platform and the street (not on the stair)
+    let np = 0;
+    if ('FGHI'.includes(shot.id)) for (const p of this.people) {
+      const w = p.fig.position, local = w.y - p.fig.hipHeight;
+      const onPlatform = Math.abs(local) < 0.3 && !p.seated || (t > p.tRun && Math.abs(local) < 0.3);
+      const onStreet = local < -FLOOR_Y + 0.3;
+      if (!onPlatform && !onStreet) continue;
+      const wp = this.car.localToWorld(V3(w.x, 0, w.z));
+      if (onStreet) wp.y = 0.04; else wp.y = FLOOR_Y + 0.012;
+      const lit = states.get(p)!.lit;
+      this.pools.place(np++, wp, onStreet ? 3.2 : 2.4, p.glowC, (onStreet ? 0.14 : 0.08) * (p.hero ? 1 : lit));
+    }
+    if (shot.id === 'H' || shot.id === 'I') for (const [x, z, k] of [[23.5, -10.5, 1], [31, -12.8, 0.8], [37, -5.5, 0.7], [27, -1.5, 0.6]] as const) this.pools.place(np++, V3(x, 0.03, z), 9, new THREE.Color(1.0, 0.55, 0.2), 0.22 * k);
+    this.pools.commit(np);
+    ((this.roadGlow.material as THREE.ShaderMaterial).uniforms.uC!.value as THREE.Color).copy(col('violet', 1).lerp(col('blue', 1), 0.3).lerp(col('gold', 1.2), ease.inOutCubic(prog(t, T.gold - 0.05, T.gold + 0.5)))).multiplyScalar(0.11 * L4lit(this.L.p3!, t));
 
     // ---- glass: rain, the city's light on it
     const gu = this.car.glass.uniforms;
@@ -738,4 +778,63 @@ function copyPose(src: RealFigure, dst: RealFigure) {
   src.updateMatrixWorld(true);
   const D = dst.boneMap;
   for (const [n, b] of src.boneMap) { const d = D.get(n); if (d) { d.quaternion.copy(b.quaternion); d.position.copy(b.position); } }
+}
+
+/** A soft pool of light on the ground: additive, radial falloff, coloured per instance. */
+function poolMaterial() {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: { uC: { value: new THREE.Color(0, 0, 0) } },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv; varying vec3 vC;
+      void main() {
+        vUv = uv;
+        vec4 lp = vec4(position, 1.0);
+      #ifdef USE_INSTANCING
+        lp = instanceMatrix * lp;
+      #endif
+      #ifdef USE_INSTANCING_COLOR
+        vC = instanceColor;
+      #else
+        vC = vec3(1.0);
+      #endif
+        gl_Position = projectionMatrix * modelViewMatrix * lp;
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uC; varying vec2 vUv; varying vec3 vC;
+      void main() {
+        vec2 p = vUv * 2.0 - 1.0;
+        float r2 = dot(p, p);
+        float a = exp(-r2 * 3.2) * (1.0 - smoothstep(0.7, 1.0, r2));
+        gl_FragColor = vec4(uC * vC * a, 1.0);
+      }`,
+  });
+}
+
+/** Pools of light under people: flat discs on the ground. */
+class Pools extends THREE.InstancedMesh {
+  private m = new THREE.Matrix4();
+  constructor(n: number) {
+    const g = new THREE.PlaneGeometry(1, 1);
+    g.rotateX(-Math.PI / 2);
+    const mat = poolMaterial();
+    mat.uniforms.uC!.value.setRGB(1, 1, 1);
+    super(g, mat, n);
+    this.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    for (let i = 0; i < n; i++) this.setColorAt(i, new THREE.Color(0, 0, 0));
+    this.frustumCulled = false;
+    this.count = 0;
+  }
+  place(i: number, p: THREE.Vector3, size: number, c: THREE.Color, k: number) {
+    this.m.makeScale(size, 1, size).setPosition(p);
+    this.setMatrixAt(i, this.m);
+    this.setColorAt(i, c.clone().multiplyScalar(k));
+  }
+  commit(n: number) {
+    this.count = n;
+    this.instanceMatrix.needsUpdate = true;
+    if (this.instanceColor) this.instanceColor.needsUpdate = true;
+  }
 }
