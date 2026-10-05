@@ -30,8 +30,19 @@ import { GlowLines } from '../lib/stars';
 import { CycleMotion, Route, holdHands, inOut, loadCycle, loadSpan } from './run-motion';
 import { Folk, type Joiner, poseStride, reachTo, type Stride } from './run-people';
 import { Handprints } from './run-prints';
-import { BrokenWindow, Pigeons, Splashes, mirrorOnly, placeKit, shiftRender, stairKit, taxiKit } from './run-props';
-import { StreetCars, hideCityInstances } from './run-cars';
+import { BrokenWindow, Pigeons, Splashes, cityKitMat, mirrorOnly, placeKit, shiftRender, stairKit, windowBand } from './run-props';
+import { StreetCars, TAXI_PAINT, hideCityInstances } from './run-cars';
+import { kitBatch } from '../lib/city-build';
+import { heroCarGeometry } from './run-carbody';
+
+/** The two cabs stopped at the red light on avenue 2 (leg G), noses north. */
+const CABS_G = [{ x: 619.6, z: 112.5, yaw: 0 }, { x: 624.4, z: 111.4, yaw: 0 }];
+/** A point on a detailed cab (city-cars, sedan body) at (cx, cz) turned by yaw: lz along it (+ toward the nose), lx across; on the hood or the roof. */
+function onCab(cx: number, cz: number, yaw: number, lz: number, lx: number) {
+  const H = 2.375, cowl = 0.95, u = Math.min(1, Math.max(0, (lz - H) / (cowl - H))), sm = u * u * (3 - 2 * u);
+  const y = lz > cowl ? 0.74 + 0.19 * Math.pow(sm, 0.55) + 0.012 : 1.475;
+  return new THREE.Vector3(cx + lz * Math.sin(yaw) + lx * Math.cos(yaw), y, cz + lz * Math.cos(yaw) - lx * Math.sin(yaw));
+}
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const UP = V(0, 1, 0);
@@ -76,7 +87,7 @@ export default class Run extends Scene {
   R2!: Route;
   R3!: Route;
   taxi = V(413.6, 0, 124.0);
-  hood = V(412.0, 1.0, 123.6);
+  hood = V(412.0, 0.89, 123.6);
   tracks: { he: HeroTrack; she: HeroTrack } | null = null;
   freezes: [number, number][] = [];
   street!: StreetCars;
@@ -182,20 +193,26 @@ export default class Run extends Scene {
     };
 
     // ---- props ----
-    const cab = placeKit(this.city, taxiKit(), this.taxi.x, 0, this.taxi.z, Math.PI);
-    this.world.add(cab);
-    // two cabs stopped at the red light on avenue 2, headlights on the crossing
-    this.world.add(placeKit(this.city, taxiKit(), 619.6, 0, 112.5, -Math.PI / 2), placeKit(this.city, taxiKit(), 624.4, 0, 111.4, -Math.PI / 2));
+    // the hero cab (the city's detailed car: a lofted body, glass, arches, seams, mirrors, its lit roof sign), its
+    // nose toward −x; two cabs stopped at the red light on avenue 2, noses north, headlights on the crossing
+    const cabs = [{ x: this.taxi.x, z: this.taxi.z, yaw: -Math.PI / 2 }, ...CABS_G];
+    const cabMesh = kitBatch(heroCarGeometry(2), cabs.map((c) => ({ x: c.x, y: 0, z: c.z, yaw: c.yaw, sx: 1, sy: 1, sz: 1, col: TAXI_PAINT, k: 1 })), cityKitMat(this.city), V(this.taxi.x, 0, this.taxi.z), 6);
+    cabMesh.frustumCulled = false;
+    this.world.add(cabMesh);
     // the litter baskets where our cameras go (rounded, real), and the city's cab where the hero cab parks hidden
-    this.street = new StreetCars(this.city, [[388, 70, 45], [400, 112, 30], [415, 122, 35], [440, 127, 35], [620, 118, 35], [700, 122, 70], [1120, 135, 40]]);
-    this.world.add(this.street);
     // (the city's parked car right behind the hero cab would touch it: gone)
-    hideCityInstances(this.city, this.city.plan.parked.filter((p) => Math.hypot(p.x - this.taxi.x, p.z - this.taxi.z) < 5.5).map((p) => [p.x, 0, p.z] as [number, number, number]));
+    const byCab = this.city.plan.parked.filter((p) => Math.hypot(p.x - this.taxi.x, p.z - this.taxi.z) < 5.5);
+    this.street = new StreetCars(this.city, [[388, 70, 45], [400, 112, 30], [415, 122, 35], [440, 127, 35], [620, 118, 35], [700, 122, 70], [1120, 135, 40]], { exclude: byCab.map((p) => [p.x, p.z] as [number, number]) });
+    this.world.add(this.street);
+    hideCityInstances(this.city, byCab.map((p) => [p.x, 0, p.z] as [number, number, number]));
     // the steel stairs up to the overpass (the el station's stairs are the city's)
     this.world.add(placeKit(this.city, stairKit(V(1133.6, oy, 147.5), V(1133.6, 0.15, 132.5), 1.8), 0, 0, 0));
     // the smashed window (FOR RENT, street 1 south side)
     this.window = new BrokenWindow(this.city, V(434.7, 0.55, 129.5), V(0, 0, -1), 4.6, 2.5, T.piece - 0.15, T.star + 0.25, 80);
     this.world.add(this.window);
+    // the bank next door: its window's frosted band and lettering, by the lens in E
+    this.world.add(windowBand(440.9, 1.45, 129.36, V(0, 0, -1), 4.9, 'ATM  ·  24 HOUR LOBBY', 'Lobby hours  Mon – Fri  9 am – 5 pm   ·   Sat 9 am – 1 pm'));
+
 
     // ---- people ----
     const figs: [RealFigure, RealFigure] = [he, she];
@@ -227,6 +244,8 @@ export default class Run extends Scene {
     this.addSplashes();
     this.world.add(this.splashes);
     // the wet street's reflection (the city renders the scene again, mirrored): only the two of them in it
+    // (the people draw after the shop interior seen through the broken window: run-props BrokenWindow)
+    for (const o of [this.he, this.she, this.star, this.lantern, this.folk.crowd]) o.traverse((q) => { q.renderOrder = Math.max(q.renderOrder, 3); });
     mirrorOnly(this.city, [this.folk.crowd, this.prints, this.splashes, this.pigeons, this.trails, this.window]);
   }
 
@@ -282,17 +301,20 @@ export default class Run extends Scene {
     P.scatter(18, V(395, 0, 110.52), V(408, 0, 110.52), V(0, 0, 1), this.legs[1]!.t0 + 0.9, this.T.E + 2, cols, 21, 0.9, 1.9);
     // C: his palm on the cab's hood, hers on its roof, then the crowd's all over it
     P.print({ pos: this.hood.clone(), normal: V(0, 1, 0), up: V(0.5, 0, 0.8), t: this.T.tv0 + 0.1, color: pc[0]!, size: 0.2 });
-    P.print({ pos: V(413.9, 1.53, 124.2), normal: V(0, 1, 0), up: V(0.6, 0, 0.8), t: this.T.grip + 0.1, color: pc[1]!, size: 0.18 });
+    P.print({ pos: onCab(this.taxi.x, this.taxi.z, -Math.PI / 2, -0.75, 0.2), normal: V(0, 1, 0), up: V(0.6, 0, 0.8), t: this.T.grip + 0.1, color: pc[1]!, size: 0.18 });
     const pr = mulberry32(5);
     for (let i = 0; i < 26; i++) {
-      const onRoof = pr() < 0.4;
-      P.print({ pos: V(this.taxi.x + (onRoof ? -0.3 + (pr() - 0.5) * 1.0 : -2.2 + pr() * 1.2), onRoof ? 1.53 : 0.99, this.taxi.z + (pr() - 0.5) * 1.3), normal: V(0, 1, 0), up: V(pr() - 0.5, 0, 1), t: this.T.E + 0.5 + pr() * 6, color: cols[i % 4]!, size: 0.16 + pr() * 0.05, left: pr() < 0.5 });
+      const onRoof = pr() < 0.4, lz = onRoof ? -0.6 - pr() * 0.3 : 1.05 + pr() * 1.0, lx = (pr() - 0.5) * 1.2;
+      P.print({ pos: onCab(this.taxi.x, this.taxi.z, -Math.PI / 2, lz, lx), normal: V(0, 1, 0), up: V(pr() - 0.5, 0, 1), t: this.T.E + 0.5 + pr() * 6, color: cols[i % 4]!, size: 0.16 + pr() * 0.05, left: pr() < 0.5 });
     }
     // E: his star hand on the window's frame; the crowd's along the shopfronts
     P.print({ pos: V(432.2, 1.4, 129.47), normal: V(0, 0, -1), up: V(0.3, 1, 0), t: T.piece - 0.2, color: pc[0]! });
     P.scatter(40, V(420, 0, 129.47), V(470, 0, 129.47), V(0, 0, -1), T.piece + 0.4, T.G1 + 1, cols, 33, 0.8, 1.9);
     // G: the cabs at the light
-    for (let i = 0; i < 18; i++) P.print({ pos: V(620 + (pr() - 0.5) * 6, 0.99 + (pr() < 0.4 ? 0.54 : 0), 113 + (pr() - 0.5) * 3), normal: V(0, 1, 0), up: V(pr() - 0.5, 0, 1), t: T.G1 + 0.6 + pr() * 3, color: cols[i % 4]!, size: 0.17, left: pr() < 0.5 });
+    for (let i = 0; i < 18; i++) {
+      const c = CABS_G[i % 2]!, onRoof = pr() < 0.4, lz = onRoof ? -0.6 - pr() * 0.3 : 1.05 + pr() * 1.0, lx = (pr() - 0.5) * 1.2;
+      P.print({ pos: onCab(c.x, c.z, c.yaw, lz, lx), normal: V(0, 1, 0), up: V(pr() - 0.5, 0, 1), t: T.G1 + 0.6 + pr() * 3, color: cols[i % 4]!, size: 0.17, left: pr() < 0.5 });
+    }
     // I: the shopfronts of the long street
     P.scatter(70, V(645, 0, 129.47), V(700, 0, 129.47), V(0, 0, -1), T.I + 0.5, T.J + 1, cols, 44, 0.8, 2.0);
     P.scatter(50, V(645, 0, 125.4), V(700, 0, 125.4), V(0, 0, 1), T.I + 0.8, T.J + 1, cols, 45, 0.6, 1.0);
@@ -437,9 +459,11 @@ export default class Run extends Scene {
     this.city.mirrorOn = !(leg.id === 'K' || leg.id === 'L');
     this.city.setGlows([...glows, ...this.folk.glows(S.cam.position, 9)]);
     this.city.update(t, S.cam.position);
+    this.street.update(S.cam.position);
     this.prints.time = t;
     this.window.update(tm, S.cam);
     this.window.visible = leg.id === 'E' || leg.id === 'F';
+
     this.pigeons.update(tm);
     this.pigeons.visible = leg.id === 'B' || leg.id === 'A';
     this.splashes.update(tm);

@@ -19,6 +19,7 @@ import { col } from '../lib/palette';
 import { City } from '../lib/city';
 import { Crowd, type Person } from '../lib/crowd';
 import { GlowPoints } from '../lib/points';
+import { kidsRoof, djRoof, type RoofParty } from './citydrop-roofs';
 import { Beams, Lifts, SpiralGlow, Veins, type LiftSource } from './citydrop-fx';
 import { mirrorOnly, shiftRender } from './run-props';
 import { cullOffscreen } from './run-people';
@@ -51,6 +52,8 @@ export default class CityDrop extends Scene {
   P: Record<string, THREE.Vector3> = {};
   couple: Person[] = [];
   spiral!: SpiralGlow;
+  /** The two roof parties, dressed (citydrop-roofs). */
+  roofs: RoofParty[] = [];
 
   override async init() {
     const { audio, start } = this.ctx;
@@ -154,6 +157,8 @@ export default class CityDrop extends Scene {
     }
     this.bulbs = new GlowPoints(this.bulbPos.length, 0.12);
     this.world.add(this.bulbs);
+    const kb = bld(7194);
+    if (kb) this.roofs.push(kidsRoof(this.city, kb, this.P.kids, this.bulbPos, 15, [7192, 7193, 7195, 7196].map(bld).filter((q): q is NonNullable<typeof q> => !!q)));
     // the DJ's roof: the tallest on the street (7177), its south edge over the street
     const dj = roofOf(7177) ?? { x: -474.9, z: 490.3, w: 19.4, d: 22.7, y: 40.1 };
     this.P.dj = V(dj.x, dj.y, dj.z + dj.d / 2 - 3.5);
@@ -162,10 +167,13 @@ export default class CityDrop extends Scene {
     const djDance = ['05_02', '49_09', '141_12', '55_01', '113_04'];
     for (let i = 0; i < 5; i++) {
       const ang = (i / 5) * Math.PI * 1.6 - 0.8, rr = 2.2 + hash(i, 61) * 1.5;
-      const pos = this.P.dj.clone().add(V(Math.sin(ang) * rr, 0, -1.5 + Math.cos(ang) * rr * 0.6));
+      const pos = this.P.dj.clone().add(V(Math.sin(ang) * rr, 0, Math.min(-0.75, -1.7 + Math.cos(ang) * rr * 0.6)));
       add(pos, Math.atan2(this.P.dj.x - pos.x, this.P.dj.z + 2 - pos.z) + (hash(i, 62) - 0.5) * 0.8, { look: i < 3 ? 'light' : 'dust', shot: 4, body: (i % 2) as 0 | 1, clips: [{ clip: djDance[i]!, from: -1e9 }], offset: 1.3 * i, color: pal[(i + 2) % pal.length]!.clone() });
     }
     add(this.P.dj.clone().add(V(0, 0, 0.9)), Math.PI, { clips: [{ clip: '111_28', from: -1e9 }], color: col('white', 1.2), body: 0 });
+    const db = bld(7177);
+    if (db) this.roofs.push(djRoof(this.city, db, this.P.dj));
+    this.world.add(...this.roofs);
 
     // ---- light down the streets on the kicks ----
     const lines: { pts: THREE.Vector3[]; d0: number; w: number }[] = [];
@@ -206,7 +214,7 @@ export default class CityDrop extends Scene {
     this.spiral = new SpiralGlow(170, col('cyan', 0.5).lerp(col('white', 0.5), 0.4));
     this.spiral.position.copy(this.lifts.axis);
     this.world.add(this.spiral);
-    mirrorOnly(this.city, [this.crowd, this.lifts, this.beads, this.bulbs, this.beams]);
+    mirrorOnly(this.city, [this.crowd, this.lifts, this.beads, this.bulbs, this.beams, ...this.roofs]);
   }
 
   private bar(t: number) {
@@ -252,6 +260,16 @@ export default class CityDrop extends Scene {
     // the people light the walls around them (the nearest)
     const gl = this.dancers.map((d) => ({ d: d.chest.distanceToSquared(S.cam.position), pos: d.chest, color: d.p.color.clone().multiplyScalar(0.09), radius: 3 })).sort((a, b) => a.d - b.d).slice(0, 11);
     if (this.P.kitchen) gl.push({ d: 0, pos: this.P.kitchen, color: col('#ffb36b', 0.35), radius: 3.5 });
+    // the roofs: drawn only near the camera; their bulbs, gear and the dancers' feet light their floors
+    for (const R of this.roofs) {
+      R.visible = R.centre.distanceTo(S.cam.position) < 90;
+      if (!R.visible) continue;
+      const kOf = (p: Person) => (typeof p.k === 'number' ? p.k : p.k(t));
+      const feet = this.dancers.filter((d) => Math.abs(d.chest.y - 1.0 - R.centre.y) < 1.5 && Math.hypot(d.chest.x - R.centre.x, d.chest.z - R.centre.z) < 9 && kOf(d.p) > 0.05)
+        .map((d) => ({ p: d.chest.clone().setY(R.centre.y + 0.35), c: d.p.color.clone().multiplyScalar((d.p.look === 'light' ? 0.06 : 0.025) * Math.min(1.5, kOf(d.p))) }));
+      R.update(t, f.a.kick, f.beat, feet);
+      if (R.centre.distanceTo(S.cam.position) < 30) for (const q of R.keyLights) if (gl.length < 16) gl.push({ d: 0, ...q });
+    }
     this.city.setGlows(gl);
     this.city.update(t, S.cam.position);
     shiftRender(this.ctx.renderer, S.scene, S.cam, this.world, this.city, out, S.bg);
@@ -282,10 +300,11 @@ export default class CityDrop extends Scene {
       }
       case 2: {
         // on the kids' roof, at their height, string lights over them, the street's fire escapes behind
-        const a = 0.6 - 0.9 * e;
-        pos = P.kids!.clone().add(V(Math.sin(a) * 4.2, 0.8, -Math.cos(a) * 4.2 - 0.5));
-        tgt = P.kids!.clone().add(V(0, 0.75, 0.3));
-        fov = 50;
+        // (inside the parapet, the roof behind them: the bulkhead's lit door, the couch, the strings, the row behind)
+        const a = 0.55 - 0.9 * e;
+        pos = P.kids!.clone().add(V(Math.sin(a) * 2.75, 1.2, -Math.cos(a) * 2.5));
+        tgt = P.kids!.clone().add(V(-0.3 * Math.sin(a), 0.85, 1.2));
+        fov = 52;
         break;
       }
       case 3: {

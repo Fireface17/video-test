@@ -1,4 +1,4 @@
-// Things in the street that the run (chorus 2) touches: a parked taxi to leap over, a smashed shop window
+// Things in the street that the run (chorus 2) touches (the cab they leap over is run-carbody's): a smashed shop window
 // whose shards rise as stars, pigeons that scatter, water splashing from the wet street under running feet,
 // steel stairs. Solid things are built with the city's kits (lib/city-build.ts) so the street light, the glow
 // of the people and the fog fall on them like on everything else in the city.
@@ -8,6 +8,8 @@ import type { City } from '../lib/city';
 import { GlowPoints } from '../lib/points';
 import { starGeometry } from '../lib/shapes';
 import { clamp, hash, mulberry32, smoothstep } from '../../engine/util';
+import { SURF, SurfLights, floorRect, surfBox, surfaceMaterial } from './run-surfaces';
+import { F, font } from '../../engine/type';
 
 const kitMats = new WeakMap<City, THREE.ShaderMaterial>();
 /** The city's kit material (one per city). */
@@ -67,79 +69,6 @@ export function mirrorOnly(city: City, hide: THREE.Object3D[]) {
       hide.forEach((o, i) => (o.visible = vis[i]!));
     };
   });
-}
-
-/** A side profile (x along the car, y up) extruded across it (width w, centred on z = 0), edges rounded. */
-function sideExtrude(pts: [number, number][], w: number, bevel: number, curve = 6) {
-  const sh = new THREE.Shape();
-  pts.forEach(([x, y], i) => (i ? sh.lineTo(x, y) : sh.moveTo(x, y)));
-  sh.closePath();
-  const g = new THREE.ExtrudeGeometry(sh, { depth: w - 2 * bevel, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 3, curveSegments: curve });
-  g.translate(0, 0, -(w - 2 * bevel) / 2);
-  g.deleteAttribute('uv');
-  g.computeVertexNormals();
-  return g;
-}
-/** Points along an arc (centre cx, cy; radius r; angles a0 → a1). */
-function arc(cx: number, cy: number, r: number, a0: number, a1: number, n = 8): [number, number][] {
-  return Array.from({ length: n + 1 }, (_, i) => { const a = a0 + ((a1 - a0) * i) / n; return [cx + Math.cos(a) * r, cy + Math.sin(a) * r] as [number, number]; });
-}
-
-/**
- * A New York cab (a big sedan), nose toward local +x, 5.2 m long, wheels on y = 0: a rounded body with wheel
- * arches, a sloped windshield and rear window (glass reflecting the street), the cabin's pillars and roof, tyres
- * with rims, chrome bumpers and belt line, door seams, mirrors, head- and taillights, the lit roof sign.
- */
-export function taxiKit(paint: [number, number, number] = [0.62, 0.4, 0.035]) {
-  const k = new KitBuilder();
-  const P = [...paint, M.ALB], dark = [0.015, 0.015, 0.017, M.ALB], chrome = [0.42, 0.42, 0.44, M.ALB], glass = [0.015, 0.017, 0.02, M.GLASS], rubber = [0.02, 0.02, 0.022, M.ALB];
-  const I = new THREE.Matrix4();
-  const W = 1.9, R = 0.4, wx = 1.6;
-  // the body up to the belt line: the hood sloping down to the nose, the trunk, the arches cut out
-  const body: [number, number][] = [
-    [-2.6, 0.3], [-wx - R - 0.06, 0.3], ...arc(-wx, 0.36, R + 0.06, Math.PI, 0, 9), [wx - R - 0.06, 0.3], ...arc(wx, 0.36, R + 0.06, Math.PI, 0, 9), [2.6, 0.3],
-    [2.66, 0.5], [2.6, 0.74], [2.42, 0.82], [1.25, 0.95], [0.9, 0.97], [-1.75, 0.98], [-2.48, 0.94], [-2.62, 0.78], [-2.64, 0.52],
-  ];
-  k.add(sideExtrude(body, W, 0.09), I, P);
-  // the cabin: glass all round, then the roof and the pillars over it
-  const cab: [number, number][] = [[1.18, 0.96], [0.32, 1.4], [-0.9, 1.42], [-1.72, 0.98]];
-  k.add(sideExtrude(cab, W - 0.34, 0.05, 2), I, glass);
-  k.add(sideExtrude([[0.38, 1.38], [0.3, 1.45], [-0.92, 1.47], [-0.98, 1.4]], W - 0.3, 0.05, 2), I, P);
-  const pillar = (x0: number, y0: number, x1: number, y1: number, wdt: number) => {
-    const L = Math.hypot(x1 - x0, y1 - y0), ang = Math.atan2(y1 - y0, x1 - x0);
-    for (const z of [-(W - 0.34) / 2 - 0.005, (W - 0.34) / 2 + 0.005]) k.box((x0 + x1) / 2, (y0 + y1) / 2, z, L, wdt, 0.05, P, 0, 0, ang);
-  };
-  pillar(1.18, 0.97, 0.32, 1.41, 0.07); // A
-  pillar(-0.32, 0.98, -0.32, 1.43, 0.1); // B
-  pillar(-1.72, 0.99, -0.92, 1.42, 0.12); // C
-  // wheels: tyres, rims, hub caps
-  for (const x of [wx, -wx]) for (const z of [W / 2 - 0.16, -(W / 2 - 0.16)]) {
-    k.cyl(x, 0.36, z, 0.36, 0.36, 0.25, 18, rubber, false, Math.PI / 2);
-    k.cyl(x, 0.36, z + Math.sign(z) * 0.06, 0.22, 0.22, 0.15, 14, chrome, false, Math.PI / 2);
-    k.cyl(x, 0.36, z + Math.sign(z) * 0.13, 0.08, 0.1, 0.02, 10, [0.6, 0.6, 0.62, M.ALB], false, Math.PI / 2);
-  }
-  // bumpers (rounded bars), the grille, the belt line, door seams and handles, mirrors
-  const bar = new THREE.CapsuleGeometry(0.1, W - 0.2, 3, 8).rotateX(Math.PI / 2);
-  k.add(bar, new THREE.Matrix4().makeTranslation(2.68, 0.42, 0), chrome).add(bar, new THREE.Matrix4().makeTranslation(-2.68, 0.42, 0), chrome);
-  k.box(2.66, 0.65, 0, 0.04, 0.16, 0.95, dark);
-  for (let i = 0; i < 6; i++) k.box(2.675, 0.59 + i * 0.025, 0, 0.02, 0.008, 0.9, chrome);
-  for (const z of [W / 2 + 0.002, -W / 2 - 0.002]) {
-    k.box(-0.4, 0.88, z, 3.9, 0.025, 0.01, chrome);
-    for (const x of [1.08, -0.33, -1.72]) k.box(x, 0.62, z, 0.012, 0.6, 0.012, dark);
-    for (const x of [0.22, -1.1]) k.box(x, 0.8, z, 0.16, 0.035, 0.03, chrome);
-    k.box(-0.35, 0.68, z, 2.8, 0.06, 0.008, [0.04, 0.04, 0.04, M.ALB]); // the checker band's base
-    for (let i = 0; i < 14; i++) k.box(-1.5 + i * 0.2, 0.68, z + Math.sign(z) * 0.004, 0.1, 0.06, 0.006, i % 2 ? dark : [0.6, 0.6, 0.6, M.ALB]);
-  }
-  for (const z of [W / 2 + 0.08, -W / 2 - 0.08]) k.box(1.0, 1.03, z, 0.1, 0.1, 0.16, P);
-  // head- and taillights, the indicator, the roof sign (lit: the cab is free)
-  for (const z of [0.62, -0.62]) {
-    k.sphere(2.62, 0.66, z, 0.1, [1.6, 1.5, 1.25, M.LIGHT], 0.5, 1, 1.4, 1);
-    k.box(2.6, 0.5, z * 1.15, 0.05, 0.06, 0.18, [1.2, 0.55, 0.05, M.LIGHT]);
-    k.box(-2.62, 0.72, z * 1.05, 0.05, 0.16, 0.34, [1.3, 0.06, 0.03, M.LIGHT]);
-  }
-  k.add(new THREE.CapsuleGeometry(0.12, 0.85, 3, 8).rotateX(Math.PI / 2).scale(1.4, 1, 1), new THREE.Matrix4().makeTranslation(-0.3, 1.6, 0), [1.25, 1.0, 0.55, M.LIGHT]);
-  k.box(-0.3, 1.49, 0, 0.12, 0.06, 0.5, dark);
-  return k;
 }
 
 /** A straight steel stair from a (top) to b (bottom), width w, with treads, stringers and railings. */
@@ -206,14 +135,54 @@ export class BrokenWindow extends THREE.Group {
     }
     k.box(base.x + n.x * 0.04, base.y + h + 0.04, base.z + n.z * 0.04, Math.abs(tx.x) * w + Math.abs(n.x) * 0.1 + 0.08, 0.08, Math.abs(tx.z) * w + Math.abs(n.z) * 0.1 + 0.08, frame);
     k.box(base.x + n.x * 0.04, base.y - 0.04, base.z + n.z * 0.04, Math.abs(tx.x) * w + Math.abs(n.x) * 0.1 + 0.08, 0.08, Math.abs(tx.z) * w + Math.abs(n.z) * 0.1 + 0.08, frame);
-    // behind the glass, the empty shop: dark walls, a little street light on its floor
-    const inC = [0.012, 0.012, 0.014, M.ALB];
-    const B = (u: number, v: number, dn: number): number[] => [base.x + tx.x * u - n.x * dn, base.y + v, base.z + tx.z * u - n.z * dn];
-    k.poly4(B(-w / 2, 0, 0.0), B(w / 2, 0, 0.0), B(w / 2, 0, 3), B(-w / 2, 0, 3), [0.05, 0.045, 0.04, M.ALB]);
-    k.poly4(B(-w / 2, h, 3), B(w / 2, h, 3), B(w / 2, 0, 3), B(-w / 2, 0, 3), inC);
-    k.poly4(B(-w / 2, h, 0), B(-w / 2, h, 3), B(-w / 2, 0, 3), B(-w / 2, 0, 0), inC);
-    k.poly4(B(w / 2, h, 3), B(w / 2, h, 0), B(w / 2, 0, 0), B(w / 2, 0, 3), inC);
-    k.poly4(B(-w / 2, h, 0), B(w / 2, h, 0), B(w / 2, h, 3), B(-w / 2, h, 3), inC);
+    // behind the glass, the empty shop: bare brick walls,
+    // a concrete floor, a dropped ceiling's grid, the decorators' things left about, a little street light in it
+    const SL = new SurfLights();
+    const Pw = (u: number, y: number, d: number) => new THREE.Vector3(base.x + tx.x * u - n.x * d, y, base.z + tx.z * u - n.z * d);
+    const sz3 = (su: number, sy: number, sd: number): [number, number, number] => [Math.abs(tx.x) * su + Math.abs(n.x) * sd, sy, Math.abs(tx.z) * su + Math.abs(n.z) * sd];
+    SL.set(0, Pw(0, 2.4, 0.8), new THREE.Color(0.22, 0.2, 0.18), 3.0);
+    SL.set(1, Pw(-1.5, 0.6, 0.6), new THREE.Color(0.06, 0.07, 0.1), 2.0);
+    const brick = surfaceMaterial(city, SURF.BRICK, SL, { street: 0.3, alb: new THREE.Color(0.12, 0.055, 0.035) });
+    const conc = surfaceMaterial(city, SURF.CONCRETE, SL, { street: 0.3, wet: 0, alb: new THREE.Color(0.12, 0.12, 0.12) });
+    const wd = w + 0.4, dep = 3.4, fy = 0.16, cyl = 3.3;
+    const box = (u: number, y: number, d: number, su: number, sy: number, sd: number, m: THREE.Material) => { const c = Pw(u, y, d), z = sz3(su, sy, sd); return surfBox(c.x, c.y, c.z, z[0], z[1], z[2], m); };
+    // (seen only through the hole: a mask there resets the depth after the city's facade and shopfront are drawn,
+    // then the interior draws, then the people — run.ts gives them a later render order)
+    const d0 = -0.1, inner: THREE.Mesh[] = [];
+    inner.push(box(0, (fy + cyl) / 2, dep + 0.05, wd, cyl - fy, 0.1, brick));
+    for (const sg of [-1, 1]) inner.push(box(sg * (wd / 2 + 0.05), (fy + cyl) / 2, (d0 + dep) / 2, 0.1, cyl - fy, dep - d0, brick));
+    inner.push(box(0, cyl + 0.05, (d0 + dep) / 2, wd + 0.2, 0.1, dep - d0, conc));
+    { const a = Pw(-wd / 2, fy, d0), b = Pw(wd / 2, fy, dep); inner.push(floorRect(Math.min(a.x, b.x), Math.min(a.z, b.z), Math.max(a.x, b.x), Math.max(a.z, b.z), fy, conc)); }
+    for (const m of inner) { m.renderOrder = 2; this.add(m); }
+    {
+      const pos: number[] = [], c = W(cx, cy);
+      for (let i = 0; i < N; i++) { const a = W(...hole[i]!), b = W(...hole[(i + 1) % N]!); pos.push(...c, ...a, ...b); }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      const mask = new THREE.Mesh(g, new THREE.ShaderMaterial({
+        colorWrite: false, depthWrite: true, depthFunc: THREE.AlwaysDepth, side: THREE.DoubleSide,
+        vertexShader: 'void main(){ vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); p.z = p.w * 0.99999; gl_Position = p; }',
+        fragmentShader: 'void main(){ gl_FragColor = vec4(0.0); }',
+      }));
+      mask.renderOrder = 1;
+      mask.frustumCulled = false;
+      this.add(mask);
+    }
+    const kk = new KitBuilder(), at = (u: number, y: number, d: number) => Pw(u, y, d);
+    const put = (u: number, y: number, d: number, su: number, sy: number, sd: number, v: number[], rot = 0) => { const c = at(u, y, d), z = sz3(su, sy, sd); kk.box(c.x, c.y, c.z, z[0], z[1], z[2], v, rot); };
+    // the ceiling grid (tiles gone in places), a dead fluorescent fixture, wires hanging
+    for (let u = -wd / 2 + 0.6; u < wd / 2; u += 0.6) put(u, cyl - 0.03, 0.35 + (dep - 0.35) / 2, 0.025, 0.03, dep - 0.35, [0.3, 0.3, 0.29, M.ALB]);
+    for (let d = 0.95; d < dep; d += 0.6) put(0, cyl - 0.03, d, wd, 0.03, 0.025, [0.3, 0.3, 0.29, M.ALB]);
+    put(0.4, cyl - 0.1, 1.9, 1.25, 0.08, 0.3, [0.4, 0.4, 0.38, M.ALB]);
+    for (const [u, d, l] of [[-1.2, 2.3, 0.9], [-1.1, 2.4, 0.6], [1.6, 1.4, 0.5]] as const) put(u, cyl - l / 2, d, 0.012, l, 0.012, [0.02, 0.02, 0.02, M.ALB]);
+    // a stepladder, paint buckets, a rolled drop cloth, a stack of chairs, a broom against the wall
+    { const c = at(1.3, fy, 2.3), z = sz3(0.5, 0, 0.05); for (const sg of [-1, 1]) kk.box(c.x + z[0] * 0 + tx.x * sg * 0.22, fy + 0.85, c.z + tx.z * sg * 0.22, 0.04 + Math.abs(n.x) * 0.0, 1.7, 0.04, [0.45, 0.42, 0.35, M.ALB], 0, 0.18 * (n.z || 1)); for (let i = 1; i < 5; i++) put(1.3, fy + i * 0.34, 2.3 - 0.06 * (i - 2.5) * 0, 0.48, 0.03, 0.09, [0.45, 0.42, 0.35, M.ALB]); }
+    for (const [u, d, c] of [[0.3, 2.9, [0.55, 0.55, 0.52]], [0.62, 3.0, [0.5, 0.5, 0.47]], [0.45, 2.6, [0.6, 0.3, 0.1]]] as const) { const p = at(u, fy, d); kk.cyl(p.x, fy + 0.19, p.z, 0.15, 0.14, 0.38, 14, [...c, M.ALB]); kk.cyl(p.x, fy + 0.385, p.z, 0.155, 0.155, 0.02, 14, [0.3, 0.3, 0.3, M.ALB]); }
+    { const p = at(-0.9, fy + 0.1, 2.7); kk.sphere(p.x, p.y, p.z, 1, [0.5, 0.48, 0.44, M.ALB], 0.9, 0.12, 0.3, 2, 0.25); }
+    for (let i = 0; i < 4; i++) put(-1.9, fy + 0.45 + i * 0.07, 3.0, 0.45, 0.04, 0.45, [0.1, 0.1, 0.11, M.ALB]);
+    for (const sg of [-1, 1]) for (const sd of [-1, 1]) put(-1.9 + sg * 0.2, fy + 0.22, 3.0 + sd * 0.2, 0.025, 0.45, 0.025, [0.1, 0.1, 0.11, M.ALB]);
+    { const a = at(-wd / 2 + 0.15, fy, 1.4), b = at(-wd / 2 + 0.05, fy + 1.4, 1.5); const dd = b.clone().sub(a), l = dd.length(); kk.add(new THREE.BoxGeometry(0.03, l, 0.03), new THREE.Matrix4().compose(a.clone().add(b).multiplyScalar(0.5), new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dd.divideScalar(l)), new THREE.Vector3(1, 1, 1)), [0.3, 0.2, 0.1, M.ALB]); }
+    { const m = kitBatch(kk.geometry(), [{ x: 0, y: 0, z: 0, yaw: 0, sx: 1, sy: 1, sz: 1, col: [1, 1, 1], k: 1 }], cityKitMat(city), new THREE.Vector3(0, 0, 0), 8); m.frustumCulled = false; m.renderOrder = 2; this.add(m); }
     const mesh = kitBatch(k.geometry(), [{ x: 0, y: 0, z: 0, yaw: 0, sx: 1, sy: 1, sz: 1, col: [1, 1, 1], k: 1 }], cityKitMat(city), new THREE.Vector3(0, 0, 0), 8);
     mesh.frustumCulled = false;
     this.add(mesh);
@@ -369,4 +338,32 @@ export class Splashes extends GlowPoints {
     });
     this.commit(j);
   }
+}
+
+/**
+ * Window graphics on a shop's glass (a frosted privacy band with its lettering, the hours on a little plate),
+ * a plane just outside the glass at (x, z) facing n, the band at height y.
+ */
+export function windowBand(x: number, y: number, z: number, n: THREE.Vector3, w: number, text: string, small: string) {
+  const W = 2048, H = 256, cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const c = cv.getContext('2d')!;
+  c.clearRect(0, 0, W, H);
+  c.fillStyle = 'rgba(225,232,240,0.55)';
+  c.fillRect(0, 40, W, 150);
+  c.fillStyle = 'rgba(40,90,170,0.9)';
+  c.fillRect(0, 196, W, 14);
+  c.fillStyle = 'rgba(30,45,70,0.95)';
+  c.font = font(F.archivo(100, 600), 92); c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(text, W / 2, 117);
+  c.font = font(F.archivo(100, 500), 30); c.textAlign = 'left';
+  c.fillStyle = 'rgba(235,240,245,0.85)';
+  c.fillText(small, 40, 236);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, w * (H / W)), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, color: new THREE.Color(0.32, 0.32, 0.34), fog: false }));
+  m.position.set(x + n.x * 0.025, y, z + n.z * 0.025);
+  m.rotation.y = Math.atan2(n.x, n.z);
+  return m;
 }

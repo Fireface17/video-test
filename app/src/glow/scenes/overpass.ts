@@ -22,6 +22,7 @@ import { loadSpan, type CycleMotion } from './run-motion';
 import { Pigeons, mirrorOnly, placeKit, shiftRender } from './run-props';
 import { Handprints } from './run-prints';
 import { Breath, DawnBand, Tug, walkwayKit } from './overpass-props';
+import { DeckDress } from './overpass-deck';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const UP = V(0, 1, 0);
@@ -44,7 +45,7 @@ export default class Overpass extends Scene {
   tug!: Tug;
   birds!: Pigeons;
   siren = new GlowPoints(2, 0.6);
-  lamps = new GlowPoints(4, 0.5);
+  deck!: DeckDress;
   lampPos: THREE.Vector3[] = [];
   D: number[] = [];
   T: Record<string, number> = {};
@@ -87,8 +88,13 @@ export default class Overpass extends Scene {
     // (the city's overpass has the walkway, its coping and a gap in the railing at z 119.5–122.5; walkwayKit is
     // the stand-in for a city without it)
     if (!ov?.walk) this.world.add(placeKit(this.city, walkwayKit(this.railX, this.deckY, 60, 200, this.spot.z), 0, 0, 0));
-    for (const z of [103, 139]) this.lampPos.push(V(this.railX + 3.0, this.deckY + 6.6, z));
-    this.world.add(this.lamps);
+    // the deck dressed for the close shots: paving, coping, barrier, asphalt, railing, lamps, signs, a call box,
+    // and across the river the far bank's skyline and shore lights
+    const z = this.spot.z;
+    const gaps = ((ov as { gaps?: [number, number][] } | null)?.gaps ?? [[119.5, 122.5], [145, 150]]) as [number, number][];
+    this.deck = new DeckDress(this.city, this.railX, this.deckY, z - 70, z + 80, gaps, { lamps: [z - 50, z - 14, z + 13, z + 49], gantry: z + 11, call: z - 4.5 });
+    this.world.add(this.deck);
+    this.lampPos = this.deck.lampHeads;
     // their handprints, still glowing down there along the street they ran
     const pc = [col('cyan', 0.8), col('white', 0.8).lerp(col('cyan', 0.8), 0.4), col('violet', 0.8).lerp(col('white', 0.8), 0.4), heColor().multiplyScalar(0.7), sheColor().multiplyScalar(0.7)];
     this.prints.scatter(80, V(645, 0, 129.47), V(1100, 0, 129.47), V(0, 0, -1), 0, 1, pc, 61, 0.8, 2.0);
@@ -105,11 +111,11 @@ export default class Overpass extends Scene {
     this.lantern.lit = 1;
 
     // ---- small life: a tug on the river behind them, birds waking, a siren far off ----
-    this.tug = new Tug(this.city, 1215, 60, 2.2);
+    this.tug = new Tug(this.city, 1320, 60, 2.2);
     this.world.add(this.tug);
     const r = mulberry32(31);
     const birds: { p: THREE.Vector3; t0: number; away: THREE.Vector3 }[] = [];
-    for (let i = 0; i < 16; i++) birds.push({ p: V(this.railX + 0.05 + r() * 0.2, this.deckY + 1.15 + r() * 0.05, 126 + r() * 10), t0: D[4]! + 0.4 + r() * 0.5, away: V(-1 - r() * 0.5, 0, -0.4 + r() * 0.6) });
+    for (let i = 0; i < 16; i++) birds.push({ p: V(this.railX + 0.1, this.deckY + 1.4, 126 + r() * 10), t0: D[4]! + 0.4 + r() * 0.5, away: V(-1 - r() * 0.5, 0, -0.4 + r() * 0.6) });
     this.birds = new Pigeons(birds, col('#9fb4e0', 1));
     this.world.add(this.birds, this.siren, this.dawnBand);
     mirrorOnly(this.city, [this.breath, this.birds, this.siren, this.prints, this.dawnBand]);
@@ -194,7 +200,8 @@ export default class Overpass extends Scene {
     if (hk > 0.5) this.star.position.copy(he.hand(0)).lerp(she.hand(1), 0.5);
     if (t > T.lantern) holdIn(he, 1, this.lantern, 0.26); else holdIn(she, 0, this.lantern, 0.26);
     const touch = Math.exp(-Math.abs(t - T.give) * 5) + Math.exp(-Math.abs(t - T.lantern) * 5) + 1.5 * Math.exp(-Math.abs(t - T.hands) * 3) * (t > T.hands - 0.2 ? 1 : 0);
-    this.star.level = 1.0 + 0.8 * touch;
+    const starK = 1.0 + 0.8 * touch;
+    this.star.level = starK;
     this.lantern.time = t;
     this.lantern.update();
 
@@ -211,8 +218,12 @@ export default class Overpass extends Scene {
     this.siren.set(0, 905, 1.6, 300, sOn ? col('#ff2a2a', 1) : col('#2a5cff', 1), 1.6, 1);
     this.siren.set(1, 905.6, 1.6, 300, sOn ? col('#2a5cff', 1) : col('#ff2a2a', 1), 0.9, 1);
     this.siren.commit();
-    this.lampPos.forEach((p, i) => this.lamps.set(i, p.x, p.y, p.z, col('#ffd6a8', 1), 1.4 * (1 - 0.5 * dawn), 1));
-    this.lamps.commit(this.lampPos.length);
+    const dk = this.deck, fr = dk.free;
+    dk.update(t, dawn);
+    dk.lights.set(fr, this.lantern.position, col('gold', 0.9), 1.6);
+    dk.lights.set(fr + 1, this.star.position, col('phosphor', 0.35 * starK), 0.8);
+    dk.lights.set(fr + 2, he.position, heColor().multiplyScalar(0.25), 1.8);
+    dk.lights.set(fr + 3, she.position, sheColor().multiplyScalar(0.25), 1.8);
 
     this.camera(t, mid);
     // the east starting to lighten behind them; the river's reflection only in the shots that look at it
@@ -224,7 +235,7 @@ export default class Overpass extends Scene {
       { pos: she.position.clone(), color: sheColor().multiplyScalar(0.14), radius: 3 },
       { pos: this.lantern.position.clone(), color: col('gold', 0.25), radius: 2.5 },
       { pos: this.star.position.clone(), color: col('phosphor', 0.12), radius: 1.5 },
-      ...this.lampPos.map((p) => ({ pos: p.clone().add(V(-0.8, -0.3, 0)), color: col('#ffd6a8', 0.5), radius: 9 })),
+      ...this.lampPos.map((p) => ({ pos: p.clone().add(V(0, -0.3, 0)), color: col('#ffd6a8', 0.5), radius: 9 })),
     ]);
     this.city.update(t, S.cam.position);
     shiftRender(this.ctx.renderer, S.scene, S.cam, this.world, this.city, out, S.bg);
@@ -260,14 +271,15 @@ export default class Overpass extends Scene {
       fov = 32 - 3 * k;
     } else if (t < bar(6)) {
       // together at the railing, seen from beyond the edge: the deck, the river and the dawn coming up behind them
+      // (rising slowly: over the barrier the lanes and their traffic, the river with its lights, the far bank)
       const k = ease.inOutCubic(clamp((t - bar(4)) / (bar(6) - bar(4))));
-      pos = ground.clone().addScaledVector(this.F, 4.2 - 0.8 * k).addScaledVector(this.R, -1.6 + 3.0 * k).add(V(0, 0.5 + 0.3 * k, 0));
-      tgt = ground.clone().addScaledVector(this.F, -2).add(V(0, 1.8, 0));
-      fov = 46;
+      pos = ground.clone().addScaledVector(this.F, 4.4 - 0.4 * k).addScaledVector(this.R, -1.6 + 3.0 * k).add(V(0, 1.2 + 1.5 * k, 0));
+      tgt = ground.clone().addScaledVector(this.F, -3).add(V(0, 1.75 - 0.1 * k, 0));
+      fov = 46 - 2 * k;
     } else {
       // behind them, low: they look at each other, take hands, and step up onto the edge, the city before them
       const k = ease.inOutQuad(clamp((t - bar(6)) / (T.end - bar(6))));
-      pos = this.P(0.35, -3.4 + 0.6 * k, 1.1 - 0.15 * k, ground);
+      pos = this.P(0.35, -3.0 + 0.4 * k, 1.6 - 0.1 * k, ground);
       tgt = this.P(0, 7, 1.0 + 0.6 * k, ground);
       fov = 48;
       roll = 0.01 * Math.sin(t * 0.7);

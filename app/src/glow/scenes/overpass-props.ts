@@ -113,13 +113,19 @@ export class Tug extends THREE.Group {
  */
 export class DawnBand extends THREE.Mesh {
   declare material: THREE.ShaderMaterial;
-  constructor(east = new THREE.Vector3(1, 0, -0.15).normalize(), radius = 3800) {
-    super(new THREE.SphereGeometry(radius, 48, 24), new THREE.ShaderMaterial({
-      side: THREE.BackSide, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+  constructor(east = new THREE.Vector3(1, 0, -0.15).normalize(), radius = 6500) {
+    super(new THREE.SphereGeometry(radius, 64, 32), new THREE.ShaderMaterial({
+      side: THREE.BackSide, transparent: true, depthWrite: false, fog: false,
+      // (premultiplied: the glow adds, the clouds cover the sky behind them)
+      blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
       uniforms: { k: { value: 0 }, east: { value: east } },
       vertexShader: 'varying vec3 vD; void main(){ vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
       fragmentShader: /* glsl */ `
         uniform float k; uniform vec3 east; varying vec3 vD;
+        float hh(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+        float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hh(i), hh(i + vec2(1.0, 0.0)), f.x), mix(hh(i + vec2(0.0, 1.0)), hh(i + vec2(1.0, 1.0)), f.x), f.y); }
+        float fbm(vec2 p) { return 0.5 * vn(p) + 0.27 * vn(p * 2.07 + 5.3) + 0.15 * vn(p * 4.3 + 1.7) + 0.08 * vn(p * 8.9 + 9.1); }
         void main() {
           vec3 d = normalize(vD);
           float h = max(d.y, -0.02);
@@ -131,7 +137,21 @@ export class DawnBand extends THREE.Mesh {
           float glow = exp(-h / 0.12) * pow(toE, 6.0);
           float lift = exp(-h / 0.5) * (0.3 + 0.7 * toE);
           vec3 c = vec3(0.55, 0.62, 0.78) * band * 0.22 + vec3(0.6, 0.38, 0.3) * glow * 0.12 + vec3(0.03, 0.05, 0.11) * lift;
-          gl_FragColor = vec4(c * k * step(-0.02, d.y), 1.0);
+          // long thin stratus low over the horizon all round, thickest in the east: slate bodies, their undersides
+          // lit rose and gold by the sun still under the horizon (brighter the lower and the more to the east)
+          float az = atan(d.z, d.x);
+          vec2 q = vec2(az * 6.0, h * 60.0 - az * 2.0);
+          float n = fbm(q + vec2(0.0, fbm(q * 0.5) * 1.5));
+          float win = smoothstep(0.03, 0.06, h) * (1.0 - smoothstep(0.16, 0.32, h));
+          float cov = mix(0.62, 0.5, toE);
+          float dens = smoothstep(cov, cov + 0.16, n) * win;
+          float under = clamp((n - fbm(q + vec2(0.0, 1.2) + vec2(0.0, fbm((q + vec2(0.0, 1.2)) * 0.5) * 1.5))) * 4.0 + 0.3, 0.0, 1.0);
+          float litK = (0.25 + 0.75 * pow(toE, 3.0)) * (1.0 - smoothstep(0.05, 0.3, h));
+          vec3 body = vec3(0.02, 0.026, 0.05) + vec3(0.05, 0.06, 0.11) * (0.4 + 0.6 * toE);
+          vec3 lit = mix(vec3(0.5, 0.3, 0.32), vec3(0.85, 0.5, 0.3), pow(toE, 4.0)) * 0.3;
+          vec3 cc = body + lit * litK * under * k;
+          float a = dens * 0.85;
+          gl_FragColor = vec4((c * k * (1.0 - a) + cc * a) * step(-0.02, d.y), a * step(-0.02, d.y));
         }`,
     }));
     this.frustumCulled = false;
