@@ -141,7 +141,7 @@ export default class Rooftops extends Scene {
     this.threads = new Threads(pts, [0, 1], T.beautiful - 0.05, 0.1, 3, 1.4);
     S.add(this.threads);
     // the sky that breaks
-    this.shards = new SkyShards(this.M.clone().add(V(0, -6, -8)), 72, 0.45, 140, 7, V(0.05, 1, -0.25).normalize(), { cam: this.M.clone().add(V(2.3, 0.4, 3.6)), look: this.M.clone().add(V(-6, 55, -22)), n: 7 });
+    this.shards = new SkyShards(this.M.clone().add(V(0, -6, -8)), 72, 0.45, 140, 7, V(0.05, 1, -0.25).normalize(), { cam: this.M.clone().add(V(2.2, -6.5, 3.0)), look: this.M.clone().add(V(-4, 31, -24)), n: 7 });
     S.add(this.ring);
     S.add(this.shards);
     this.bike = bikeMesh(w);
@@ -277,8 +277,10 @@ export default class Rooftops extends Scene {
         const u = keys(t, [[49.6, 0], [49.98, 0.5, ease.outCubic], [50.34, 0.56, ease.linear], [51.2, 1, ease.inOutCubic]]);
         pos.set(-10.5 + 1.6 * u, 26.2 - 0.2 * u, 4.4 - 0.6 * u); tgt.copy(M).add(V(0, 2.2 + 4.2 * k(50.75, 51.2, ease.inOutCubic), -2.4)); fov = 34 - 3 * u; break;
       }
-      case 6: { const u = k(51.2, 52.79); pos.copy(M).add(V(2.6 - 0.6 * u, 0.4, 3.6)); tgt.copy(M).add(V(-6, 55, -22)); fov = 70; roll = -0.05; break; }
-      case 7: { const u = k(52.79, 54.39, ease.inOutCubic); pos.copy(M).add(V(lerp(1.5, 6, u), lerp(1.6, 26, u), lerp(5, 16, u))); tgt.copy(M).add(V(0, lerp(55, 90, u), lerp(-14, -30, u))); fov = 62; roll = 0.05 * u; break; }
+      // (from the street under the bridge, looking up between the roofs: her cornice and the bridge frame the breaking sky)
+      case 6: { const u = k(51.2, 52.79); pos.copy(M).add(V(2.4 - 0.5 * u, -6.5, 3.0)); tgt.copy(M).add(V(-4, 30 + 2 * u, -24)); fov = 70; roll = -0.04; break; }
+      // (rising with the stars, the skyline kept at the foot of the frame)
+      case 7: { const u = k(52.79, 54.39, ease.inOutCubic); pos.copy(M).add(V(lerp(1.5, 6, u), lerp(1.6, 26, u), lerp(5, 16, u))); tgt.copy(M).add(V(0, lerp(40, 62, u), lerp(-60, -85, u))); fov = 62; roll = 0.04 * u; break; }
       case 8: { const u = k(54.39, 57.59, ease.linear); const a = 0.3 * u; pos.copy(M).add(V(Math.sin(a) * 60, 360 + 50 * u, 40 + Math.cos(a) * 40)); tgt.copy(M).add(V(0, 0, -40)); fov = 52; roll = 0.2 * u; break; }
       case 9: { const u = k(57.59, 60.79, ease.inOutQuad); pos.copy(M).add(V(80 + 40 * u, 520 + 200 * u, 380 + 120 * u)); tgt.copy(M).add(V(0, 0, -260)); fov = 50; break; }
       case 10: { const u = k(60.79, 63.99, ease.inOutQuad); pos.copy(M).add(V(lerp(-300, -170, u), lerp(250, 120, u), lerp(330, 210, u))); tgt.copy(M).add(V(0, lerp(10, 20, u), -120)); fov = 50; break; }
@@ -388,6 +390,7 @@ export default class Rooftops extends Scene {
     this.flash.commit(3);
 
     // ---------------- the sky breaks into stars ----------------
+    this.shards.fallEnd = 52.75;
     this.shards.update(t, T.broken, T.piece, T.star, cam, MOON_DIR, 1.0);
     this.shards.visible = this.shards.visible && shot >= 5 && shot <= 9;
 

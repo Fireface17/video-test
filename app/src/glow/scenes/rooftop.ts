@@ -335,7 +335,7 @@ export default class Rooftop extends Scene {
       // over his right shoulder, looking down at his glowing palms; then up with the light to the street
       pos.copy(H).add(V(lerp(0.78, 1.35, k), lerp(1.8, 2.05, k), lerp(-0.1, 1.15, k) + 0.25 * prog(t, 30.6, cB)));
       tgt.copy(H).add(V(-0.05, 1.12, -0.38)).lerp(this.TXT.clone().add(V(-0.8, -0.9, 0)), k);
-      fov = lerp(38, 58, k);
+      fov = lerp(38, 58, Math.sqrt(k));
     } else if (t < cC) {
       shot = 'B';
       const k = ease.inOutQuad(prog(t, cB, cC));

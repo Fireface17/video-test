@@ -5,7 +5,7 @@
 // her lit paper lantern, she his star sticker (lib/heroes.ts). Over the chorus their light turns gold.
 //   A 171.69  close on their joined hands against the sunrise (they arrive from the bridge already warm gold)
 //   B 172.49  "okay to dance": side view along his parapet — they begin to dance, hand in hand; pigeons take off
-//   C 174.07  "dance": low, from beyond the parapet, looking up at them against the morning sky
+//   C 174.07  "dance": from over the street, down onto them and his roof in the first sun; pigeons lift off
 //   D 175.66  "glowing in the dark": high behind them, down the street to the sun — the city is out on the roofs;
 //             on "take" they raise their joined hands and a golden pulse leaves their hands
 //   E 177.24  "my hand": the neighbours on the next roof turn to each other and take hands one after another, a
@@ -32,10 +32,10 @@ import { PaperLantern, StarSticker, heColor, holdIn, makeHeroes, sheColor } from
 import { RoofWorld, type Glow } from './rooftop-world';
 import { Flares } from './cosmos-gfx';
 import { CityChains } from './dawn-chains';
-import { Birds, LastStars, Mist, Steam, Threads, flock } from './dawn-gfx';
+import { Birds, LastStars, Mist, Steam, SunPool, Threads, flock } from './dawn-gfx';
 import { Grade } from './dawn-grade';
 import { LinkGroup, type Spot } from './dawn-people';
-import { RoofSet, type Bld } from './rooftop-set';
+import { GAP_X, RoofSet, type Bld } from './rooftop-set';
 import { CityLOD } from '../lib/city-build';
 import { tint } from './rooftop-people';
 
@@ -73,6 +73,11 @@ export default class Dawn extends Scene {
   roof = 25.55;
   grip = V();
   sun = V(1, 0.05, 0);
+  /** roofs the golden threads climb from as we rise */
+  climb: THREE.Vector3[] = [];
+  /** the low sun across his roof, and the long shadows of what stands on it */
+  pool!: SunPool;
+  casters: THREE.Vector4[] = [];
 
   override async init() {
     const S = this.st, { lyrics } = this.ctx;
@@ -129,7 +134,23 @@ export default class Dawn extends Scene {
     // steam from her chimneys and a few vents on the roofs around
     const vents = [...set.steamFrom, ...w.anchors(10, 0, 70, ['roof'], { seed: 4, spacing: 18, max: 5 }).map((a) => a.pos.clone().add(V(0, 1.4, 0)))];
     this.steam = new Steam(vents, 26);
+    const mc = HE.clone().lerp(SHE, 0.5);
+    this.climb = w.anchors(mc.x, mc.z, 280, ['roof', 'roofEdge'], { seed: 9, spacing: 45, max: 30 }).map((a) => a.pos).filter((p) => p.distanceTo(mc) > 35).slice(0, 14);
     S.add(this.dust, this.pts, this.threads, this.stars, this.mist, this.birds, this.birds2, this.steam, this.flares);
+    // the first sun across his roof: long shadows from the garden, the posts, the table, the washing, the bulkhead
+    const H = set.his, C4 = (x: number, z: number, hw: number, len: number) => new THREE.Vector4(x, z, hw, len);
+    this.pool = new SunPool(H.x0 + 0.3, H.z0 + 0.3, H.x1 - 0.3, H.z1 - 0.3, this.roof + 0.08);
+    const tx = GAP_X + 2.4, tz = H.z0 + 8.5;
+    this.casters = [
+      ...[0, 1, 2, 3].map((k) => C4(H.x1 - 1.0, H.z0 + 5.0 + k * 2.0, 0.85, k === 3 ? 7 : 4)),
+      C4(H.x1 - 0.4, H.z0 + 3.0, 0.05, 10), C4(H.x1 - 0.4, H.z0 + 13.0, 0.05, 10), C4(GAP_X + 0.4, H.z0 + 13.0, 0.05, 10), C4(GAP_X + 0.4, H.z0 + 5.0, 0.05, 10),
+      C4(tx, tz, 0.42, 3.5), C4(tx - 0.8, tz - 0.4, 0.24, 3.8), C4(tx + 0.7, tz + 0.6, 0.24, 3.8), C4(tx + 1.7, tz + 2.3, 0.3, 4),
+      C4(H.x0 + 4.2, H.z1 - 5.4, 0.04, 10), C4(GAP_X - 0.6, H.z0 + 4.3, 0.04, 10),
+      C4(GAP_X + 1.75, H.z0 + 1.3, 0.25, 2.5), C4(GAP_X - 1.5, H.z0 + 1.0, 0.4, 6), C4(H.x0 + 2.4, H.z0 + 9.0, 1.2, 4.2), C4(H.x0 + 2.2, H.z1 - 3.0, 2.0, 9),
+      C4(H.x0 + 4.5, H.z1 - 1.5, 0.08, 6), C4(H.x0 + 5.0, H.z1 - 1.2, 0.08, 5), C4(GAP_X + 3.0, H.z1 - 1.0, 0.08, 5.5), C4(H.x1 - 2.0, H.z0 + 4.2, 0.15, 1.6), C4(H.x0 + 1.4, H.z0 + 2.4, 0.45, 6),
+    ];
+    for (const l of set.laundry) if (l.a.z > 0 && Math.abs(l.a.y - (this.roof + 2.0)) < 0.05) for (const it of l.items) { const p = l.a.clone().lerp(l.b, it.u); this.casters.push(C4(p.x, p.z, it.w * 0.48, 7)); }
+    S.add(this.pool);
   }
 
   // ---- the two of them ----
@@ -210,19 +231,21 @@ export default class Dawn extends Scene {
         fov = 30;
         break;
       }
-      case 2: { // C: low, from beyond the parapet, looking up at them against the morning sky
+      case 2: { // C: from beyond the parapet, over the street, down onto them and his roof in the first sun (long
+        // shadows across the roof, the garden, his washing catching the light, steam off the vents, pigeons lifting off)
         const u = k(cuts[2]!, cuts[3]!);
-        pos.copy(m).add(V(1.6 - 0.5 * u, 0.5, -5.0 + 0.3 * u));
-        tgt.copy(m).add(V(0, 1.4, 0.3));
-        fov = 42;
-        roll = 0.03;
+        pos.copy(m).add(V(1.5 - 0.5 * u, 2.9 + 0.3 * u, -4.6 + 0.4 * u));
+        tgt.copy(m).add(V(-1.2 + 0.3 * u, 0.5, 3.2));
+        fov = 50;
+        roll = 0.02;
         break;
       }
-      case 3: { // D: high behind them, down the street to the sun; the roofs full of people
+      case 3: { // D: over his roof behind them (the garden, the table, the string lights catching the sun), the two at
+        // the parapet, the street down to the sun; the roofs around full of people; pigeons lift off his parapet
         const u = k(cuts[3]!, cuts[4]!);
-        pos.copy(m).add(V(-13 - 3 * u, 9 + 2 * u, -8.5));
-        tgt.set(70, 17, -1);
-        fov = 52;
+        pos.copy(m).add(V(-7.5 - 1.5 * u, 4.2 + 0.6 * u, 1.8 + 0.4 * u));
+        tgt.copy(m).add(V(14, 1.4 + 0.4 * u, -4));
+        fov = 56;
         break;
       }
       case 4: { // E: the neighbours on the next roof take hands, one after another
@@ -265,15 +288,17 @@ export default class Dawn extends Scene {
         fov = 30;
         break;
       }
-      default: { // H: the rise — along the golden threads, over the golden city, through the mist and the clouds
+      default: { // H: the rise — up along the golden threads from the two of them, over the golden city, the towers of
+        // downtown standing out of the mist with their faces to the sun, the sun's disc on the horizon at the right
         const u = prog(t, cuts[9]!, this.ctx.end + 0.4);
-        const h = ease.inOutCubic(u), hh = Math.pow(h, 1.6);
-        pos.copy(m).add(V(lerp(-4.0, -150, h), lerp(1.6, 760, hh), lerp(-0.9, 40, h)));
-        // the eye: past them toward the sun, then out over the city, then the horizon
-        const look = smoothstep(0.1, 0.6, u);
-        tgt.copy(m).add(V(6, 0.9, -2.8)).lerp(V(500, lerp(0, pos.y * 0.8, smoothstep(0.35, 1, u)), -20), look);
-        fov = lerp(44, 58, smoothstep(0, 0.6, u));
-        roll = 0.08 * Math.sin(u * Math.PI);
+        const h = ease.inOutCubic(u), hh = Math.pow(h, 1.45);
+        pos.copy(m).add(V(lerp(-4.0, 60, h), lerp(1.6, 430, hh), lerp(-0.9, -240, h)));
+        // the eye: past them toward the sun, then out to the north-east over the city to the horizon
+        const look = smoothstep(0.08, 0.55, u);
+        const far = V(pos.x + 1400, lerp(0, pos.y * 0.72, smoothstep(0.3, 1, u)), pos.z - lerp(400, 1000, look));
+        tgt.copy(m).add(V(6, 0.9, -2.8)).lerp(far, look);
+        fov = lerp(44, 62, smoothstep(0, 0.6, u));
+        roll = 0.06 * Math.sin(u * Math.PI);
         break;
       }
     }
@@ -296,7 +321,10 @@ export default class Dawn extends Scene {
     const sunC = new THREE.Color(1.0, 0.55, 0.22).lerp(new THREE.Color(1.0, 0.7, 0.36), u);
     // golden hour: a strong low sun (lit faces gold, the rest in cool shadow), warm haze in the canyons
     w.setSun(this.sun, sunC.clone().multiplyScalar(2.3));
-    w.dawn = lerp(0.82, 1, smoothstep(this.ctx.start - 0.5, T.beautiful + 2, t));
+    const dawnK = lerp(0.82, 1, smoothstep(this.ctx.start - 0.5, T.beautiful + 2, t));
+    w.dawn = dawnK;
+    this.pool.set(this.sun, sunC.clone().multiplyScalar(0.35 * dawnK), [...this.casters,
+      new THREE.Vector4(this.he.position.x, this.he.position.z, 0.22, 9), new THREE.Vector4(this.she.position.x, this.she.position.z, 0.2, 9)]);
     const U = w.city.U as unknown as Record<string, THREE.IUniform>;
     (U.fogC!.value as THREE.Color).setRGB(0.5, 0.3, 0.16);
     U.uHazeD!.value = 0.0007;
@@ -316,8 +344,8 @@ export default class Dawn extends Scene {
     this.threads.begin();
     const crane = shot === 9 ? smoothstep(this.T.beautiful, this.T.beautiful + 2.5, t) : 0;
     this.chains.draw(t, cam, D, this.pts, this.threads, {
-      k: 1, ptK: 2.6 - 1.4 * crane, near: shot === 9 ? lerp(70, 25, crane) : shot === 3 || shot === 6 ? 90 : 60, maxNear: shot === 3 || shot === 6 ? 24 : 14,
-      ptSize: lerp(0.7, 1.6, crane), threadK: 1 - 0.75 * crane, far: crane,
+      k: 1, ptK: 2.6 - 1.9 * crane, near: shot === 9 ? lerp(70, 25, crane) : shot === 3 || shot === 6 ? 90 : 60, maxNear: shot === 3 || shot === 6 ? 24 : 14,
+      ptSize: lerp(0.7, 1.0, crane), threadK: 1 - 0.6 * crane, far: crane,
     });
     D.end();
 
@@ -330,15 +358,37 @@ export default class Dawn extends Scene {
     this.threads.begin2();
     if (gv1) this.g1.thread(this.threads, t, 1, g, this.g2.grips[0] ?? null, 3.5);
     if (gv2) this.g2.thread(this.threads, t, 1, null, null);
+    // the rise: golden threads climb from the roofs around, up with the camera, beads of light running up them
+    if (shot === 9 && t > T.beautiful - 0.3) {
+      const gc = col('gold', 1).lerp(col('white', 1), 0.15);
+      this.climb.forEach((b, i) => {
+        const top = Math.min(cam.position.y + 40, b.y + Math.max(0, t - T.beautiful + 0.3 - i * 0.06) * 150);
+        if (top <= b.y + 0.5) return;
+        let prev = b.clone().add(V(0, 1.2, 0));
+        for (let j = 1; j <= 12; j++) {
+          const yy = b.y + 1.2 + (top - b.y) * (j / 12);
+          const sw = (yy - b.y) * 0.04;
+          const q = V(b.x + Math.sin(yy * 0.012 + i) * sw, yy, b.z + Math.cos(yy * 0.015 + i * 1.7) * sw);
+          this.threads.seg(prev, q, gc, 0.7, 0.18);
+          prev = q;
+        }
+        for (let j = 0; j < 3; j++) {
+          const y0 = b.y + ((t * 60 + i * 37 + j * 90) % Math.max(1, top - b.y));
+          const sw = (y0 - b.y) * 0.04;
+          const q0 = V(b.x + Math.sin(y0 * 0.012 + i) * sw, y0, b.z + Math.cos(y0 * 0.015 + i * 1.7) * sw);
+          this.threads.seg(q0, q0.clone().add(V(0, 3, 0)), gc, 2.4, 0.3);
+        }
+      });
+    }
     this.threads.end();
     this.stars.visible = t > T.broken - 0.6 && t < T.look + 0.6;
     if (this.stars.visible) this.stars.update(t, g, 600, T.broken - 0.1, 1.5, 0.6, col('white', 1.3), col('gold', 1.5).lerp(col('white', 1.5), 0.2), g.clone().add(V(-4, 0, 0)), 3.5);
     flock(this.birds, t, T.okay - 0.15, V(9, this.roof + 0.5, -16), V(1, 0.15, -0.2).normalize(), 3, 8);
-    flock(this.birds2, t, T.glowing - 0.3, V(45, 32, 8), V(1, 0.05, 0.15).normalize(), 7, 30);
+    flock(this.birds2, t, 174.75, V(7.5, this.roof - 2.5, 8.6), V(1, 0.3, -0.2).normalize(), 7, 4);
     this.steam.update(t, 0.35, new THREE.Color(0.32, 0.2, 0.11));
     // (the mist only matters once we rise toward it)
     this.mist.visible = shot === 9 && t > this.T.beautiful - 0.2;
-    if (this.mist.visible) this.mist.update(t, 0.55 + 0.4 * crane, this.sun, new THREE.Color(1.0, 0.66, 0.46).multiplyScalar(0.95 + 0.3 * crane), sunC.clone().multiplyScalar(1.6));
+    if (this.mist.visible) this.mist.update(t, 0.6 + 0.4 * crane, this.sun, new THREE.Color(1.0, 0.6, 0.34).multiplyScalar(0.95 + 0.3 * crane), sunC.clone().multiplyScalar(2.0));
 
     // ---- light: their glow on the walls, the flash of "hand", the sun's glare, the flare into the drop ----
     this.flares.begin();
@@ -349,7 +399,7 @@ export default class Dawn extends Scene {
     this.flares.glow(sunP, col('#fff1d8', 1.6), 0.55 + 2.0 * end * end, 70 + 700 * end * end);
     this.flares.glow(sunP, col('gold', 1.2), 0.12 + 0.6 * end, 900, 8, 6);
     // the flare into the drop: the whole frame floods with gold from the sun
-    if (end > 0.01) this.flares.glow(cam.position.clone().addScaledVector(cam.getWorldDirection(V()), 40), col('gold', 1).lerp(col('ember', 1), 0.15), 0.9 * Math.pow(end, 2.2), 80, 1, 1.2);
+    if (end > 0.01) this.flares.glow(cam.position.clone().addScaledVector(cam.getWorldDirection(V()), 40), col('gold', 1).lerp(col('ember', 1), 0.3), 0.7 * Math.pow(end, 2.2), 80, 1, 1.2);
     this.flares.end();
     const glows: Glow[] = [
       { pos: this.he.spinePoint(0, 0.5, 0.2), color: heColor().lerp(col('gold', 1), 0.6 * smoothstep(T.take, T.beautiful, t)).multiplyScalar(0.25), radius: 2.4 },
@@ -357,8 +407,12 @@ export default class Dawn extends Scene {
       { pos: this.lantern.position.clone(), color: col('gold', 1).lerp(col('ember', 1), 0.3).multiplyScalar(1.2), radius: 3.2 },
     ];
     if (fl > 0.02) glows.push({ pos: g.clone(), color: col('white', 1.2 * fl), radius: 3 });
+    // the low sun bouncing off the walls around: a warm wash over his roof (it sits in the neighbours' shadow)
+    glows.push({ pos: HE.clone().lerp(SHE, 0.5).add(V(-2, 5, 4)), color: col('gold', 1).lerp(col('ember', 1), 0.3).multiplyScalar(0.3), radius: 9 });
     w.glows(glows);
-    w.cat.visible = false;
+    // the cat, basking on his parapet in the first sun, tail going
+    w.catPose.p.set(5.6, this.roof + 0.7, 9.66); w.catPose.yaw = Math.PI / 2 + 0.3;
+    w.cat.visible = shot <= 3 || shot === 8;
     w.update(t, cam, { wind: 0.45 });
     // (cheaper: street life — traffic, street furniture, passers-by — only where the street is in the shot; the
     // far city cut where the haze has swallowed it anyway)
@@ -372,7 +426,7 @@ export default class Dawn extends Scene {
     this.grade.render(this.ctx.renderer, cam, this.sun, out, { warm: 1, contrast: 1.18 - 0.1 * end, rays: rays + 0.6 * end, lift: 0.35, thr: shot === 9 || shot === 7 ? 2.2 : 1.1 });
     return {
       bloom: 0.85 + 0.4 * end, bloomThreshold: 0.8 - 0.2 * end, bloomRadius: 0.85, halation: 0.14, vignette: 0.45 - 0.2 * end, grain: 0.04, ca: 0.5,
-      exposure: 0.95 + 0.3 * end * end, flash: 0.03 * fl + 0.04 * Math.pow(end, 3),
+      exposure: 0.95 + 0.12 * end * end, flash: 0.03 * fl + 0.02 * Math.pow(end, 3),
     };
   }
 }

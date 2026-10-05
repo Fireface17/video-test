@@ -121,14 +121,20 @@ export class Mist extends THREE.Group {
             vec2 q = vW.xz / 260.0 + vec2(t * 0.012, t * 0.004) + seed;
             // (one cheap warp: a single low-octave lookup bends the sheet)
             float wv = vn(q * 0.6 + 3.1);
-            float d = fbm(q + 0.8 * vec2(wv, 1.0 - wv));
-            float a = smoothstep(0.42, 0.85, d);
+            vec2 wq = 0.8 * vec2(wv, 1.0 - wv);
+            float d = fbm(q + wq);
+            // the same a little toward the sun: where the sheet thins toward it, its edge is lit (bright rims, darker
+            // bodies, so the layer has shape instead of a flat wash)
+            vec2 sd2 = sunDir.xz; float sl = length(sd2); sd2 = sl > 1e-4 ? sd2 / sl : vec2(1.0, 0.0);
+            float ds = fbm(q + wq + sd2 * 0.04);
+            float rim = clamp((d - ds) * 10.0, 0.0, 1.0) * smoothstep(0.42, 0.62, d);
+            float a = smoothstep(0.45, 0.8, d);
             float dist = length(vW - cameraPosition);
             // near the camera the sheet thins away; far off it fades into the haze
             a *= smoothstep(6.0, 60.0, abs(vW.y - cameraPosition.y) + 0.02 * dist) * smoothstep(5000.0, 1200.0, dist);
             vec3 v = normalize(vW - cameraPosition);
             float fw = pow(max(dot(v, normalize(sunDir)), 0.0), 6.0);
-            vec3 c = col * (0.55 + 0.45 * d) + sunCol * fw * 0.8;
+            vec3 c = col * (0.32 + 0.6 * d) * mix(0.7, 1.0, smoothstep(0.55, 0.85, d)) + sunCol * (fw * 0.6 + rim * 1.4);
             gl_FragColor = vec4(c, a * k);
           }`,
       });
@@ -331,5 +337,63 @@ export class Steam extends GlowPoints {
       }
     });
     this.commit(n);
+  }
+}
+
+/**
+ * The low sun on a flat roof: a quad just above the roof that multiplies what is under it — a warm lift where the
+ * sun reaches, cooler and darker in the long shadows of the things standing on it (soft-edged strips from each
+ * caster away from the sun, widening with distance). Casters: (x, z, half-width, length).
+ */
+export class SunPool extends THREE.Mesh {
+  declare material: THREE.ShaderMaterial;
+  static readonly CAP = 32;
+  constructor(x0: number, z0: number, x1: number, z1: number, y: number) {
+    const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0).rotateX(-Math.PI / 2).translate((x0 + x1) / 2, y, (z0 + z1) / 2);
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uC: { value: Array.from({ length: SunPool.CAP }, () => new THREE.Vector4()) }, uN: { value: 0 },
+        uDir: { value: new THREE.Vector2(-1, 0) }, uCol: { value: new THREE.Color() }, uRect: { value: new THREE.Vector4(x0, z0, x1, z1) },
+      },
+      vertexShader: /* glsl */ `
+        varying vec2 vXZ;
+        void main() { vec4 w = modelMatrix * vec4(position, 1.0); vXZ = w.xz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+      fragmentShader: /* glsl */ `
+        uniform vec4 uC[${SunPool.CAP}]; uniform int uN; uniform vec2 uDir; uniform vec3 uCol; uniform vec4 uRect;
+        varying vec2 vXZ;
+        void main() {
+          vec2 q = vXZ, pr = vec2(-uDir.y, uDir.x);
+          float sh = 0.0;
+          for (int i = 0; i < ${SunPool.CAP}; i++) {
+            if (i >= uN) break;
+            vec4 c = uC[i];
+            vec2 d = q - c.xy;
+            float a = dot(d, uDir), b = abs(dot(d, pr));
+            float aa = max(a, 0.0), w = c.z + aa * 0.03;
+            // (edges kept ordered: smoothstep with edge0 >= edge1 is undefined and can give NaN)
+            float s = smoothstep(-0.05, 0.1, a) * (1.0 - smoothstep(c.w * 0.4, c.w + 0.01, aa)) * (1.0 - smoothstep(max(w - 0.03 - aa * 0.02, 0.0), w + 0.05 + aa * 0.035, b));
+            sh = max(sh, s * (1.0 - 0.35 * smoothstep(0.0, c.w + 0.01, aa)));
+          }
+          float e = smoothstep(uRect.x, uRect.x + 0.5, q.x) * (1.0 - smoothstep(uRect.z - 0.5, uRect.z, q.x)) * smoothstep(uRect.y, uRect.y + 0.5, q.y) * (1.0 - smoothstep(uRect.w - 0.5, uRect.w, q.y));
+          // lit: a warm lift; in the shadows: cooler and darker
+          vec3 m = mix(vec3(1.0) + uCol, vec3(0.5, 0.56, 0.7), sh);
+          gl_FragColor = vec4(mix(vec3(1.0), m, e), 1.0);
+        }`,
+      transparent: true, depthWrite: false, depthTest: true,
+      blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.ZeroFactor, blendDst: THREE.SrcColorFactor,
+      blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
+    });
+    super(g, mat);
+    this.renderOrder = -2;
+    this.frustumCulled = false;
+  }
+  /** sun: direction to the sun; col: the light added (× the roof's own colour); casters as (x, z, half-width, length) */
+  set(sun: THREE.Vector3, col: THREE.Color, casters: THREE.Vector4[]) {
+    const u = this.material.uniforms;
+    (u.uDir!.value as THREE.Vector2).set(-sun.x, -sun.z).normalize();
+    (u.uCol!.value as THREE.Color).copy(col);
+    const n = Math.min(casters.length, SunPool.CAP);
+    for (let i = 0; i < n; i++) (u.uC!.value as THREE.Vector4[])[i]!.copy(casters[i]!);
+    u.uN!.value = n;
   }
 }

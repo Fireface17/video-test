@@ -35,6 +35,8 @@ export class SkyShards extends THREE.Group {
   private col: Float32Array;
   private nEdges = 0;
   private impactP = new THREE.Vector3();
+  /** the falling pieces are gone after this time (the cut away from the shot they fall through) */
+  fallEnd = Infinity;
 
   /** A dome of radius R around `o`, from elevation `el0` up; the cracks start above `impact` (a direction). */
   constructor(public o: THREE.Vector3, public R = 70, el0 = 0.42, n = 130, seed = 3, impact = new THREE.Vector3(0.1, 1, -0.2).normalize(), pass: { cam: THREE.Vector3; look: THREE.Vector3; n: number } | null = null) {
@@ -102,7 +104,7 @@ export class SkyShards extends THREE.Group {
         rim.push(a.clone().lerp(b, (s - per[e - 1]!) / Math.max(per[e]! - per[e - 1]!, 1e-6)));
       }
       // the star it becomes: 5 points, about as big as the piece, turned to match the first rim point
-      const size = Math.min(Math.sqrt(tot * tot / 40), 3.2);
+      const size = Math.min(Math.sqrt(tot * tot / 40), 3.6);
       const a0 = Math.atan2(rim[0]!.y, rim[0]!.x);
       const star: THREE.Vector2[] = [];
       for (let k = 0; k < RIM; k++) { const rr = (k % 2 === 0 ? 1 : 0.42) * size * 1.15, a = a0 + (k / RIM) * Math.PI * 2; star.push(new THREE.Vector2(Math.cos(a) * rr, Math.sin(a) * rr)); }
@@ -173,6 +175,7 @@ export class SkyShards extends THREE.Group {
       let tumble = loose * (1 - morph) * (0.9 + 0.6 * Math.sin(s.seed)) * Math.min(1, Math.max(0, t - t1) * 0.8);
       let scale = 1;
       if (s.fall) {
+        if (t > this.fallEnd) continue;
         // a piece falling at the camera and past it, spinning
         const u = clamp((t - t1 - 0.15 - (s.seed % 1) * 0.3) / 1.4);
         if (u >= 1) continue;
@@ -182,7 +185,7 @@ export class SkyShards extends THREE.Group {
       }
       q.setFromAxisAngle(s.axis, tumble * 1.2);
       q.premultiply(new THREE.Quaternion().setFromAxisAngle(s.n, morph * (t - t2) * 0.4));
-      const shrink = (1 - 0.55 * clamp(rise / 2.5)) * (0.72 + 0.28 * (1 - morph)) * scale;
+      const shrink = (1 - 0.3 * clamp(rise / 2.5)) * (0.8 + 0.2 * (1 - morph)) * scale;
       const k = morph, thick = 0.45 * (1 - k) * scale;
       const fadeStar = 1 - clamp((rise - 1.6) / 0.6);
       const nrm = s.n.clone().applyQuaternion(q);
@@ -250,8 +253,8 @@ export class SkyShards extends THREE.Group {
   /** A piece's centre: loose → a little toward the viewers; rising → up and out, spreading over the city. */
   private flight(s: Shard, loose: number, rise: number) {
     const out = s.c.clone().sub(this.o).setY(0);
-    const spread = rise * rise * 4 + rise * 6;
-    return s.c.clone().addScaledVector(s.n, -2.5 * loose).addScaledVector(out.normalize(), spread).add(new THREE.Vector3(0, rise * 9 + rise * rise * 14, 0));
+    const spread = rise * rise * 2.5 + rise * 4;
+    return s.c.clone().addScaledVector(s.n, -2.5 * loose).addScaledVector(out.normalize(), spread).add(new THREE.Vector3(0, rise * 7 + rise * rise * 9, 0));
   }
 }
 

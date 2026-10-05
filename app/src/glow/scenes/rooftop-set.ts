@@ -13,7 +13,7 @@ import * as THREE from 'three';
 import { mulberry32 } from '../../engine/util';
 import type { City } from '../lib/city';
 import { KitBuilder, M, antennaGeometry, fireEscapeGeometry, kitBatch, kitMaterial, roofBoxGeometry, waterTowerGeometry, type KInst } from '../lib/city-build';
-import { acUnit, bike, crate, deckChair, grill, lemonTree, planter, plant, pot, tomatoes, wateringCan, wire } from './rooftop-props';
+import { Kit, acUnit, bike, crate, deckChair, grill, lemonTree, planter, plant, pot, tomatoes, wateringCan, wire } from './rooftop-props';
 
 /** The city street (index j) we stand on, and the city's offset that puts its centreline at world z = 0. */
 export const STREET_J = 1;
@@ -33,7 +33,51 @@ export interface SetAnchor { kind: 'window' | 'sill' | 'escape'; pos: THREE.Vect
 const P = { walkup: { fH: 3.05, gH: 3.4, bayW: 2.4, winW: 0.42, winH: 0.56, sill: 0.26, pairs: 1 }, prewar: { fH: 3.15, gH: 4.6, bayW: 3.2, winW: 0.3, winH: 0.56, sill: 0.25, pairs: 2 } };
 
 const IRON = [0.045, 0.045, 0.05, M.ALB];
-const STONE = [0.36, 0.34, 0.31, M.ALB];
+/** (modes added to the city's kit material here: brick in running bond, weathered stone; see brickify) */
+const BRICK = 20, STONEM = 21;
+const STONE = [0.36, 0.34, 0.31, STONEM];
+
+/**
+ * The kit material with brick and stone: parapets, bulkheads and chimneys up close are laid in running bond (each
+ * brick its own shade, mortar joints, fading to the average far away), copings weathered. A guarded patch of the
+ * city's shader text — if the shader changes shape, the surfaces simply stay plain.
+ */
+export function brickify(mat: THREE.ShaderMaterial) {
+  const at = 'vec3 c = alb * vLight;';
+  if (!mat.fragmentShader.includes(at)) return mat;
+  mat.fragmentShader = mat.fragmentShader.replace(at, /* glsl */ `
+    if (mode > 19.5 && mode < 21.5) {
+      vec3 Nb = normalize(vN), base = vV.rgb;
+      if (mode < 20.5 && abs(Nb.y) < 0.5) {
+        float bu = abs(Nb.x) > 0.5 ? vW.z : vW.x;
+        vec2 bq = vec2(bu / 0.225, vW.y / 0.0755);
+        float brow = floor(bq.y), sh = 0.5 * mod(brow, 2.0);
+        float bx = floor(bq.x + sh);
+        vec2 bf = vec2(fract(bq.x + sh), fract(bq.y));
+        float bpx = max(fwidth(bq.x), fwidth(bq.y)), near = 1.0 - smoothstep(0.3, 0.8, bpx);
+        float mort = (1.0 - step(0.05, bf.x) * step(bf.x, 0.95) * step(0.13, bf.y) * step(bf.y, 0.87)) * near;
+        alb = base * (0.72 + 0.56 * h12(vec2(bx, brow)) * near) * (0.82 + 0.36 * vnoise(vec2(bu, vW.y) * 0.45));
+        alb = mix(alb, vec3(0.3, 0.29, 0.27), mort * 0.65);
+        // soot and rain streaks down from the coping
+        alb *= 0.85 + 0.15 * vnoise(vec2(bu * 1.7, vW.y * 0.08));
+      } else {
+        alb = base * (0.78 + 0.4 * vnoise(vW.xz * 4.0 + vW.y * 2.0)) * (0.88 + 0.24 * vnoise(vW.xz * 0.8 + 3.0));
+      }
+    }
+    ${at}`);
+  return mat;
+}
+
+/** The kit material with leaves that move in the wind (a small flutter, each leaf on its own phase). */
+export function leafify(mat: THREE.ShaderMaterial) {
+  const at = 'vec3 lp = position * isc;';
+  if (!mat.vertexShader.includes(at)) return mat;
+  mat.vertexShader = mat.vertexShader.replace(at, /* glsl */ `
+    float lwA = sin(uTime * 2.3 + position.x * 4.1 + position.z * 3.3) + 0.6 * sin(uTime * 5.1 + position.y * 7.0 + position.x * 2.0);
+    float lwB = cos(uTime * 1.9 + position.z * 4.7 - position.x * 1.3);
+    vec3 lp = (position + vec3(0.016 * lwA + 0.012, 0.008 * lwB, 0.014 * lwB) * smoothstep(0.0, 0.2, fract(position.y * 1.37) + 0.2)) * isc;`);
+  return mat;
+}
 const WOOD = [0.2, 0.13, 0.08, M.ALB];
 
 export class RoofSet extends THREE.Group {
@@ -49,6 +93,8 @@ export class RoofSet extends THREE.Group {
   hisGap = new THREE.Vector3();
   herGap = new THREE.Vector3();
   steamFrom: THREE.Vector3[] = [];
+  /** candle flames on window sills (lit in the blackout) */
+  candles: THREE.Vector3[] = [];
   bulbs: THREE.Vector3[] = [];
   redLights: THREE.Vector3[] = [];
   perches: { p: THREE.Vector3; yaw: number }[] = [];
@@ -101,7 +147,7 @@ export class RoofSet extends THREE.Group {
       const out = [hero];
       if (GAP_X - HW - h.xl > 2.5) out.push(south ? mk('walkup', 5, h.xl, GAP_X - HW, z0 + 0.6, z1, [0.2, 0.12, 0.08], 233, front) : mk('walkup', 5, h.xl, GAP_X - HW, z0, z1 - 0.6, [0.32, 0.12, 0.07], 251, front));
       else hero.x0 = h.xl;
-      if (h.xr - GAP_X - HW > 2.5) out.push(south ? mk('prewar', 8, GAP_X + HW, h.xr, z0 - 0.3, z1, [0.45, 0.42, 0.36], 263, front) : mk('walkup', 4, GAP_X + HW, h.xr, z0, z1 + 0.4, [0.24, 0.16, 0.12], 277, front));
+      if (h.xr - GAP_X - HW > 2.5) out.push(south ? mk('prewar', 6, GAP_X + HW, h.xr, z0 - 0.3, z1, [0.45, 0.42, 0.36], 263, front) : mk('walkup', 4, GAP_X + HW, h.xr, z0, z1 + 0.4, [0.24, 0.16, 0.12], 277, front));
       else hero.x1 = h.xr;
       return out;
     };
@@ -114,6 +160,7 @@ export class RoofSet extends THREE.Group {
       this.add(g);
     }
     const kit = kitMaterial(U), kit2 = kitMaterial(U, { side: THREE.DoubleSide, streetK: 1.2 });
+    const kitB = brickify(kitMaterial(U)), kitL = leafify(kitMaterial(U, { side: THREE.DoubleSide, streetK: 1.2 }));
     const K = new KitBuilder(), Lf = new KitBuilder();
     const r = mulberry32(17);
 
@@ -121,7 +168,7 @@ export class RoofSet extends THREE.Group {
     for (const b of [this.his, this.hers]) {
       const y = RoofSet.roofTop(b), ph = 0.62, t = 0.3;
       const fz = b.front < 0 ? b.z0 : b.z1, bz = b.front < 0 ? b.z1 : b.z0;
-      const brick = [b.wall[0] * 0.75, b.wall[1] * 0.75, b.wall[2] * 0.75, M.ALB];
+      const brick = [b.wall[0] * 0.75, b.wall[1] * 0.75, b.wall[2] * 0.75, BRICK];
       const wallSeg = (x0: number, x1: number, z0: number, z1: number) => {
         K.box((x0 + x1) / 2, y + ph / 2, (z0 + z1) / 2, Math.abs(x1 - x0), ph, Math.abs(z1 - z0), brick);
         K.box((x0 + x1) / 2, y + ph + 0.04, (z0 + z1) / 2, Math.abs(x1 - x0) + 0.1, 0.08, Math.abs(z1 - z0) + 0.12, STONE);
@@ -174,7 +221,7 @@ export class RoofSet extends THREE.Group {
     const H = this.his, hy = RoofSet.roofTop(H);
     // the bulkhead (stair house) at the back left, its door toward the street, a bulb over it; a mast on top
     const bx = H.x0 + 2.2, bz = H.z1 - 3.0;
-    K.box(bx, hy + 1.5, bz, 3.4, 3.0, 4.0, [H.wall[0] * 0.85, H.wall[1] * 0.85, H.wall[2] * 0.85, M.ALB]);
+    K.box(bx, hy + 1.5, bz, 3.4, 3.0, 4.0, [H.wall[0] * 0.85, H.wall[1] * 0.85, H.wall[2] * 0.85, BRICK]);
     K.box(bx, hy + 3.05, bz, 3.6, 0.12, 4.2, STONE);
     K.box(bx + 0.5, hy + 1.05, bz - 2.02, 0.95, 2.1, 0.06, [0.04, 0.07, 0.05, M.ALB]);
     K.sphere(bx + 0.5, hy + 2.35, bz - 2.1, 0.07, [1, 0.75, 0.45, M.LAMP]);
@@ -217,8 +264,18 @@ export class RoofSet extends THREE.Group {
     K.add(new THREE.SphereGeometry(0.55, 18, 6, 0, Math.PI * 2, 0, 0.6), new THREE.Matrix4().compose(this.dish.p.clone().addScaledVector(this.dish.n, 0.5), new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), this.dish.n), new THREE.Vector3(1, 1, 1)), [0.42, 0.42, 0.44, M.ALB]);
     K.cyl(this.dish.p.x + this.dish.n.x * 0.4, this.dish.p.y + this.dish.n.y * 0.4, this.dish.p.z + this.dish.n.z * 0.4, 0.012, 0.012, 0.8, 4, IRON);
     // skylight
-    K.box(H.x0 + 2.4, hy + 0.25, H.z0 + 9.0, 2.4, 0.5, 2.4, [0.2, 0.2, 0.21, M.ALB]);
-    K.add(new THREE.ConeGeometry(1.62, 0.6, 4, 1), new THREE.Matrix4().compose(new THREE.Vector3(H.x0 + 2.4, hy + 0.8, H.z0 + 9.0), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 4, 0)), new THREE.Vector3(1, 1, 1)), [0.04, 0.05, 0.06, M.GLASS]);
+    K.box(H.x0 + 2.4, hy + 0.25, H.z0 + 9.0, 2.4, 0.5, 2.4, [0.27, 0.26, 0.24, STONEM]);
+    K.add(new THREE.ConeGeometry(1.62, 0.6, 4, 1), new THREE.Matrix4().compose(new THREE.Vector3(H.x0 + 2.4, hy + 0.8, H.z0 + 9.0), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 4, 0)), new THREE.Vector3(1, 1, 1)), [0.1, 0.12, 0.13, M.GLASS]);
+    {
+      // its frame: ridges, a curb, glazing bars down each face (it reads as a skylight, not a dark slab)
+      const sk = new Kit(K).at(H.x0 + 2.4, hy, H.z0 + 9.0), e = 1.15, ap = [0, 1.1, 0], fr: [number, number, number, number] = [0.22, 0.24, 0.22, M.ALB];
+      const cs = [[-e, 0.5, -e], [e, 0.5, -e], [e, 0.5, e], [-e, 0.5, e]];
+      cs.forEach((c, i) => { sk.bar(c, ap, 0.025, fr, 4); sk.bar(c, cs[(i + 1) % 4]!, 0.035, fr, 4); });
+      cs.forEach((c, i) => {
+        const d = cs[(i + 1) % 4]!;
+        for (const f of [0.33, 0.67]) sk.bar([c[0]! + (d[0]! - c[0]!) * f, 0.5, c[2]! + (d[2]! - c[2]!) * f], ap, 0.015, fr, 3);
+      });
+    }
     // a lemon tree in a pot by his gap, a crate of empty bottles, a kettle grill, his bike against the bulkhead, a
     // deck chair folded against its door wall, a coiled hose, vent pipes
     lemonTree(K, Lf, r, GAP_X - 1.5, hy, H.z0 + 1.0);
@@ -232,9 +289,17 @@ export class RoofSet extends THREE.Group {
       K.cyl(px, hy + ph + 0.08, pz, 0.14, 0.1, 0.12, 8, [0.22, 0.22, 0.22, M.ALB]);
     }
 
+    // a small deck of planks by the parapet (where he sits out on summer nights; at dawn they dance on it)
+    K.box(GAP_X + 2.4, hy + 0.035, H.z0 + 2.45, 3.6, 0.07, 3.1, [0.34, 0.23, 0.14, M.PLANKS]);
+    for (const dz of [-1.53, 1.53]) K.box(GAP_X + 2.4, hy + 0.04, H.z0 + 2.45 + dz, 3.64, 0.08, 0.06, [0.24, 0.16, 0.1, M.WOOD]);
+    // his washing: a line from the bulkhead side to the garden (shirts, a towel, a sheet; at dawn they catch the sun)
+    const ha = new THREE.Vector3(H.x0 + 4.2, hy + 2.0, H.z1 - 5.4), hb = new THREE.Vector3(GAP_X - 0.6, hy + 2.0, H.z0 + 4.3);
+    for (const p of [ha, hb]) { K.cyl(p.x, hy + 1.05, p.z, 0.04, 0.04, 2.1, 6, [0.2, 0.2, 0.2, M.ALB]); K.box(p.x, hy + 2.05, p.z, 0.7, 0.04, 0.04, [0.2, 0.2, 0.2, M.ALB], Math.atan2(hb.x - ha.x, hb.z - ha.z) + Math.PI / 2); }
+    this.laundry.push({ a: ha, b: hb, sag: 0.22, items: [{ u: 0.14, w: 0.5, h: 0.65, c: [0.33, 0.31, 0.27] }, { u: 0.32, w: 1.1, h: 1.0, c: [0.36, 0.36, 0.37] }, { u: 0.55, w: 0.45, h: 0.6, c: [0.07, 0.11, 0.22] }, { u: 0.72, w: 0.55, h: 0.75, c: [0.3, 0.09, 0.06] }, { u: 0.88, w: 0.35, h: 0.45, c: [0.27, 0.25, 0.12] }] });
+
     // ---- her roof ----
     const R = this.hers, sy = RoofSet.roofTop(R);
-    K.box(R.x1 - 2.2, sy + 1.4, R.z0 + 3.0, 3.2, 2.8, 3.8, [R.wall[0] * 0.8, R.wall[1] * 0.8, R.wall[2] * 0.8, M.ALB]);
+    K.box(R.x1 - 2.2, sy + 1.4, R.z0 + 3.0, 3.2, 2.8, 3.8, [R.wall[0] * 0.8, R.wall[1] * 0.8, R.wall[2] * 0.8, BRICK]);
     K.box(R.x1 - 2.2, sy + 2.85, R.z0 + 3.0, 3.4, 0.12, 4.0, STONE);
     K.box(R.x1 - 2.7, sy + 1.05, R.z0 + 4.92, 0.95, 2.1, 0.06, [0.15, 0.06, 0.04, M.ALB]);
     const la = new THREE.Vector3(GAP_X + 1.9, sy + 2.0, R.z1 - 3.2), lb = new THREE.Vector3(R.x1 - 1.0, sy + 2.0, R.z1 - 8.5);
@@ -252,7 +317,7 @@ export class RoofSet extends THREE.Group {
     K.box(cx + 1.2, sy + 0.2, cz - 0.6, 0.9, 0.4, 0.45, [0.3, 0.12, 0.08, M.ALB]);
     K.box(cx + 1.2, sy + 0.5, cz - 0.6, 0.32, 0.2, 0.12, [0.1, 0.1, 0.11, M.ALB]);
     const chim = (x: number, y: number, z: number, h: number, wall: [number, number, number], steam: boolean) => {
-      K.box(x, y + h / 2, z, 0.9, h, 0.7, [wall[0] * 0.85, wall[1] * 0.85, wall[2] * 0.85, M.ALB]);
+      K.box(x, y + h / 2, z, 0.9, h, 0.7, [wall[0] * 0.85, wall[1] * 0.85, wall[2] * 0.85, BRICK]);
       K.box(x, y + h + 0.06, z, 1.04, 0.12, 0.84, STONE);
       if (steam) this.steamFrom.push(new THREE.Vector3(x, y + h + 0.2, z));
     };
@@ -266,9 +331,38 @@ export class RoofSet extends THREE.Group {
     acUnit(K, GAP_X + 2.0, hy, H.z1 - 2.2, 0);
     acUnit(K, GAP_X + 3.4, hy, H.z1 - 2.2, 0.05);
     acUnit(K, GAP_X + 1.0, sy, R.z0 + 2.0, Math.PI, 1.0, 0.8, 0.85);
-    this.add(kitBatch(K.geometry(), [{ x: 0, y: 0, z: 0, yaw: 0, sx: 1, sy: 1, sz: 1, col: [1, 1, 1], k: 0.5 }], kit, new THREE.Vector3(0, 0, 0), 60));
-    // the leaves, two-sided
-    this.add(kitBatch(Lf.geometry(), [{ x: 0, y: 0, z: 0, yaw: 0, sx: 1, sy: 1, sz: 1, col: [1, 1, 1], k: 0.5 }], kit2, new THREE.Vector3(0, 0, 0), 60));
+    // ---- more life on the neighbours' roofs: masts with red lights, a dish, a laundry line, steam from a vent ----
+    const ants: KInst[] = [{ x: bx - 0.6, y: hy + 3.1, z: bz + 0.8, yaw: 0, sx: 0.12, sy: 6.6, sz: 0.12, col: [1, 1, 1], k: 0 }];
+    const nb = this.blds.filter((b) => b !== this.his && b !== this.hers);
+    nb.forEach((b, i) => {
+      const y = RoofSet.roofTop(b), cxb = (b.x0 + b.x1) / 2, czb = (b.z0 + b.z1) / 2;
+      if (i % 2 === 0) { const hgt = 4.5 + 2 * r(); ants.push({ x: cxb + 1.5, y, z: czb + 2, yaw: 0, sx: 0.1, sy: hgt, sz: 0.1, col: [1, 1, 1], k: 0 }); this.redLights.push(new THREE.Vector3(cxb + 1.5, y + hgt + 0.05, czb + 2)); }
+      if (i === 1) {
+        const dp = new THREE.Vector3(b.x0 + 1.2, y + 1.1, czb), dn = new THREE.Vector3(0.6, 0.6, b.front * 0.5).normalize();
+        K.cyl(dp.x, y + 0.55, dp.z, 0.035, 0.035, 1.1, 6, IRON);
+        K.add(new THREE.SphereGeometry(0.42, 16, 6, 0, Math.PI * 2, 0, 0.6), new THREE.Matrix4().compose(dp.clone().addScaledVector(dn, 0.4), new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), dn), new THREE.Vector3(1, 1, 1)), [0.45, 0.45, 0.47, M.ALB]);
+      }
+      if (i === 2) {
+        const a = new THREE.Vector3(b.x0 + 0.8, y + 1.9, czb - 3), c = new THREE.Vector3(b.x1 - 0.8, y + 1.9, czb + 2);
+        for (const p of [a, c]) K.cyl(p.x, y + 0.95, p.z, 0.035, 0.035, 1.9, 6, [0.2, 0.2, 0.2, M.ALB]);
+        this.laundry.push({ a, b: c, sag: 0.2, items: [{ u: 0.18, w: 0.5, h: 0.6, c: [0.5, 0.5, 0.52] }, { u: 0.4, w: 0.9, h: 0.9, c: [0.42, 0.12, 0.1] }, { u: 0.64, w: 0.45, h: 0.55, c: [0.15, 0.25, 0.45] }, { u: 0.84, w: 0.6, h: 0.7, c: [0.55, 0.5, 0.35] }] });
+      }
+      if (i === 3) { K.cyl(cxb - 2, y + 0.6, czb, 0.12, 0.12, 1.2, 8, [0.22, 0.22, 0.22, M.ALB]); this.steamFrom.push(new THREE.Vector3(cxb - 2, y + 1.3, czb)); }
+    });
+    // a steaming vent pipe on his roof
+    this.steamFrom.push(new THREE.Vector3(H.x0 + 4.5, hy + 1.6, H.z1 - 1.5));
+    // candles on a few window sills: in the blackout the neighbours have lit them
+    const wins = [this.his, this.hers, ...nb].flatMap((b) => RoofSet.windows(b).filter((a) => a.floor >= 2));
+    for (let k = 0; k < 9 && wins.length; k++) {
+      const a = wins[Math.floor(r() * wins.length)]!;
+      const p = a.pos.clone().addScaledVector(a.facing, 0.1).add(new THREE.Vector3((r() - 0.5) * a.size[0] * 0.6, 0.02, 0));
+      K.cyl(p.x, p.y + 0.05, p.z, 0.025, 0.025, 0.1, 8, [0.6, 0.57, 0.5, M.ALB]);
+      this.candles.push(p.clone().add(new THREE.Vector3(0, 0.13, 0)));
+    }
+    this.add(kitBatch(K.geometry(), [{ x: 0, y: 0, z: 0, yaw: 0, sx: 1, sy: 1, sz: 1, col: [1, 1, 1], k: 0.5 }], kitB, new THREE.Vector3(0, 0, 0), 60));
+    // the leaves, two-sided, moving in the wind
+    this.add(kitBatch(Lf.geometry(), [{ x: 0, y: 0, z: 0, yaw: 0, sx: 1, sy: 1, sz: 1, col: [1, 1, 1], k: 0.5 }], kitL, new THREE.Vector3(0, 0, 0), 60));
+    void kit2;
     // her water tower (the city's kit), his mast, AC boxes and vents on all the roofs we built
     const wt: KInst[] = [{ x: R.x0 + 2.8, y: sy - 0.3, z: R.z0 + 3.6, yaw: 0.4, sx: 1.8, sy: 1.0, sz: 1.8, col: [1, 1, 1], k: 0 }];
     const boxes: KInst[] = [];
@@ -279,7 +373,7 @@ export class RoofSet extends THREE.Group {
       for (let k = 0; k < 3; k++) boxes.push({ x: b.x0 + 2 + r() * (b.x1 - b.x0 - 4), y, z: Math.min(b.z0, b.z1) + 3 + r() * (Math.abs(b.z1 - b.z0) - 6), yaw: 0, sx: 0.8 + r() * 0.8, sy: 0.6 + r() * 0.8, sz: 0.8 + r() * 0.6, col: [0.3 + r() * 0.15, 0.3 + r() * 0.15, 0.3 + r() * 0.15], k: 0 });
     }
     this.add(kitBatch(waterTowerGeometry(), wt, kit, new THREE.Vector3(0, 0, 0), 30));
-    this.add(kitBatch(antennaGeometry(), [{ x: bx - 0.6, y: hy + 3.1, z: bz + 0.8, yaw: 0, sx: 0.12, sy: 6.6, sz: 0.12, col: [1, 1, 1], k: 0 }], kit, new THREE.Vector3(bx, 0, bz), 2));
+    this.add(kitBatch(antennaGeometry(), ants, kit, new THREE.Vector3(0, 0, 0), 30));
     this.add(kitBatch(roofBoxGeometry(), boxes, kit, new THREE.Vector3(0, 0, 0), 40));
     this.buildLaundry();
   }
@@ -311,7 +405,15 @@ export class RoofSet extends THREE.Group {
   /** Laundry: cloth quads on the kit material, swaying (instance yaw updated per frame). */
   private buildLaundry() {
     const kit = kitMaterial(this.city.U, { side: THREE.DoubleSide });
-    const g = new KitBuilder().quad(0, -0.5, 0, 1, 1, [1, 1, 1, M.TINT]).geometry();
+    // (pleated: a few soft vertical folds, so the cloth shades like cloth instead of a flat card)
+    const pg = new THREE.PlaneGeometry(1, 1, 6, 2);
+    const pp = pg.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < pp.count; i++) {
+      const x = pp.getX(i), y = pp.getY(i);
+      pp.setXYZ(i, x, y - 0.5 + (y < 0 ? 0.03 * Math.sin(x * 9.0) : 0), 0.035 * Math.sin((x + 0.5) * 6 * Math.PI / 2) * (0.6 + 0.4 * (0.5 - y)));
+    }
+    pg.computeVertexNormals();
+    const g = new KitBuilder().add(pg, new THREE.Matrix4(), [1, 1, 1, M.TINT]).geometry();
     const list: KInst[] = [];
     this.laundry.forEach((l) => l.items.forEach((it) => {
       this.clothInst.push({ a: l.a, b: l.b, sag: l.sag, ...it, seed: list.length * 1.7 });

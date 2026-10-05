@@ -21,6 +21,9 @@ export class RoofWorld extends THREE.Group {
   bulbs: GlowPoints;
   reds: GlowPoints;
   steam: GlowPoints;
+  /** two planes crossing the sky, their navigation lights and strobes */
+  planes = new GlowPoints(8, 1);
+  candles: GlowPoints;
   pigeons: THREE.Mesh;
   private pigeonBase: { p: THREE.Vector3; yaw: number; seed: number }[] = [];
   /** 0..1: the pigeons take off (from this time on) — set per scene. */
@@ -42,9 +45,10 @@ export class RoofWorld extends THREE.Group {
 
     const S = this.set;
     this.bulbs = new GlowPoints(S.bulbs.length, 0.05);
-    this.reds = new GlowPoints(4, 0.35);
+    this.reds = new GlowPoints(12, 0.35);
     this.steam = new GlowPoints(S.steamFrom.length * 40, 1);
-    this.add(this.bulbs, this.reds, this.steam);
+    this.candles = new GlowPoints(S.candles.length * 2, 1);
+    this.add(this.bulbs, this.reds, this.steam, this.planes, this.candles);
 
     // pigeons: a body, a head with a beak, a tail — grey with a little sheen
     const kit = kitMaterial(this.city.U);
@@ -135,6 +139,30 @@ export class RoofWorld extends THREE.Group {
       this.reds.set(i, q.x, q.y, q.z, [1, 0.06, 0.03], on * 2.5, 1);
     });
     this.reds.commit(S.redLights.length);
+    // planes: one high over midtown heading west, one lower to the south heading north-east (a pure function of t)
+    let npl = 0;
+    const dawn = this.city.dawn;
+    for (const [i, alt, z0, vx, vz, period, off] of [[0, 1150, -1900, -48, 4, 140, 0], [1, 760, 700, 38, -30, 120, 51]] as number[][]) {
+      const u = (((t + off!) % period!) + period!) % period! - period! / 2;
+      const p = new THREE.Vector3(u * vx!, alt!, z0! + u * vz!);
+      const dir = new THREE.Vector3(vx!, 0, vz!).normalize(), side = new THREE.Vector3(-dir.z, 0, dir.x);
+      const tip = 18;
+      const strobe = (((t + i! * 0.37) % 1.3) < 0.06 || (((t + i! * 0.37) % 1.3) > 0.14 && ((t + i! * 0.37) % 1.3) < 0.2)) ? 1 : 0;
+      const beacon = Math.sin((t + i!) * Math.PI * 1.6) > 0.7 ? 1 : 0.05;
+      this.planes.set(npl++, p.x + side.x * tip, p.y, p.z + side.z * tip, [1, 0.05, 0.03], 1.4, 7);
+      this.planes.set(npl++, p.x - side.x * tip, p.y, p.z - side.z * tip, [0.1, 1, 0.3], 1.4, 7);
+      this.planes.set(npl++, p.x, p.y + 1, p.z, [1, 1, 1], strobe * 4 * (1 - 0.5 * dawn), 10);
+      this.planes.set(npl++, p.x, p.y - 2, p.z, [1, 0.1, 0.05], beacon * 1.6, 7);
+    }
+    this.planes.commit(npl);
+    // candles on the sills: lit for the blackout (they gutter, each on its own), less needed once the power is back
+    S.candles.forEach((c, i) => {
+      const fl = 0.8 + 0.2 * noise1(t * 7 + i * 3.1, 41) + 0.08 * noise1(t * 23 + i, 42);
+      const k = (1 - 0.6 * this.powerAt(c)) * (1 - dawn);
+      this.candles.set(i * 2, c.x, c.y + 0.01 * noise1(t * 9 + i, 43), c.z, [1, 0.62, 0.25], 2.2 * fl * k, 0.05);
+      this.candles.set(i * 2 + 1, c.x, c.y, c.z, [1, 0.5, 0.18], 0.35 * fl * k, 0.6);
+    });
+    this.candles.commit();
     // steam from the chimney: soft puffs, drifting with the wind, lit by the moon (warm once the power is back)
     let n = 0;
     S.steamFrom.forEach((s, si) => {
