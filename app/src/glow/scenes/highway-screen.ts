@@ -207,7 +207,12 @@ export class ScreenPicture {
 
 // ------------------------------------------------------------------------------------------- the screen
 
-export interface GlitchState { glitch: number; off: number; stuck: number; seed: number }
+/**
+ * The screen's failure, all 0..1 unless noted: tear (rows sliding), scan (scan-line stutter), shift (RGB split,
+ * uv units), blocks (share of dead pixel blocks), roll (vertical slip, uv), flash (the last bright frame),
+ * off (black), after (the faint after-glow once black), stuck (stuck pixels).
+ */
+export interface GlitchState { tear: number; scan: number; shift: number; blocks: number; roll: number; flash: number; off: number; after: number; stuck: number }
 
 export class GiantScreen extends THREE.Group {
   faceU: Record<string, THREE.IUniform>;
@@ -219,62 +224,59 @@ export class GiantScreen extends THREE.Group {
     const W = SCR.w, H = SCR.h, y0 = SCR.y0;
     this.faceU = {
       ...HU,
-      pic: { value: pic.rt.texture }, uGlitch: { value: 0 }, uOff: { value: 0 }, uStuck: { value: 0 }, uSeed: { value: 0 }, uT: { value: 0 },
+      pic: { value: pic.rt.texture }, uTear: { value: 0 }, uScan: { value: 0 }, uShift: { value: 0 }, uBlocks: { value: 0 }, uRoll: { value: 0 },
+      uFlash: { value: 0 }, uOff: { value: 0 }, uAfter: { value: 0 }, uStuck: { value: 0 }, uT: { value: 0 },
       res: { value: new THREE.Vector2(720, Math.round(720 / ASPECT)) },
     };
     const face = new THREE.Mesh(new THREE.PlaneGeometry(W, H), new THREE.ShaderMaterial({
       uniforms: this.faceU,
       vertexShader: /* glsl */ `varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
       fragmentShader: HW_GLSL + /* glsl */ `
-        uniform sampler2D pic; uniform float uGlitch, uOff, uStuck, uSeed, uT; uniform vec2 res;
+        uniform sampler2D pic; uniform float uTear, uScan, uShift, uBlocks, uRoll, uFlash, uOff, uAfter, uStuck, uT; uniform vec2 res;
         varying vec2 vUv; varying vec3 vW;
         float h1(float x) { return fract(sin(x * 127.1) * 43758.5453); }
         float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         void main() {
           vec2 uv = vUv;
-          float g = uGlitch;
           vec3 c;
-          if (g < 0.001 && uOff < 0.001) {
+          if (uTear + uScan + uShift + uBlocks + uRoll + uFlash + uOff + uAfter < 1e-4) {
             c = texture2D(pic, uv).rgb;
           } else {
-            float q = floor(uT * 14.0);                          // the glitch changes 14 times a second
-            // ---- tearing: horizontal bands slide sideways
-            float bandI = floor(uv.y * 22.0);
-            float tb = h2(vec2(bandI, q));
-            float tear = step(1.0 - 0.32 * g, tb) * (h2(vec2(bandI, q + 3.0)) - 0.5) * 0.22 * g;
-            // a slow roll of the whole picture
+            float q = floor(uT * 20.0);                          // the noise of the failure changes 20 times a second
+            // ---- tearing: wide horizontal bands slide sideways, the whole picture slips
+            float bandI = floor(uv.y * 14.0);
+            float tear = step(1.0 - 0.5 * uTear, h2(vec2(bandI, q))) * (h2(vec2(bandI, q + 3.0)) - 0.5) * 0.3 * uTear;
             uv.x += tear;
-            uv.y = fract(uv.y + 0.03 * g * step(0.75, h1(q * 1.7)) * (h1(q) - 0.5));
-            // ---- modules (the LED cabinets: 28 x 12)
-            vec2 mgrid = vec2(28.0, 12.0);
-            vec2 mi = floor(vUv * mgrid);
-            float mh = h2(mi + 0.5);
-            // ---- sample the picture through an RGB split
-            float split = 0.006 * g + 0.004 * g * step(0.6, h1(q + 9.0));
-            c = vec3(texture2D(pic, uv + vec2(split, 0.0)).r, texture2D(pic, uv).g, texture2D(pic, uv - vec2(split, 0.0)).b);
-            // ---- glitched modules: colour swapped or frozen bright
-            float bad = step(1.0 - 0.14 * g, h2(mi + q * 0.37));
-            c = mix(c, c.brg * vec3(1.3, 0.4, 1.4), bad * step(0.5, h2(mi + 7.0)));
-            c = mix(c, vec3(0.9, 1.0, 0.95) * 1.4, bad * step(h2(mi + 3.0), 0.18));
-            // ---- the dead block (upper left, appears as the glitch takes hold)
-            vec2 db = (vUv - vec2(0.13, 0.6)) / vec2(0.15, 0.22);
-            float dead = step(0.0, db.x) * step(db.x, 1.0) * step(0.0, db.y) * step(db.y, 1.0) * step(0.18, g);
-            float deadEdge = dead * (1.0 - step(0.03, min(min(db.x, 1.0 - db.x), min(db.y, 1.0 - db.y))));
-            c = mix(c, vec3(0.0), dead);
-            c += vec3(0.5, 0.05, 0.4) * deadEdge * 1.5;
-            // ---- scanlines: a rolling dark bar and fine lines
-            float bar = exp(-pow((fract(vUv.y - uT * 0.9) - 0.5) / 0.06, 2.0));
-            c *= 1.0 - 0.55 * g * bar;
-            float lines = 0.5 + 0.5 * sin(vUv.y * res.y * 3.14159);
-            float fwl = fwidth(vUv.y * res.y);
-            c *= mix(1.0, 0.55 + 0.6 * lines, g * (1.0 - smoothstep(0.4, 0.9, fwl)));
-            // ---- whole-frame flicker
-            c *= 1.0 - 0.6 * g * step(0.72, h1(floor(uT * 30.0)));
-            // ---- the cascade: module by module to black (each flashes as it dies)
-            float dieAt = 0.04 + mh * 0.9;
-            float flash = smoothstep(dieAt - 0.06, dieAt, uOff) * (1.0 - step(dieAt, uOff)) * step(0.001, uOff);
-            c = mix(c, vec3(1.2, 1.1, 1.0) * 0.8, flash * 0.6);
-            c *= 1.0 - step(dieAt, uOff) * step(0.001, uOff);
+            uv.y = fract(uv.y + uRoll);
+            // ---- colour channels pulled apart
+            c = vec3(texture2D(pic, uv + vec2(uShift, 0.0)).r, texture2D(pic, uv).g, texture2D(pic, uv - vec2(uShift, -0.35 * uShift)).b);
+            // ---- scan lines: coarse lines, single lines dropping out, a dark bar rolling through
+            float ln = vUv.y * 130.0;
+            float line = 0.5 + 0.5 * cos(ln * 6.2832);
+            float drop = step(h2(vec2(floor(ln), q)), 0.22 * uScan);
+            c *= mix(1.0, (0.3 + 0.85 * line) * (1.0 - 0.9 * drop), uScan);
+            float bar = exp(-pow((fract(vUv.y * 1.0 - uT * 1.7) - 0.5) / 0.05, 2.0));
+            c *= 1.0 - 0.75 * uScan * bar;
+            // ---- dead pixel blocks (black, with a burnt magenta / green rim) and blocks frozen in one channel
+            vec2 bg = vec2(14.0, 6.0);
+            vec2 bi = floor(vUv * bg), bf = fract(vUv * bg);
+            float bh = h2(bi + 11.3);
+            float deadB = step(bh, uBlocks);
+            // (a burnt fringe on some edges only, ragged, with dead pixels speckled in from it)
+            float ed = min(min(bf.x, 1.0 - bf.x), min(bf.y, 1.0 - bf.y) * 2.3);
+            float rag = h2(floor(vUv * res * 0.5) + bi);
+            float rim = deadB * step(0.55, h2(bi + 6.6)) * (1.0 - step(0.025 + 0.03 * rag, ed));
+            deadB = max(deadB, step(rag, 0.35 * uBlocks) * step(ed, 0.2) * step(0.5, h2(bi + 8.2)));
+            float frozen = step(1.0 - 0.6 * uBlocks, h2(bi + 4.7)) * (1.0 - deadB);
+            c = mix(c, vec3(c.r * 1.4, 0.0, c.b * 1.6), frozen * step(0.5, h2(bi + 9.1)));
+            c = mix(c, vec3(0.0, c.g * 1.5, 0.0), frozen * step(h2(bi + 9.1), 0.5));
+            c = mix(c, vec3(0.0), deadB);
+            c += mix(vec3(1.0, 0.1, 0.8), vec3(0.15, 1.0, 0.4), step(0.5, h2(bi + 2.0))) * rim * 0.7 * (1.0 - uOff);
+            // ---- the last bright frame: everything still alive blows out
+            c = mix(c, c * 3.5 + vec3(1.7, 1.45, 1.1), uFlash * (1.0 - deadB));
+            // ---- black, then only a faint warm after-glow of the last picture, banded by the scan lines
+            vec3 ghost = texture2D(pic, vUv).rgb * vec3(1.0, 0.75, 0.55) * (0.45 + 0.55 * line);
+            c = mix(c, ghost * 0.05 * uAfter, uOff);
           }
           // ---- LED structure: round diodes on a black mask, faded where they get smaller than a pixel
           vec2 lp = vUv * res;
@@ -294,7 +296,14 @@ export class GiantScreen extends THREE.Group {
           float seam = (1.0 - smoothstep(0.0, mfw.x * 1.5 + 1e-4, min(mf.x, 1.0 - mf.x))) + (1.0 - smoothstep(0.0, mfw.y * 1.5 + 1e-4, min(mf.y, 1.0 - mf.y)));
           c *= 1.0 - 0.22 * clamp(seam, 0.0, 1.0) * (1.0 - sub * 0.8);
           // a dead screen is a black glossy slab: the streetlights and the sky glance off it a little
-          vec3 base = hwFog(uAmbHi * 0.25 + uLampCol * 0.00004, vW, cameraPosition);
+          // the slab itself: module seams catch the streetlights, rain runs down its glossy face
+          float sx = fract(vUv.x * 28.0), sy = fract(vUv.y * 12.0);
+          float seamL = (1.0 - smoothstep(0.0, 0.02, min(sx, 1.0 - sx))) + (1.0 - smoothstep(0.0, 0.04, min(sy, 1.0 - sy)));
+          float col = floor(vUv.x * 520.0);
+          float run = step(0.93, h2(vec2(col, 1.7))) * smoothstep(0.75, 1.0, fract(vUv.y * 2.0 + uT * (0.15 + 0.25 * h2(vec2(col, 3.1))) + h2(vec2(col, 5.3))));
+          float sheen = 0.5 + 0.5 * smoothstep(0.0, 1.0, vUv.y);
+          vec3 slab = uAmbHi * (0.25 + 0.2 * sheen) + uLampCol * 0.00005 * (1.0 + 2.5 * clamp(seamL, 0.0, 1.0) + 6.0 * run);
+          vec3 base = hwFog(slab, vW, cameraPosition);
           // its own light reaches us through the haze better than the haze hides it
           float dist = length(vW - cameraPosition);
           gl_FragColor = vec4(base + c * exp(-dist * uFogD * 0.22), 1.0);
@@ -337,7 +346,8 @@ export class GiantScreen extends THREE.Group {
   /** Per frame: the picture's state, the glitch, the blinking beacons. `power` 0 kills the beacons too. */
   update(t: number, gs: GlitchState, power: number) {
     const u = this.faceU;
-    u.uGlitch!.value = gs.glitch; u.uOff!.value = gs.off; u.uStuck!.value = gs.stuck; u.uSeed!.value = gs.seed; u.uT!.value = t;
+    u.uTear!.value = gs.tear; u.uScan!.value = gs.scan; u.uShift!.value = gs.shift; u.uBlocks!.value = gs.blocks; u.uRoll!.value = gs.roll;
+    u.uFlash!.value = gs.flash; u.uOff!.value = gs.off; u.uAfter!.value = gs.after; u.uStuck!.value = gs.stuck; u.uT!.value = t;
     const W = SCR.w, H = SCR.h, y0 = SCR.y0;
     const blink = (ph: number) => (((t * 0.8 + ph) % 1) < 0.5 ? 1 : 0.04);
     const red = C('#ff2a1a');

@@ -34,7 +34,7 @@ import { makeRT } from '../../engine/gl';
 import { LensFlare } from './highway-flare';
 import { GiantScreen, SCR, SCREEN_HORIZON, ScreenPicture } from './highway-screen';
 import { Cabin, CU, WIPER } from './highway-cabin';
-import { Bridge, Moths, PowerLine, Rain, RoadSigns, Steam, type MothSource } from './highway-life';
+import { Bridge, Insects, Moths, PowerLine, Rain, RoadSigns, Steam, TruckStop, type MothSource } from './highway-life';
 
 const C = (hex: string, k = 1) => new THREE.Color(hex).multiplyScalar(k);
 const DEG = Math.PI / 180;
@@ -77,6 +77,8 @@ export default class Highway extends Scene {
   rain = new Rain();
   steam = new Steam();
   moths = new Moths();
+  insects = new Insects();
+  truckStop = new TruckStop();
   power!: PowerLine;
   bridge!: Bridge;
   bridgeU = 0;
@@ -84,7 +86,8 @@ export default class Highway extends Scene {
 
   L: Line[] = [];
   S0 = 0; S1 = 0; W0 = 0; W1 = 0; lab = false;
-  T = { gauge: 0, l1: 0, l2: 0, sun: 0, sank: 0, dead: 0, l3: 0, pylon: 0, out: 0, stall: 0 };
+  T = { gauge: 0, l1: 0, l2: 0, sun: 0, sank: 0, failBeat: 0, dead: 0, l3: 0, pylon: 0, out: 0, stall: 0 };
+  fail: [number, number, number] = [0, 0, 0];
   downs: number[] = [];
   beats: number[] = [];
   rows: WordRow[] = [];
@@ -120,7 +123,13 @@ export default class Highway extends Scene {
     T.sun = nearestBeat(L2.words[3]!.start);
     T.sank = L2.words[7]!.start;
     T.l3 = beatBefore(L3.start);
-    T.dead = T.l3 - 0.14; // (the screen is dead a moment before the cut: night all around it)
+    // the screen fails on the song's hits after "sank": a stutter on the beat, two hits that break it, and the
+    // last hit before the cut is its last bright frame (then black; night around it before the cut)
+    const kicks = audio.events('kick', T.sank + 0.15, T.l3 - 0.15).map(([k]) => k);
+    T.failBeat = beatAfter(T.sank + 0.03);
+    if (kicks.length >= 3) this.fail = [kicks[0]!, kicks[1]!, kicks[kicks.length - 1]!];
+    else { const b = 60 / 151; this.fail = [T.failBeat + b * 0.5, T.failBeat + b, T.failBeat + b * 1.5]; }
+    T.dead = this.fail[2] + 0.036;
     T.pylon = nextDown(L3.words[2]!.start - 0.1);
     T.out = Math.min(this.downs.find((x) => x > L3.words[4]!.start + 0.2) ?? this.S1 - 0.4, this.S1 - 0.3);
     T.stall = T.out + 0.05;
@@ -227,7 +236,9 @@ export default class Highway extends Scene {
       { u: this.sAt(T.l2) + 90, x: 17.6, lines: ['Exit 25', 'East  ½ mi'], color: '#0d5a33', w: 6, h: 3.0, exit: '25' },
       { u: this.stationU - 95, x: 17.6, lines: ['SERVICES', 'Fuel · Food · 24 h'], color: '#1d3f8f', w: 7, h: 3.4 },
     ], this.sAt(this.W0) - 50, this.sAt(this.W1) + 600);
-    this.scene.add(this.rain, this.steam, this.moths, this.power, this.bridge, this.signs);
+    this.scene.add(this.rain, this.steam, this.moths, this.power, this.bridge, this.signs, this.insects, this.truckStop);
+    // the truck stop, far off on the left, ahead of us through the middle of the verse
+    this.truckStop.position.set(-300, 0, -(this.sAt(T.l2) + 620));
     this.land.exclude.push({ x: -50, u: this.scrU - 140, r: 30 }, { x: 0, u: this.bridgeU, r: 70 });
 
     // the car around his eyes, the mirror's view behind
@@ -236,7 +247,7 @@ export default class Highway extends Scene {
     this.scene.add(this.cabin);
     this.backCam.layers.enableAll();
     // dark verticals smear into ghostly figures in the blurred reflection: keep them out of it
-    this.noRefl = [this.lamps.poles, this.lamps.halos, this.furn.posts, ...this.gantries.map((g) => g.children[0]!), this.cabin, this.rain, this.power.wires, this.moths, this.steam];
+    this.noRefl = [this.lamps.poles, this.lamps.halos, this.furn.posts, ...this.gantries.map((g) => g.children[0]!), this.cabin, this.rain, this.power.wires, this.moths, this.steam, this.insects];
     // wipes: a sweep every ~1.25 s; in the mirror shot one ends before "Now" and the next starts after
     // "sun's" (the blades never cross the words as they are born); in the last shot the stall freezes one
     // high on the glass
@@ -375,12 +386,24 @@ export default class Highway extends Scene {
     const dawn = 0.12 + 0.3 * prog(t, w[0]!.start - 0.05, w[0]!.start + 0.4, ease.outQuad) + 0.58 * prog(t, w[2]!.start - 0.1, w[4]!.start + 0.2, ease.inOutCubic);
     const rise = -0.16 + 0.12 * prog(t, w[2]!.start - 0.05, w[3]!.start, ease.outQuad) + 0.21 * prog(t, w[3]!.start, w[4]!.start + 0.35, ease.inOutCubic) + 0.04 * prog(t, w[4]!.start + 0.35, T.sank, ease.linear);
     const sink = 0.42 * prog(t, T.sank + 0.15, T.dead, ease.inQuad);
-    const glitch = clamp(prog(t, T.sank + 0.1, T.sank + 0.22, ease.outQuad) * 0.3 + 0.7 * prog(t, T.sank + 0.3, T.dead - 0.12, ease.inQuad));
-    const off = prog(t, T.dead - 0.26, T.dead, ease.linear);
-    const stuck = off >= 1 ? Math.max(0, 1 - (t - T.dead) / 0.9) : off > 0.5 ? 1 : 0;
+    // the failure: hits (fast attack, quick decay) and what each hit leaves broken
+    const [h1, h2, h3] = this.fail, b0 = T.failBeat;
+    const hp = (h: number, hl: number) => smoothstep(h - 0.012, h + 0.012, t) * Math.pow(0.5, Math.max(0, t - h - 0.012) / hl);
+    const after1 = smoothstep(h1 - 0.01, h1 + 0.02, t), after2 = smoothstep(h2 - 0.01, h2 + 0.02, t);
+    const off = smoothstep(h3 + 0.03, h3 + 0.036, t);
+    const scan = clamp(0.55 * hp(b0, 0.07) + 0.85 * hp(h1, 0.09) + hp(h2, 0.11) + 0.25 * after1 + 0.25 * after2) * (1 - off);
+    const tear = clamp(0.75 * hp(h1, 0.08) + hp(h2, 0.1) + 0.12 * after1 + 0.22 * after2) * (1 - off);
+    const shift = (0.006 * hp(b0, 0.07) + 0.016 * hp(h1, 0.09) + 0.024 * hp(h2, 0.11) + 0.003 * after1 + 0.006 * after2) * (1 - off);
+    const blocks = 0.12 * after1 + 0.2 * after2 + 0.12 * prog(t, h2, h3, ease.inQuad);
+    const roll = 0.07 * hp(h2, 0.08) * (hash(h2, 3) > 0.5 ? 1 : -1);
+    const flash = smoothstep(h3 - 0.006, h3, t) * (1 - off);
+    const after = off * Math.exp(-Math.max(0, t - h3 - 0.036) / 0.45);
+    const stuck = off * Math.max(0, 1 - (t - T.dead) / 1.2);
     const bright = on * (0.55 + 0.45 * dawn);
-    const light = on * dawn * (1 - off) * (1 - 0.35 * glitch);
-    return { on, dawn, sunY: rise - sink, glitch, off, stuck, bright, light };
+    // its light on the world stutters with it, flares on the last frame, and is gone
+    const flick = scan > 0.05 ? 1 - 0.55 * scan * (hash(Math.floor(t * 30), 41) > 0.5 ? 1 : 0.2) : 1;
+    const light = on * dawn * (1 - off) * flick * (1 - 0.6 * blocks) + 2.2 * on * flash;
+    return { on, dawn, sunY: rise - sink, gs: { tear, scan, shift, blocks, roll, flash, off, after, stuck }, off, after, bright, light, scan, tear };
   }
 
   // ------------------------------------------------------------------------------------------- shots
@@ -595,11 +618,11 @@ export default class Highway extends Scene {
       const arcK = t >= T.sun ? 1 : 0; // (the layout changes on the cut)
       // (the picture is only drawn while it can be seen: alive, and in front of us)
       const inView = scrDir.dot(new THREE.Vector3(0, 0, -1).applyQuaternion(this.cam.quaternion)) > 0.5;
-      if (ss.off < 1 && inView) {
+      if ((ss.off < 1 || ss.after > 0.002) && inView) {
         this.pic.update(t, ss.sunY, ss.dawn, ss.bright, arcK, T.sun, 1);
         this.pic.render(renderer);
       }
-      this.screen.update(t, { glitch: ss.glitch, off: ss.off, stuck: ss.stuck, seed: frameIdx(t) }, t > T.out + 0.2 ? 0 : 1);
+      this.screen.update(t, ss.gs, t > T.out + 0.2 ? 0 : 1);
     }
 
     // ---- the car around him (the mirror shot and the last shot)
@@ -613,8 +636,14 @@ export default class Highway extends Scene {
       CU.cAmb.value.copy(C('#22305a', 0.05 * (0.4 + 0.6 * cityK)));
       CU.cTopCol.value.copy(C('#ff9a40', 0.12 * lampAhead));
       CU.cTopDir.value.set(-0.2, 0.75, -0.6).normalize();
-      CU.cFrontCol.value.copy(C('#ff9a52', 0.03 * ss.light * (scrVisible ? 1 : 0)));
-      CU.cFrontDir.value.copy(scrDir);
+      if (shot === 'dark') {
+        // the station's canopy lights the passenger side until the power goes
+        CU.cFrontCol.value.copy(C('#e6f2ff', 0.05 * stPow));
+        CU.cFrontDir.value.set(0.75, 0.3, -0.6).normalize();
+      } else {
+        CU.cFrontCol.value.copy(C('#ff9a52', 0.03 * ss.light * (scrVisible ? 1 : 0)));
+        CU.cFrontDir.value.copy(scrDir);
+      }
       const wipe = this.wipeAt(t);
       const handK = shot === 'dark' ? lerp(0.95, 0.7, prog(t, T.stall, this.W1, ease.inOutQuad)) : 0.95;
       const dropLight = C('#ff9a40', 0.05 * lampAhead + 0.006).add(C('#ff9a52', 0.06 * ss.light * (scrVisible ? 1 : 0))).add(C('#5fd8ff', 0.012 * handK)).add(C('#fff4e6', 0.01 * carPower));
@@ -629,6 +658,8 @@ export default class Highway extends Scene {
         hand: handK,
         dropLight, dropSpec: C('#ffd2a0', 0.2 * lampAhead + 0.02).add(C('#9fe6ff', 0.05 * handK)),
         grip: this.downs.reduce((a, d) => a + pulse(t, d, 0.18) * smoothstep(d - 0.05, d, t), 0),
+        warn: shot === 'dark' ? smoothstep(T.stall - 0.01, T.stall + 0.02, t) * (1 - smoothstep(T.stall + 0.2, T.stall + 0.26, t)) * (hash(Math.floor(t * 30), 51) > 0.3 ? 1 : 0.3) : 0,
+        sway: shot === 'dark' ? 0.25 * Math.sin(Math.max(0, t - T.stall) * 7) * Math.exp(-Math.max(0, t - T.stall) * 3) * smoothstep(T.stall, T.stall + 0.05, t) : 0,
       });
       this.cabin.mirrorU.sweep!.value = ((s / ROAD.lampP) % 1 + 1) % 1;
       this.cabin.mirrorU.k!.value = 1;
@@ -638,6 +669,8 @@ export default class Highway extends Scene {
     const glowOnRain = C('#ff9a52', 0.002 * ss.light * (scrVisible ? 1 : 0));
     this.rain.update(pos, t, shot === 'dive' ? this.vDrone : shot === 'pylon' ? 0 : v, this.carX(t), s, HU.uLampOffU.value, HU.uHeadOn.value, glowOnRain, shot === 'pylon' ? 0.8 : 1);
     this.steam.update(camU, t, HU.uLampOffU.value, glowOnRain);
+    this.insects.update(t, this.carX(t), s, shot === 'pylon' ? 0 : v, shot === 'dive' ? 0 : HU.uHeadOn.value);
+    if (dB < 5e4) this.truckStop.paint(frontU, t);
     const moth: MothSource[] = [];
     if (shot === 'boards') for (const b of this.boards) if (Math.abs(b.u - camU) < 160) for (const p of b.b.floodSpots()) moth.push({ p, n: 6, r: 0.7, k: 2.2 });
     if ((shot === 'pylon' || shot === 'station' || shot === 'dark') && this.station.visible) {
@@ -659,13 +692,13 @@ export default class Highway extends Scene {
       for (const g of this.gantries) g.visible = false;
       // (in the small mirror the wet road needs no reflection pass of its own)
       this.road.u.reflK!.value = 0;
-      this.rain.visible = false; this.steam.visible = false; this.moths.visible = false;
+      this.rain.visible = false; this.steam.visible = false; this.moths.visible = false; this.insects.visible = false;
       renderer.setRenderTarget(this.mirrorRT);
       renderer.setClearColor(0x000000, 1);
       renderer.clear(true, true, true);
       renderer.render(this.scene, this.backCam);
       this.cabin.visible = true;
-      this.rain.visible = true; this.steam.visible = true; this.moths.visible = true;
+      this.rain.visible = true; this.steam.visible = true; this.moths.visible = true; this.insects.visible = true;
       for (const g of this.gantries) g.visible = true;
     }
     this.road.u.reflK!.value = 1;
@@ -685,7 +718,7 @@ export default class Highway extends Scene {
     if (shot === 'sun' && ss.light > 0.05) {
       const sunW = new THREE.Vector3(0, SCR.y0 + SCR.h * (SCREEN_HORIZON + Math.max(0, ss.sunY)), -this.scrU + 0.7);
       const sd = sunW.sub(pos).normalize();
-      this.flare.render(renderer, out, this.cam, sd, 0.07 * ss.light * (1 - ss.glitch * 0.7), 0.4);
+      this.flare.render(renderer, out, this.cam, sd, 0.07 * ss.light * (1 - ss.scan * 0.7), 0.4);
     }
 
     // ---- post
@@ -696,7 +729,7 @@ export default class Highway extends Scene {
     }
     const rush = clamp((v - 26) / 20, 0, 1) * (shot === 'dive' ? 1 : 0.4);
     const dark = shot === 'dark' ? prog(t, T.stall, T.stall + 0.4, ease.outQuad) : 0;
-    const glit = shot === 'sun' ? ss.glitch * (1 - ss.off) : 0;
+    const glit = shot === 'sun' ? Math.max(ss.tear, 0.6 * ss.scan) * (1 - ss.off) : 0;
     return {
       bloom: 0.85 + 0.25 * dark, bloomThreshold: 0.8 - 0.15 * dark, bloomRadius: 0.8, halation: 0.14,
       vignette: 0.42 + 0.12 * dark, grain: 0.045 + 0.015 * dark, ca: 0.7 + 1.2 * rush + 2.5 * glit, exposure: 1,

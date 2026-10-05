@@ -131,6 +131,9 @@ export class RoadSurface extends THREE.Mesh {
           float wear = mix(a1.g, 1.0, 0.4) * mac.b;
           float paintCov = smoothstep(0.32, 0.5, wear + 0.25 * fu);
           mk = clamp(mk, 0.0, 1.0) * paintCov;
+          // the rumble strip on the hard shoulder: milled grooves across it, holding water (faded where they would alias)
+          float groove = cov(ax, fx, ${(ROAD.outer + 0.55).toFixed(2)}, 0.24) * smoothstep(0.32, 0.46, abs(fract(u / 0.34) - 0.5)) * (1.0 - smoothstep(0.06, 0.16, fu));
+          damp = max(damp, groove * 0.9);
           // ---- the lyric lettering (fresh thermoplastic, painted when the word is sung)
           float word = 0.0, wglow = 0.0;
           if (x > wBox.x && x < wBox.z && u > wBox.y && u < wBox.w) for (int i = 0; i < NW; i++) {
@@ -158,6 +161,7 @@ export class RoadSurface extends THREE.Mesh {
           vec3 verge = vec3(0.012, 0.014, 0.012) * (0.6 + 0.8 * a2.r);
           albedo = mix(verge, albedo, asph);
           albedo *= mix(1.0, 0.35, clamp(puddle * 0.8 + damp * 0.6, 0.0, 1.0)); // wet asphalt darkens
+          albedo *= 1.0 - 0.5 * groove;
           albedo = mix(albedo, vec3(0.62, 0.62, 0.6), paint);
           float rough = mix(mix(a1.g, a2.g, 0.4), 0.65, paint);
           // normal: bumpy aggregate, smoothed by the water film and flat in the puddles

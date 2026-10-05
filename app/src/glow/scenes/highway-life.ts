@@ -380,6 +380,77 @@ export class Bridge extends THREE.Group {
   }
 }
 
+// ------------------------------------------------------------------------------------------- insects
+
+/** Insects caught in our headlights: specks fluttering in the beam, streaking at us as we drive into them. */
+export class Insects extends Streaks {
+  static N = 70;
+  constructor() { super(Insects.N); this.renderOrder = 4; }
+  update(t: number, carX: number, carU: number, v: number, head: number) {
+    if (head <= 0.01) { this.commit(0); return; }
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Color('#fff1d0');
+    let n = 0;
+    for (let i = 0; i < Insects.N; i++) {
+      // world-anchored (we drive into them), fluttering
+      const span = 34;
+      const u = carU + 2.5 + wrap(h1(i, 1) * span - carU, span);
+      const ahead = u - carU;
+      const x = carX + (h1(i, 2) - 0.5) * (2.6 + ahead * 0.12) + noise1(t * 3 + i, 4) * 0.35;
+      const y = 0.35 + h1(i, 3) * 1.5 + noise1(t * 2.5 + i * 3, 5) * 0.25;
+      const spread = 1.1 + ahead * 0.2;
+      const beam = Math.exp(-(((x - carX) / spread) ** 2)) * Math.min(1, ahead / 3) * (1 - ahead / span) * Math.exp(-Math.max(0, y - 1.1) * 1.5);
+      const flap = 0.5 + 0.5 * Math.abs(Math.sin(t * 31 + i * 1.3));
+      const k = head * beam * flap;
+      if (k < 0.02) continue;
+      a.set(x, y, -u);
+      b.set(x + noise1(t * 5 + i, 6) * 0.02, y, -u + 0.012 * v);
+      this.set(n++, a, b, c, 1.4 * k, 0.012);
+    }
+    this.commit(n);
+  }
+}
+
+// ------------------------------------------------------------------------------------------- the truck stop
+
+/** A truck stop far off the road: high-mast lights over a yard of parked lorries (marker lights), a lit canopy. */
+export class TruckStop extends THREE.Group {
+  lights: GlowPoints;
+  data: { x: number; y: number; z: number; c: THREE.Color; k: number; s: number; grid: boolean }[] = [];
+  constructor() {
+    super();
+    const r = mulberry32(919);
+    const sod = C('#ffa64a'), amber = C('#ff9a2a'), red = C('#ff2a1a'), white = C('#eef4ff');
+    // three masts, six lamps each in a ring
+    for (const [mx, mz] of [[-60, 0], [10, -40], [70, 10]] as const) {
+      for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; this.data.push({ x: mx + Math.cos(a) * 1.4, y: 30, z: mz + Math.sin(a) * 1.4, c: sod, k: 2.4, s: 3.2, grid: true }); }
+      this.data.push({ x: mx, y: 31.5, z: mz, c: red, k: 1.2, s: 1.6, grid: true });
+    }
+    // rows of parked trucks: marker lights along the trailers, red at the back, cab lights
+    for (let row = 0; row < 2; row++) for (let i = 0; i < 9; i++) {
+      const x = -70 + i * 17 + (r() - 0.5) * 3, z = -10 + row * 28;
+      for (let k = 0; k < 5; k++) this.data.push({ x: x + (r() - 0.5) * 0.3, y: 1.0, z: z - 6 + k * 3, c: amber, k: 0.6, s: 0.9, grid: false });
+      this.data.push({ x: x - 1.2, y: 1.0, z: z + 7, c: red, k: 0.9, s: 1.0, grid: false }, { x: x + 1.2, y: 1.0, z: z + 7, c: red, k: 0.9, s: 1.0, grid: false });
+      if (r() < 0.4) this.data.push({ x, y: 2.6, z: z - 8, c: white, k: 0.5, s: 1.2, grid: false }); // a cab with its light on
+    }
+    // the diesel canopy: a strip of white
+    for (let k = 0; k < 14; k++) this.data.push({ x: 90 + k * 2.2, y: 5.5, z: -60, c: white, k: 1.1, s: 1.4, grid: true });
+    this.lights = new GlowPoints(this.data.length, 1);
+    this.add(this.lights);
+    this.paint(-1e9, 0);
+  }
+  /** `frontU`: the blackout front (the yard's lamps die when it passes; the lorries keep their own lights). */
+  paint(frontU: number, t: number) {
+    const u0 = -this.position.z;
+    this.data.forEach((d, i) => {
+      const dead = d.grid && u0 - d.z < frontU;
+      let k = dead ? 0 : d.k;
+      if (d.grid && !dead && frontU > u0 - d.z - 40) k *= Math.sin(t * 47 + i) > 0 ? 1 : 0.1;
+      this.lights.set(i, d.x, d.y, d.z, d.c, k, d.s);
+    });
+    this.lights.commit();
+  }
+}
+
 // ------------------------------------------------------------------------------------------- road signs
 
 export interface SignSpec { u: number; x: number; lines: string[]; color: string; w: number; h: number; exit?: string }
@@ -450,5 +521,29 @@ export class RoadSigns extends THREE.Group {
     this.plates.commit();
     this.posts.frustumCulled = false;
     this.add(this.posts, this.plates);
+    // every post carries a small green plate with the distance (km)
+    for (let i = 0; i < n; i++) {
+      const u = Math.ceil(u0 / 100) * 100 + i * 100;
+      const cv = document.createElement('canvas');
+      cv.width = 96; cv.height = 128;
+      const c = cv.getContext('2d')!;
+      c.fillStyle = '#0d5a33'; c.fillRect(0, 0, 96, 128);
+      c.strokeStyle = '#e8efe9'; c.lineWidth = 5; c.strokeRect(5, 5, 86, 118);
+      c.fillStyle = '#eef3ef'; c.textAlign = 'center';
+      c.font = font(F.archivo(100, 700), 26); c.fillText('km', 48, 44);
+      c.font = font(F.archivo(87, 800), 38); c.fillText((41 + u / 1000).toFixed(1), 48, 96);
+      const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.4), new THREE.ShaderMaterial({
+        uniforms: { ...HU, map: { value: canvasTex(cv, { aniso: 4 }) } },
+        vertexShader: /* glsl */ `varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+        fragmentShader: HW_GLSL + /* glsl */ `uniform sampler2D map; varying vec2 vUv; varying vec3 vW;
+          void main(){ vec3 a = texture2D(map, vUv).rgb; vec3 spec;
+            vec3 d = hwLight(vW, vec3(0.0, 0.0, 1.0), normalize(cameraPosition - vW), 0.6, 0.0, spec);
+            vec3 c = a * (d * 0.7 + 0.01) + a * hwHead(vW, vec3(0.0, 0.0, 1.0)) * 5.0;
+            gl_FragColor = vec4(hwFog(c, vW, cameraPosition), 1.0); }`,
+      }));
+      plate.position.set(ROAD.rail + 0.9, 1.3, -u + 0.08);
+      plate.rotation.y = -0.25;
+      this.add(plate);
+    }
   }
 }

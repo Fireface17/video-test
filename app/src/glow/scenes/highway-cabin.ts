@@ -166,6 +166,8 @@ export interface CabinState {
   hand: number; // his glow 0..1
   dropLight: THREE.Color; dropSpec: THREE.Color;
   grip: number; // 0..1 squeeze on the beat
+  warn: number; // the red warning lamps (battery, oil) flaring as the engine dies
+  sway: number; // lateral/longitudinal jolt for the hanging air freshener (radians)
 }
 
 export class Cabin extends THREE.Group {
@@ -180,6 +182,10 @@ export class Cabin extends THREE.Group {
   wheelTilt = 24 * DEG;
   needles: { m: THREE.Object3D; a0: number; a1: number }[] = [];
   dialMat!: THREE.MeshBasicMaterial;
+  warnMat!: THREE.MeshBasicMaterial;
+  checkMat!: THREE.MeshBasicMaterial;
+  hazardMat!: THREE.MeshBasicMaterial;
+  fresh = new THREE.Group();
   radio: LedRow[] = [];
   phoneMat!: THREE.MeshBasicMaterial;
   phoneLight!: THREE.Mesh;
@@ -270,6 +276,46 @@ export class Cabin extends THREE.Group {
     ]), seatMat);
     const doors = new THREE.Mesh(merge([boxAt(0.06, 0.4, 1.2, -0.62, -0.45, -0.1), boxAt(0.06, 0.4, 1.2, 1.36, -0.45, -0.1)]), soft);
     this.add(roof, pillars, dash, binn, stack, vents, seat, doors);
+
+    // ---- small things on the dash: defroster slots under the glass, vent slats in chrome rims, a hazard
+    // button, a glovebox with a latch, a parking permit on the glass, an air freshener under the mirror
+    const chrome = cabMat(C('#9aa0a8'), 0.9);
+    const slots: THREE.BufferGeometry[] = [];
+    for (let i = 0; i < 26; i++) slots.push(boxAt(0.045, 0.006, 0.014, -0.38 + i * 0.058, -0.224, -0.8, 0, 0, -0.06));
+    const slatG: THREE.BufferGeometry[] = [], rimG: THREE.BufferGeometry[] = [];
+    for (const [vx, vy, vz, ry] of [[0.35, -0.33, -0.53, 0], [0.49, -0.33, -0.53, 0], [-0.36, -0.29, -0.578, 0.2]] as const) {
+      for (let k = 0; k < 4; k++) slatG.push(boxAt(0.1, 0.004, 0.012, vx, vy - 0.018 + k * 0.012, vz + 0.008, ry, 0, 0.18 - 0.35));
+      rimG.push(boxAt(0.118, 0.006, 0.01, vx, vy + 0.027, vz + 0.006, ry, 0, 0.18), boxAt(0.118, 0.006, 0.01, vx, vy - 0.027, vz + 0.006, ry, 0, 0.18));
+      rimG.push(boxAt(0.006, 0.054, 0.01, vx - 0.058, vy, vz + 0.006, ry, 0, 0.18), boxAt(0.006, 0.054, 0.01, vx + 0.058, vy, vz + 0.006, ry, 0, 0.18));
+    }
+    // the glovebox: a lid set in the passenger side of the dash, a chrome latch
+    const glove = new THREE.Mesh(new RoundedBoxGeometry(0.42, 0.16, 0.02, 3, 0.012).rotateX(0.22).translate(0.88, -0.45, -0.43), cabMat(C('#33363c'), 0.08));
+    rimG.push(boxAt(0.07, 0.012, 0.012, 0.88, -0.39, -0.415, 0, 0, 0.22));
+    this.add(new THREE.Mesh(merge(slots), cabMat(C('#08090b'), 0.0)), new THREE.Mesh(merge(slatG), cabMat(C('#202226'), 0.2)), new THREE.Mesh(merge(rimG), chrome), glove);
+    this.hazardMat = new THREE.MeshBasicMaterial({ color: C('#ff3020', 0.5) });
+    const haz = new THREE.Mesh(new THREE.CircleGeometry(0.012, 3), this.hazardMat);
+    haz.position.set(0.42, -0.29, -0.522); haz.rotation.set(-0.18, 0, Math.PI / 2);
+    this.add(haz);
+    // warning lamps between the dials: check-engine (amber, on all night) and battery / oil (red, at the stall)
+    this.checkMat = new THREE.MeshBasicMaterial({ color: C('#ffa020', 0.6) });
+    this.warnMat = new THREE.MeshBasicMaterial({ color: C('#ff2010', 0) });
+    const lampG = (x: number) => { const g = new THREE.PlaneGeometry(0.012, 0.008); g.rotateX(-0.3); g.translate(x, -0.27, -0.71); return g; };
+    this.add(new THREE.Mesh(lampG(-0.006), this.checkMat), new THREE.Mesh(merge([lampG(0.012), lampG(0.03)]), this.warnMat));
+    // a parking permit stuck inside the glass, top right
+    const permit = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.07), cabMat(C('#ffffff'), 0.1, { map: canvasTex(permitCanvas()) }));
+    permit.position.set(1.0, 0.13, -0.47);
+    permit.lookAt(new THREE.Vector3(1.0, 0.13, -0.47).add(new THREE.Vector3(0, -0.69, 0.72)));
+    this.add(permit);
+    // the air freshener: a little paper tree on a string under the mirror
+    const tree = new THREE.Shape();
+    tree.moveTo(0, 0); tree.lineTo(0.022, -0.03); tree.lineTo(0.01, -0.03); tree.lineTo(0.028, -0.06); tree.lineTo(0.012, -0.06); tree.lineTo(0.03, -0.09);
+    tree.lineTo(0.004, -0.09); tree.lineTo(0.004, -0.105); tree.lineTo(-0.004, -0.105); tree.lineTo(-0.004, -0.09); tree.lineTo(-0.03, -0.09);
+    tree.lineTo(-0.012, -0.06); tree.lineTo(-0.028, -0.06); tree.lineTo(-0.01, -0.03); tree.lineTo(-0.022, -0.03); tree.closePath();
+    const card = new THREE.Mesh(new THREE.ShapeGeometry(tree).translate(0, -0.075, 0).scale(0.72, 0.72, 0.72), cabMat(C('#1d4a22'), 0.05, { side: THREE.DoubleSide }));
+    const string = new THREE.Mesh(boxAt(0.0012, 0.055, 0.0012, 0, -0.0275, 0), cabMat(C('#8a8474'), 0.0));
+    this.fresh.add(string, card);
+    this.fresh.position.set(0.35, 0.035, -0.47);
+    this.add(this.fresh);
 
     // ---- the instrument cluster: two dials with dim backlit graphics and orange needles, facing his eyes
     const dialTex = canvasTex(dialCanvas(), { aniso: 8 });
@@ -443,6 +489,11 @@ export class Cabin extends THREE.Group {
     });
     CU.cDash.value.copy(C('#b8d4ff', 0.05 * s.dash));
     CU.cDashPos.value.set(0, -0.27, -0.58).applyMatrix4(this.matrixWorld);
+    // ---- the small lamps; the air freshener swings (a slow pendulum, kicked by the road and the stall)
+    this.checkMat.color.copy(C('#ffa020', 0.55 * s.dash));
+    this.warnMat.color.copy(C('#ff2010', 2.2 * s.warn));
+    this.hazardMat.color.copy(C('#ff3020', 0.45 * s.dash));
+    this.fresh.rotation.set(0.1 * Math.sin(t * 1.9 + 0.5) + 0.6 * s.sway, 0.5 * Math.sin(t * 0.7), 0.16 * Math.sin(t * 2.6) + 0.05 * Math.sin(t * 7.3));
     // ---- radio: the station and a scrolling line
     const msg = '   NIGHT RADIO 101.7   03.14   ';
     const off = Math.floor(t * 6);
@@ -497,6 +548,18 @@ function dialCanvas() {
     c.font = font(F.archivo(100, 500), 26);
     c.fillText(k === 0 ? 'km/h' : 'x1000 rpm', cx, cy + R * 0.42);
   }
+  return cv;
+}
+
+function permitCanvas() {
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 180;
+  const c = cv.getContext('2d')!;
+  c.fillStyle = '#e8e2cf'; c.fillRect(0, 0, 256, 180);
+  c.fillStyle = '#1f4f8f'; c.fillRect(0, 0, 256, 52);
+  c.fillStyle = '#f4f0e4'; c.font = font(F.archivo(100, 800), 34); c.textAlign = 'center'; c.fillText('PERMIT', 128, 38);
+  c.fillStyle = '#222'; c.font = font(F.archivo(100, 700), 44); c.fillText('ZONE B', 128, 108);
+  c.font = font(F.archivo(100, 500), 24); c.fillText('VALID THRU 10/26', 128, 150);
   return cv;
 }
 
