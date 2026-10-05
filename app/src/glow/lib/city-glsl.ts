@@ -517,8 +517,11 @@ export const ROOF_GLSL = /* glsl */ `
     vec3 green = vec3(0.045, 0.075, 0.03) * (0.6 + 0.8 * vnoise(q * 1.3 + seed));
     vec3 alb = kind < 0.3 ? rolls : kind < 0.52 ? silver : kind < 0.8 ? gravel : kind < 0.93 ? pavers : green;
     // repairs: tar patches; stains
-    float patchN = vnoise(q * 0.22 + seed * 3.0);
-    alb = mix(alb, vec3(0.04, 0.04, 0.045), smoothstep(0.64, 0.68, patchN) * 0.85);
+    // rectangular repairs of fresh tar or membrane
+    vec2 pc = floor(q / 3.7 + seed), pf = fract(q / 3.7 + seed);
+    vec2 ph = h22m(pc);
+    float patchK = step(0.8, h12(pc + 7.0)) * step(abs(pf.x - 0.5), 0.15 + 0.3 * ph.x) * step(abs(pf.y - 0.5), 0.15 + 0.3 * ph.y);
+    alb = mix(alb, mix(vec3(0.04, 0.04, 0.045), vec3(0.2, 0.2, 0.19), step(0.6, ph.x)), patchK * 0.8);
     alb *= 0.85 + 0.25 * vnoise(q * 0.07 + seed * 5.0);
     // darker along the parapet, drains
     vec2 e = S.xz * 0.5 - abs(q);
