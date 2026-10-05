@@ -33,12 +33,14 @@ import { loadMotion, type Motion } from '../lib/motion';
 import { StarSticker, heColor, makeHeroes } from '../lib/heroes';
 import type { RealFigure } from '../lib/people';
 import { RoofWorld, type Glow } from './rooftop-world';
-import { RoofSet } from './rooftop-set';
+import { CITY_OFF, RoofSet } from './rooftop-set';
 import { bikeMesh, farPeople, litK, overShoulder, placeKit, raiseHand, tint, type FarPerson } from './rooftop-people';
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 const GOLD = col('gold', 1.0);
 const LANTERN = new THREE.Color(1.0, 0.86, 0.62);
+/** the gold wave's front: angles around his roof, radius samples (m) */
+const WAVE_N = 220, WAVE_R = 30, WAVE_DR = 50;
 
 interface Near { name: string; p: Person; chest: () => THREE.Vector3; lit: number; color: THREE.Color }
 interface Lantern {
@@ -71,7 +73,13 @@ export default class Rooftop extends Scene {
   lan: Lantern[] = [];
   lp!: GlowPoints;
   sun = new GlowPoints(4, 1);
-  spikes = new GlowLines(8, 0.035);
+  spikes = new GlowLines(60, 0.02);
+  motes = new GlowPoints(260, 1);
+  /** the gold wave's front, hugging the roofs */
+  wave = new GlowPoints(WAVE_N * 2, 1);
+  waveRoof: Float32Array = new Float32Array(0);
+  farD: number[] = [];
+  nFar0 = 0;
   bike!: THREE.Mesh;
   /** shown in this shot (near people of light) */
   nearVis = 1;
@@ -108,8 +116,9 @@ export default class Rooftop extends Scene {
       c: V(0, 0, -10), r0: 40, r1: 700, n: 230, seed: 5, litFrom: 32.3, litSpan: 1.4, front: V(0, 0, -1), clips: ['79_71', '79_69'],
       k: (t, lit, i) => this.farK(t, lit, i), upAt: (i) => 32.6 + (i % 9) * 0.21, spacing: 11,
     });
+    this.nFar0 = this.far.length;
     // a few behind him too (seen from the aerial shots)
-    this.far.push(...farPeople(w, this.crowd, { c: V(0, 0, 30), r0: 30, r1: 420, n: 50, seed: 9, litFrom: 32.6, litSpan: 1.2, front: V(0, 0, 1), clips: ['79_74', '79_69'], k: (t, lit, i) => this.farK(t, lit, i + 300), spacing: 12 }));
+    this.far.push(...farPeople(w, this.crowd, { c: V(0, 0, 30), r0: 30, r1: 420, n: 50, seed: 9, litFrom: 32.6, litSpan: 1.2, front: V(0, 0, 1), clips: ['79_74', '79_69'], k: (t, lit, i) => this.farK(t, lit, i + this.nFar0), spacing: 12 }));
 
     // ---- "Put your hands up / if you've ever felt low", written in the air over the street by the light from his palms ----
     const put = this.L.put!;
@@ -118,10 +127,12 @@ export default class Rooftop extends Scene {
     this.lineB = { ...put, words: put.words.slice(split) };
     const pc = col('white', 1.1).lerp(col('cyan', 1.1), 0.25);
     this.rowA = LightTrail.text(lineText(this.lineA), 'script', 2.1, { width: 0.07, color: pc, tipLen: 1.6, seed: 1 });
-    this.rowB = LightTrail.text(lineText(this.lineB), 'script', 1.75, { width: 0.06, color: pc, tipLen: 1.4, seed: 4 });
-    this.rowB.position.set(0.9, -2.1, 0);
-    this.rowB.rotation.z = -0.07;
-    this.textGrp.add(this.rowA, this.rowB);
+    // ... and the second half lands on the city itself: written in light across the bricks of her building
+    this.rowB = LightTrail.text(lineText(this.lineB), 'script', 1.55, { width: 0.06, color: pc, tipLen: 1.4, seed: 4 });
+    this.rowB.position.set(0.0, set.hers.gH + 4.55 * set.hers.fH - 0.35, set.hers.z1 + 0.12);
+    this.rowB.rotation.z = -0.05;
+    S.add(this.rowB);
+    this.textGrp.add(this.rowA);
     // (in the canyon over the street, tilted up toward his roof)
     this.textGrp.position.copy(this.TXT);
     this.textGrp.rotation.x = -0.55;
@@ -129,11 +140,41 @@ export default class Rooftop extends Scene {
 
     this.buildLanterns();
     this.sun.renderOrder = 5;
-    S.add(this.sun, this.spikes);
+    S.add(this.sun, this.spikes, this.motes, this.wave);
+    this.bakeWaveRoofs();
+    this.farD = this.far.map((p) => Math.hypot(p.pos.x - set.heSpot.x, p.pos.z - set.heSpot.z));
     // the courier's bike
     this.bike = bikeMesh(w);
     placeKit(this.bike, V(-6.4, 0.02, -3.0), Math.PI / 2 + 0.15);
     S.add(this.bike);
+  }
+
+  /** The roof height under the gold wave's front: angles × radii from his roof, from the city's footprints. */
+  private bakeWaveRoofs() {
+    const w = this.w, H = w.set.heSpot, cell = 20;
+    const grid = new Map<string, number[]>();
+    const boxes = w.city.boxes;
+    boxes.forEach(([x, z, bw, bd], i) => {
+      const X = x + CITY_OFF.x, Z = z + CITY_OFF.z;
+      for (let gx = Math.floor((X - bw / 2) / cell); gx <= Math.floor((X + bw / 2) / cell); gx++) for (let gz = Math.floor((Z - bd / 2) / cell); gz <= Math.floor((Z + bd / 2) / cell); gz++) {
+        const k = `${gx},${gz}`;
+        const l = grid.get(k);
+        if (l) l.push(i); else grid.set(k, [i]);
+      }
+    });
+    const roofAt = (X: number, Z: number) => {
+      let h = 0;
+      for (const i of grid.get(`${Math.floor(X / cell)},${Math.floor(Z / cell)}`) ?? []) {
+        const [x, z, bw, bd, bh] = boxes[i]!;
+        if (Math.abs(X - (x + CITY_OFF.x)) < bw / 2 && Math.abs(Z - (z + CITY_OFF.z)) < bd / 2) h = Math.max(h, bh);
+      }
+      return h;
+    };
+    this.waveRoof = new Float32Array(WAVE_N * WAVE_R);
+    for (let a = 0; a < WAVE_N; a++) for (let ri = 0; ri < WAVE_R; ri++) {
+      const ang = (a / WAVE_N) * Math.PI * 2, rad = ri * WAVE_DR;
+      this.waveRoof[a * WAVE_R + ri] = roofAt(H.x + Math.cos(ang) * rad, H.z + Math.sin(ang) * rad);
+    }
   }
 
   private farK(t: number, lit: number, i: number) {
@@ -143,8 +184,9 @@ export default class Rooftop extends Scene {
     const fl = L.put!.words.at(-2)!.start, lo = L.put!.words.at(-1)!.start;
     const echo = [fl + 0.05 + (i % 7) * 0.03, lo + 0.12 + (i % 5) * 0.05, lo + 0.45 + (i % 4) * 0.06];
     let k = litK(t, lit, 0.8 * d, echo, 0.9);
-    // they give their light away to the lanterns (dimmer), and glow again in gold
-    k *= 1 - 0.45 * smoothstep(33.9, 35.5, t) + 0.5 * smoothstep(this.tGold, this.tGold + 1.2, t);
+    // they give their light away to the lanterns (dimmer), and glow again in gold — each one flaring as the wave reaches them
+    const hit = this.tGold - 0.1 + Math.sqrt(Math.max(0, (this.farD[i] ?? 300) / 1400)) * 2.3;
+    k *= 1 - 0.45 * smoothstep(33.9, 35.5, t) + 0.6 * smoothstep(hit - 0.05, hit + 0.25, t) + 1.6 * pulse(t, hit, 0.3);
     return k;
   }
 
@@ -396,7 +438,7 @@ export default class Rooftop extends Scene {
     // ---------------- the people ----------------
     for (const p of this.far) {
       // they turn gold as the wave passes
-      const g = goldR > 0 ? smoothstep(-20, 30, goldR - Math.hypot(p.pos.x - H.x, p.pos.z - H.z)) : 0;
+      const g = goldR > 0 ? smoothstep(-6, 10, goldR - Math.hypot(p.pos.x - H.x, p.pos.z - H.z)) : 0;
       const pp = p.p as Person & { base?: THREE.Color };
       pp.base ??= pp.color.clone();
       pp.color.copy(pp.base).lerp(GOLD, g * 0.85);
@@ -419,7 +461,9 @@ export default class Rooftop extends Scene {
     rowA.gain = textOn * (1 + 0.35 * echoT);
     rowB.gain = textOn * (1 + 0.5 * echoT);
     this.textGrp.visible = textOn > 0.001 && (shot === 'A' || shot === 'B');
+    rowB.visible = this.textGrp.visible;
     this.textGrp.updateMatrixWorld(true);
+    rowB.updateMatrixWorld(true);
     const writeEnd = this.lineB.words.at(-1)!.end + 0.3;
     let pen: THREE.Vector3;
     const startA = rowA.localToWorld(rowA.pointAt(0));
@@ -503,15 +547,57 @@ export default class Rooftop extends Scene {
     const beat = this.ctx.audio.timeOfBeat(Math.floor(f.beat));
     const swell = prog(t, burst - 0.7, burst);
     const sc = GOLD.clone().lerp(col('white', 1), 0.35);
-    this.sun.set(0, star.x, star.y, star.z, sc.clone().multiplyScalar(3), sK * (1 + 0.4 * pulse(t, beat, 0.15) + 3 * swell), 2.5 + 5 * swell);
-    this.sun.set(1, star.x, star.y, star.z, sc, sK * (0.5 + swell), 14 + 30 * swell * swell);
-    this.sun.commit(2);
-    for (let k = 0; k < 6; k++) {
-      const a = (k / 6) * Math.PI + t * 0.15, len = sK * (1.1 + 0.8 * pulse(t, beat, 0.2) + 4 * swell * swell) * (k % 2 ? 0.55 : 1);
-      const d = V(Math.cos(a), Math.sin(a), 0).applyQuaternion(cam.quaternion).multiplyScalar(len);
-      this.spikes.set(k, star.clone().sub(d), star.clone().add(d), sc, sK * 1.2);
+    // a star gathered from light: a hot white heart, a warm soft body and a wide halo that breathe, motes of light
+    // spiralling in, and many thin rays of uneven length that breathe on their own
+    const br = (sd: number) => 1 + 0.18 * noise1(t * 2.2, sd) + 0.35 * pulse(t, beat, 0.18);
+    this.sun.set(0, star.x, star.y, star.z, col('white', 3), sK * br(1) * (1 + 3 * swell), 1.2 + 3 * swell);
+    this.sun.set(1, star.x, star.y, star.z, sc.clone().multiplyScalar(1.6), sK * br(2) * (0.9 + 2 * swell), 3.8 + 6 * swell);
+    this.sun.set(2, star.x, star.y, star.z, sc.clone().multiplyScalar(0.5), sK * br(3) * (0.5 + swell), 13 + 30 * swell * swell);
+    this.sun.commit(3);
+    const right = V(1, 0, 0).applyQuaternion(cam.quaternion), upv = V(0, 1, 0).applyQuaternion(cam.quaternion), fwd = V(0, 0, -1).applyQuaternion(cam.quaternion);
+    let nm = 0;
+    for (let i = 0; i < this.motes.n; i++) {
+      const life = 1.6, ph = hash(i, 3) * life, cyc = Math.floor((t + ph) / life), age = (t + ph - cyc * life) / life;
+      const r0 = 1.5 + 5 * hash(i, cyc, 1), a0 = hash(i, cyc, 2) * Math.PI * 2, rr = r0 * Math.pow(1 - age, 1.6), a = a0 + age * (2.5 + 2 * hash(i, 4));
+      const p = star.clone().addScaledVector(right, Math.cos(a) * rr).addScaledVector(upv, Math.sin(a) * rr).addScaledVector(fwd, (hash(i, cyc, 5) - 0.5) * rr);
+      const kk = sK * Math.sin(Math.PI * age) * (0.4 + 1.2 * age) * (1 - swell * 0.5);
+      if (kk > 0.01) this.motes.set(nm++, p.x, p.y, p.z, sc, kk * 1.4, 0.12 + 0.12 * hash(i, 6));
     }
-    this.spikes.commit(sK > 0 ? 6 : 0);
+    this.motes.commit(nm);
+    let ns = 0;
+    for (let k = 0; k < 18; k++) {
+      const a = hash(k, 7) * Math.PI * 2 + t * 0.05 * (k % 2 ? 1 : -1);
+      const len = sK * (0.8 + 1.8 * hash(k, 8)) * (0.75 + 0.45 * noise1(t * 1.7 + k * 3.1, 9)) * (1 + 3.5 * swell * swell) * (1 + 0.3 * pulse(t, beat, 0.2));
+      const d = right.clone().multiplyScalar(Math.cos(a)).addScaledVector(upv, Math.sin(a));
+      for (let j = 0; j < 3; j++) {
+        const a0 = star.clone().addScaledVector(d, len * (0.08 + j * 0.3)), a1 = star.clone().addScaledVector(d, len * (0.08 + (j + 1) * 0.3));
+        this.spikes.set(ns++, a0, a1, sc, sK * (1.0 - j * 0.32) * (0.6 + 0.4 * hash(k, 9)));
+      }
+    }
+    this.spikes.commit(sK > 0 ? ns : 0);
+
+    // ---------------- the gold wave's front, rolling over the roofs ----------------
+    let nwv = 0;
+    const waveGlows: Glow[] = [];
+    if (goldK > 0 && goldR > 2 && goldR < 1450) {
+      const fade = 1 - smoothstep(900, 1450, goldR);
+      const ri = goldR / WAVE_DR, r0 = Math.floor(ri), fr = ri - r0;
+      const view = Math.atan2(tgt.z - H.z, tgt.x - H.x);
+      for (let a = 0; a < WAVE_N; a++) {
+        const ang = (a / WAVE_N) * Math.PI * 2;
+        const h0 = this.waveRoof[a * WAVE_R + Math.min(WAVE_R - 1, r0)]!, h1 = this.waveRoof[a * WAVE_R + Math.min(WAVE_R - 1, r0 + 1)]!;
+        const y = lerp(h0, h1, fr) + 1.2;
+        for (const [dr, kk] of [[0, 1], [-9, 0.45]] as [number, number][]) {
+          const rad = goldR + dr + noise1(a * 0.7 + t * 2, 3) * 3;
+          const x = H.x + Math.cos(ang) * rad, z = H.z + Math.sin(ang) * rad;
+          this.wave.set(nwv++, x, y + noise1(a + t * 3, 5) * 1.5, z, GOLD.clone().lerp(col('white', 1), 0.25), kk * fade * (1.4 + 0.6 * noise1(a * 1.3 + t * 6, 7)), 5 + goldR * 0.012);
+        }
+        // the roofs, cornices and water towers the front is passing catch its light (where we look)
+        const da = Math.abs(((ang - view + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+        if (a % 6 === 0 && da < 1.1 && waveGlows.length < 10) waveGlows.push({ pos: V(H.x + Math.cos(ang) * goldR, y + 5, H.z + Math.sin(ang) * goldR), color: GOLD.clone().multiplyScalar(1.4 * fade), radius: 16 + goldR * 0.02 });
+      }
+    }
+    this.wave.commit(nwv);
 
     // ---------------- light on the walls: him, the neighbours, the star ----------------
     const glows: Glow[] = [{ pos: he.spinePoint(0, 0.5, 0.2), color: heColor().multiplyScalar(0.3 * (hu.level!.value as number)).lerp(GOLD.clone().multiplyScalar(0.4), goldK), radius: 2.4 }];
@@ -521,7 +607,7 @@ export default class Rooftop extends Scene {
       const k = typeof n.p.k === 'number' ? n.p.k : n.p.k(t);
       if (k > 0.01) glows.push({ pos: n.chest(), color: n.color.clone().lerp(GOLD, goldK * 0.8).multiplyScalar(0.9 * k), radius: 3.2 });
     }
-    w.glows(glows);
+    w.glows([...waveGlows, ...glows]);
     w.pigeonsFly = Infinity;
     w.update(t, cam, { wind: 0.6 });
 

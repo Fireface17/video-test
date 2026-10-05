@@ -16,7 +16,7 @@ import { GlowPoints } from './points';
 import { CityPlan, F, Grid, GRID, ST, faceNormal, type Building, type Tier } from './city-plan';
 import { CITY_GLSL, cityUniforms, type CityUniforms } from './city-glsl';
 import {
-  CityLOD, KitBuilder, M, TileSet, antennaGeometry, balconyGeometry, buildingBatch, buildingMeshes, facadeMaterial, plantMaterial, roofMaterial, buildingMaterial, fireEscapeGeometry, kitBatch, kitMaterial, ringBatch, ringGeometry, ringMaterial, roofBoxGeometry, waterTowerGeometry,
+  CityLOD, KitBuilder, M, TileSet, deckGeometry, planterGeometry, skylightGeometry, solarGeometry, antennaGeometry, balconyGeometry, buildingBatch, buildingMeshes, facadeMaterial, plantMaterial, roofMaterial, buildingMaterial, fireEscapeGeometry, kitBatch, kitMaterial, ringBatch, ringGeometry, ringMaterial, roofBoxGeometry, waterTowerGeometry,
   type BInst, type KInst, type RInst,
 } from './city-build';
 import { bakeLightMap, cobraGeometry, groundFarGeometry, groundMaterial, lampColor, lightAt, parkLampGeometry, slabMaterial, slabMesh, type LightMapInfo } from './city-street';
@@ -267,13 +267,13 @@ export class City extends THREE.Group {
     // small things in tiles drawn only within a distance
     const big = new Map<string, { o: THREE.Vector3; roofs: BInst[]; plant: BInst[] }>();
     const fac = new Map<string, { o: THREE.Vector3; m: BInst[]; g: BInst[] }>();
-    const mid = new TileSet<unknown>(TILE_X, TILE_Z), near = new TileSet<unknown>(NEAR_X, NEAR_Z);
+    const mid = new TileSet<unknown>(TILE_X, TILE_Z), near = new TileSet<unknown>(NEAR_X, NEAR_Z), roofT = new TileSet<unknown>(NEAR_X, NEAR_Z);
     const sink = {
       roof: (q: BInst) => { const a = Math.floor(q.x / TILE_X), c = Math.floor(q.z / TILE_Z), k = `${a},${c}`; let t = big.get(k); if (!t) big.set(k, (t = { o: new THREE.Vector3((a + 0.5) * TILE_X, 0, (c + 0.5) * TILE_Z), roofs: [], plant: [] })); t.roofs.push(q); },
       plant: (q: BInst) => { const a = Math.floor(q.x / TILE_X), c = Math.floor(q.z / TILE_Z), k = `${a},${c}`; let t = big.get(k); if (!t) big.set(k, (t = { o: new THREE.Vector3((a + 0.5) * TILE_X, 0, (c + 0.5) * TILE_Z), roofs: [], plant: [] })); t.plant.push(q); },
       facade: (q: BInst, glass: boolean) => { const a = Math.floor(q.x / FAC_X), c = Math.floor(q.z / FAC_Z), k = `${a},${c}`; let t = fac.get(k); if (!t) fac.set(k, (t = { o: new THREE.Vector3((a + 0.5) * FAC_X, 0, (c + 0.5) * FAC_Z), m: [], g: [] })); (glass ? t.g : t.m).push(q); },
     };
-    for (const b of plan.buildings) this.addBuilding(b, sink, mid, near);
+    for (const b of plan.buildings) this.addBuilding(b, sink, mid, near, roofT);
     const lod = o.lod ?? 1;
     this.facM = [[0, 1, 2].map((l) => facadeMaterial(U, l, false)), [0, 1, 2].map((l) => facadeMaterial(U, l, true))];
     this.roofM = roofMaterial(U);
@@ -294,7 +294,7 @@ export class City extends THREE.Group {
     const geoRingC = ringGeometry([[0, 0, 0], [0.22, 0.25, 0], [0.3, 0.3, 0], [0.42, 0.38, 0], [0.7, 0.92, 0], [0.82, 1, 0], [1, 1, 0]], 0.35, false);
     const geoRingP = ringGeometry([[0, 0, 0.0], [1, 0, 0.0], [1, 0, 0.06]], 0.32, true);
     const geo: Record<string, THREE.BufferGeometry> = {
-      water: waterTowerGeometry(), roofBox: roofBoxGeometry(), ant: antennaGeometry(), fe: fireEscapeGeometry(), bal: balconyGeometry(), cobra: cobraGeometry(), park: parkLampGeometry(),
+      water: waterTowerGeometry(), roofBox: roofBoxGeometry(), solar: solarGeometry(), skylight: skylightGeometry(), deck: deckGeometry(), planter: planterGeometry(), ant: antennaGeometry(), fe: fireEscapeGeometry(), bal: balconyGeometry(), cobra: cobraGeometry(), park: parkLampGeometry(),
     };
     const rad: Record<string, number> = { water: 8, roofBox: 3, ant: 1, fe: 4, bal: 2, cobra: 10, park: 5 };
     this.lods = [];
@@ -303,10 +303,12 @@ export class City extends THREE.Group {
       if (kind === 'parapet') return ringBatch(geoRingP, list as RInst[], ringMat, origin);
       const g = geo[kind];
       if (!g) return null;
-      return kitBatch(g, list as KInst[], kind === 'fe' || kind === 'bal' ? kitMat2 : kitMat, origin, rad[kind] ?? 4);
+      return kitBatch(g, list as KInst[], kind === 'fe' || kind === 'bal' || kind === 'planter' ? kitMat2 : kitMat, origin, rad[kind] ?? 4);
     };
     mid.build(this, 950 * lod, make, this.lods);
     near.build(this, 430 * lod, make, this.lods);
+    // roof things are seen from the air: drawn further out
+    roofT.build(this, 680 * lod, make, this.lods);
     this.midTiles = mid; this.nearTiles = near;
 
     // ---- ground, sidewalks, water ----
@@ -426,7 +428,7 @@ export class City extends THREE.Group {
   }
 
   /** Building → instances in its tile. */
-  private addBuilding(b: Building, sink: { roof: (q: BInst) => void; plant: (q: BInst) => void; facade: (q: BInst, glass: boolean) => void }, mid: TileSet<unknown>, near: TileSet<unknown>) {
+  private addBuilding(b: Building, sink: { roof: (q: BInst) => void; plant: (q: BInst) => void; facade: (q: BInst, glass: boolean) => void }, mid: TileSet<unknown>, near: TileSet<unknown>, roofT: TileSet<unknown>) {
     const glass = b.style === ST.GLASS;
     const t = {
       b: { push: (q: BInst) => { sink.facade(q, glass); sink.roof(q); } },
@@ -456,8 +458,11 @@ export class City extends THREE.Group {
     for (const w of b.water) t.water.push({ x: w.x, y: w.y, z: w.z, yaw: w.seed * 6.28, sx: w.r, sy: (w.stand + w.h + 1.1) / 7.7, sz: w.r, col: [1, 1, 1], k: 0 });
     for (const a of b.roof) {
       if (a.kind === 3) { t.ant.push({ x: a.x, y: a.y, z: a.z, yaw: 0, sx: a.w, sy: a.h, sz: a.w, col: [1, 1, 1], k: 0.6 }); continue; }
+      const kit = a.kind === 7 ? 'solar' : a.kind === 8 ? 'planter' : a.kind === 9 ? 'skylight' : a.kind === 10 ? 'deck' : '';
+      if (kit) { roofT.add(kit, a.x, a.z, { x: a.x, y: a.y, z: a.z, yaw: a.yaw ?? 0, sx: a.w, sy: a.kind === 7 ? 1 : a.h, sz: a.kind === 7 ? 1.7 : a.d, col: [1, 1, 1], k: a.kind === 9 ? 0.06 + (b.seed % 7) * 0.01 : 0, x4: [0, Math.max(a.w, a.d), b.seed, 0] }); continue; }
+      if (a.kind === 6 || a.kind === 11) { roofT.add('roofBox', a.x, a.z, { x: a.x, y: a.y, z: a.z, yaw: 0, sx: a.w, sy: a.h, sz: a.d, col: a.kind === 6 ? [0.4, 0.41, 0.42] : [0.12, 0.12, 0.13], k: 0 }); continue; }
       const col: [number, number, number] = a.kind === 0 ? [0.42, 0.42, 0.4] : a.kind === 1 ? [0.22, 0.22, 0.23] : a.kind === 2 ? [b.wall[0] * 0.8, b.wall[1] * 0.8, b.wall[2] * 0.8] : a.kind === 4 ? [0.05, 0.06, 0.07] : [0.5, 0.5, 0.5];
-      t.roofBox.push({ x: a.x, y: a.y, z: a.z, yaw: 0, sx: a.w, sy: a.h, sz: a.d, col, k: 0 });
+      roofT.add('roofBox', a.x, a.z, { x: a.x, y: a.y, z: a.z, yaw: 0, sx: a.w, sy: a.h, sz: a.d, col, k: 0 });
     }
     for (const l of b.landings) t.fe.push({ x: l.x, y: l.y, z: l.z, yaw: Math.atan2(l.nx, l.nz), sx: l.w, sy: b.fH / 3.05, sz: 1, col: [1, 1, 1], k: 0 });
     for (const l of b.balconies) t.bal.push({ x: l.x, y: l.y, z: l.z, yaw: Math.atan2(l.nx, l.nz), sx: l.w, sy: 1, sz: 1, col: [1, 1, 1], k: 0 });

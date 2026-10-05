@@ -66,7 +66,9 @@ export interface Tier { cx: number; cz: number; w: number; d: number; y0: number
 export interface WaterTower { x: number; z: number; y: number; r: number; h: number; stand: number; seed: number }
 export interface Landing { x: number; y: number; z: number; nx: number; nz: number; w: number; first: boolean; top: boolean; b: number }
 export interface Balcony { x: number; y: number; z: number; nx: number; nz: number; w: number; b: number }
-export interface RoofBox { x: number; y: number; z: number; w: number; h: number; d: number; kind: number } // 0 AC, 1 vent, 2 chimney, 3 antenna, 4 skylight, 5 dish
+export interface RoofBox { x: number; y: number; z: number; w: number; h: number; d: number; kind: number; yaw?: number } // 0 AC, 1 vent, 2 chimney, 3 antenna, 4 skylight (flat), 5 dish, 6 duct, 7 solar panel, 8 planter, 9 skylight (raised, lit), 10 deck, 11 hatch
+/** A string of bulbs over a roof terrace (a catenary from a to b). */
+export interface Bulbs { a: [number, number, number]; b: [number, number, number]; sag: number; seed: number }
 
 export interface Building {
   id: number; style: number; seed: number;
@@ -161,6 +163,8 @@ export class CityPlan {
   steam: Steam[] = [];
   sheds: Shed[] = [];
   lines: AirLine[] = [];
+  /** strings of bulbs over roof terraces */
+  bulbs: Bulbs[] = [];
   /** pigeons sitting on the wires: position, heading */
   birds: [number, number, number, number][] = [];
   /** blocks that were generated: [i, j, kind (0 city, 1 park)] */
@@ -196,6 +200,68 @@ export class CityPlan {
     }
     this.streets(mulberry32(o.seed * 31 + 7));
     this.airLines(mulberry32(o.seed * 53 + 11));
+    this.roofExtras();
+  }
+
+  /**
+   * More life on the roofs (each building its own random stream, so the city's layout never shifts): duct runs,
+   * solar arrays, raised skylights lit from the stairs below, roof hatches, terraces with decks, planters and bulbs.
+   */
+  private roofExtras() {
+    for (const b of this.buildings) {
+      const r = mulberry32(b.id * 9973 + this.o.seed * 7 + 3);
+      const t = b.tiers.reduce((m, q) => (q.y0 + q.h > m.y0 + m.h ? q : m), b.tiers[0]!);
+      const y = t.y0 + t.h, st = b.style;
+      if (t.w < 6 || t.d < 6 || st === ST.GLASS || st === ST.DECO) continue;
+      const free = (x: number, z: number, rad: number) => b.water.every((w) => Math.hypot(w.x - x, w.z - z) > w.r + rad + 0.5) && b.plant.every((p) => Math.abs(p.cx - x) > p.w / 2 + rad || Math.abs(p.cz - z) > p.d / 2 + rad);
+      const spot = (w: number, d: number, edge = 1.3): [number, number] => [t.cx + (r() - 0.5) * Math.max(0, t.w - w - 2 * edge), t.cz + (r() - 0.5) * Math.max(0, t.d - d - 2 * edge)];
+      // a hatch on most
+      if (r() < 0.6) { const [x, z] = spot(1, 1); if (free(x, z, 0.8)) b.roof.push({ x, y, z, w: 0.9, h: 0.45, d: 0.9, kind: 11 }); }
+      // duct runs on the bigger ones: a few straight pieces, L-shaped
+      if ((st === ST.PREWAR || st === ST.POSTWAR || st === ST.LOFT || st === ST.MODERN) && r() < 0.5 && t.w > 12 && t.d > 12) {
+        const [x0, z0] = spot(2, 2, 2), [x1, z1] = spot(2, 2, 2), s = 0.45 + r() * 0.3;
+        b.roof.push({ x: (x0 + x1) / 2, y: y + 0.3, z: z0, w: Math.abs(x1 - x0) + s, h: s, d: s, kind: 6 });
+        b.roof.push({ x: x1, y: y + 0.3, z: (z0 + z1) / 2, w: s, h: s, d: Math.abs(z1 - z0) + s, kind: 6 });
+      }
+      // skylights (raised glass, lit from the stairs below)
+      if ((st === ST.WALKUP || st === ST.PREWAR || st === ST.LOFT) && r() < 0.35) {
+        const n = 1 + Math.floor(r() * 2.5);
+        for (let k = 0; k < n; k++) { const w = 1.0 + r() * 1.2, d = 1.0 + r() * 1.6, [x, z] = spot(w, d); if (free(x, z, Math.max(w, d) / 2)) b.roof.push({ x, y, z, w, h: 0.45, d, kind: 9 }); }
+      }
+      // solar arrays
+      const solarP = st === ST.LOFT ? 0.2 : st === ST.MODERN ? 0.18 : st === ST.WALKUP ? 0.08 : 0.1;
+      if (r() < solarP && t.w > 8 && t.d > 8) {
+        const cols = Math.max(1, Math.floor((t.w - 4) / 1.15 * (0.4 + r() * 0.4))), rows = Math.max(1, Math.floor((t.d - 4) / 2.2 * (0.3 + r() * 0.4)));
+        const x0 = t.cx - (cols * 1.1) / 2 + (r() - 0.5) * 2, z0 = t.cz - (rows * 2.2) / 2 + (r() - 0.5) * 2;
+        for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
+          const x = x0 + (i + 0.5) * 1.1, z = z0 + (j + 0.5) * 2.2;
+          if (free(x, z, 0.8)) b.roof.push({ x, y, z, w: 1.04, h: 0.5, d: 1.7, kind: 7 });
+        }
+      }
+      // a terrace: a deck, planters round it, strings of bulbs (people live up here)
+      const terP = st === ST.LOFT ? 0.18 : st === ST.WALKUP ? 0.11 : st === ST.MODERN ? 0.1 : 0.06;
+      if (r() < terP * this.o.detail && t.w > 7 && t.d > 7) {
+        const w = Math.min(t.w - 2.5, 4 + r() * 6), d = Math.min(t.d - 2.5, 4 + r() * 5), [x, z] = spot(w, d, 1.2);
+        if (free(x, z, Math.max(w, d) / 2)) {
+          b.roof.push({ x, y, z, w, h: 0.12, d, kind: 10 });
+          const np = 3 + Math.floor(r() * 5);
+          for (let k = 0; k < np; k++) {
+            const e = r(), side = Math.floor(r() * 4);
+            const px = side < 2 ? x + (e - 0.5) * w : x + (side === 2 ? -1 : 1) * (w / 2 - 0.35), pz = side < 2 ? z + (side === 0 ? -1 : 1) * (d / 2 - 0.35) : z + (e - 0.5) * d;
+            b.roof.push({ x: px, y: y + 0.12, z: pz, w: 0.5 + r() * 0.5, h: 0.45 + r() * 0.3, d: 0.5 + r() * 0.4, kind: 8 });
+          }
+          if (r() < 0.75) {
+            const hy = y + 2.3 + r() * 0.4, c = [[x - w / 2, z - d / 2], [x + w / 2, z - d / 2], [x + w / 2, z + d / 2], [x - w / 2, z + d / 2]] as const;
+            const ns = 2 + Math.floor(r() * 3);
+            for (let k = 0; k < ns; k++) {
+              const a = c[Math.floor(r() * 4)]!, bb = c[Math.floor(r() * 4)]!;
+              if (a === bb) continue;
+              this.bulbs.push({ a: [a[0], hy, a[1]], b: [bb[0], hy - r() * 0.3, bb[1]], sag: 0.25 + r() * 0.35, seed: r() });
+            }
+          }
+        }
+      }
+    }
   }
 
   /** Laundry lines across the rear yards between walk-ups; wires along the low-rise streets, pigeons on them. */

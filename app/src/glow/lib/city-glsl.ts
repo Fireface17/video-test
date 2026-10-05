@@ -499,17 +499,37 @@ export const OPEN_GLSL = /* glsl */ `
 
 /** Roof surfaces. */
 export const ROOF_GLSL = /* glsl */ `
-  // roofs: tar and gravel, membrane seams; moonlit; the street light below the edges
+  // roofs seen from above: rolled membrane with seams, silver coating, gravel, pavers or a green roof; tar
+  // patches, puddles that mirror the sky, darker edges; moonlit, the street's glow below the edges
   vec3 roofShade(vec3 W, vec3 C, vec3 S, float seed, float p) {
-    float kind = h11(seed * 2.7);
-    vec3 alb = kind < 0.25 ? vec3(0.28, 0.28, 0.27) : kind < 0.5 ? vec3(0.07, 0.07, 0.075) : kind < 0.8 ? vec3(0.13, 0.12, 0.11) : vec3(0.18, 0.2, 0.17);
     vec2 q = W.xz - C.xz;
+    float kind = h11(seed * 2.7);
     float px = max(fwidth(W.x), fwidth(W.z));
-    float seams = smoothstep(0.3, 0.05, px) * step(fract((kind < 0.5 ? q.x : q.y) / 0.95), 0.04);
-    alb *= 0.85 + 0.25 * vnoise(q * 0.6 + seed) - 0.15 * seams;
+    float fine = smoothstep(0.25, 0.05, px);
+    float along = mix(q.x, q.y, step(0.5, fract(seed * 1.7)));
+    // rolls of membrane (seams every 0.92 m, each roll its own tone)
+    float roll = floor(along / 0.92);
+    vec3 rolls = vec3(0.085, 0.085, 0.09) * (0.8 + 0.4 * h11(roll + seed)) * (1.0 - 0.5 * fine * step(fract(along / 0.92), 0.04));
+    vec3 silver = vec3(0.3, 0.3, 0.29) * (0.8 + 0.25 * vnoise(q * 0.5 + seed)) * (1.0 - 0.25 * fine * step(fract(along / 0.92), 0.04));
+    vec3 gravel = vec3(0.15, 0.14, 0.12) * (0.85 + 0.3 * mix(0.5, h12(floor(q * 14.0)), fine));
+    vec2 pv = fract(q / 0.61);
+    vec3 pavers = vec3(0.27, 0.26, 0.24) * (0.85 + 0.2 * h12(floor(q / 0.61) + seed)) * (1.0 - 0.45 * fine * max(step(pv.x, 0.05), step(pv.y, 0.05)));
+    vec3 green = vec3(0.045, 0.075, 0.03) * (0.6 + 0.8 * vnoise(q * 1.3 + seed));
+    vec3 alb = kind < 0.3 ? rolls : kind < 0.52 ? silver : kind < 0.8 ? gravel : kind < 0.93 ? pavers : green;
+    // repairs: tar patches; stains
+    float patchN = vnoise(q * 0.22 + seed * 3.0);
+    alb = mix(alb, vec3(0.04, 0.04, 0.045), smoothstep(0.64, 0.68, patchN) * 0.85);
+    alb *= 0.85 + 0.25 * vnoise(q * 0.07 + seed * 5.0);
+    // darker along the parapet, drains
     vec2 e = S.xz * 0.5 - abs(q);
-    alb *= 0.75 + 0.25 * smoothstep(0.0, 1.6, min(e.x, e.y));
+    alb *= 0.72 + 0.28 * smoothstep(0.0, 1.4, min(e.x, e.y));
     vec3 N = vec3(0.0, 1.0, 0.0);
-    return alb * (ambient(N) * 1.3 + sunLit(N, 1.0) + peopleGlow(W, N) + streetLight(W.xz, W.y, p) * 0.05);
+    // (the roofs see the whole sky: its glow from the city's light on the clouds, the moon)
+    vec3 c = alb * (ambient(N) * 2.4 + uHazeCol * uGlowK * 0.9 + sunLit(N, 1.0) + peopleGlow(W, N) + streetLight(W.xz, W.y, p) * 0.06);
+    // puddles mirror the sky (and the moon)
+    float pud = smoothstep(0.64, 0.72, vnoise(q * 0.35 + seed * 7.0)) * step(kind, 0.52);
+    vec3 V = normalize(W - cameraPosition);
+    c = mix(c, skyRefl(reflect(V, N)) * 0.7 + uHazeCol * uGlowK * 0.35, pud * 0.55);
+    return c;
   }
 `;

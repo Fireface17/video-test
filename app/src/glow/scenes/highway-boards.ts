@@ -235,7 +235,7 @@ function paintCanvases(spec: BoardSpec) {
   const drips: THREE.Vector4[] = [];
   for (const f of [0.22, 0.47, 0.71, 0.9]) {
     const p = mouth[Math.round(f * (mouth.length - 1))]!;
-    drips.push(new THREE.Vector4(p.x + jit() * 3, PH - (p.y + sr * 0.04), sr * (0.28 + 0.3 * r()), sr * (0.035 + 0.02 * r())));
+    drips.push(new THREE.Vector4(p.x + jit() * 3, PH - (p.y + sr * 0.04), sr * (0.45 + 0.4 * r()), sr * (0.04 + 0.022 * r())));
   }
   for (const a of [Math.PI * 0.42, Math.PI * 0.62]) drips.push(new THREE.Vector4(sx + Math.cos(a) * sr * 1.08, PH - (sy + Math.sin(a) * sr * 1.0 + sr * 0.03), sr * (0.12 + 0.08 * r()), sr * 0.035));
   // merge into one RGBA: R coverage, G time
@@ -279,9 +279,12 @@ export class CalendarBoard extends THREE.Group {
           // the fake smile wears off once it is painted: the paint flakes away in patches and runs in drips
           float smileZone = 1.0 - smoothstep(0.37, 0.4, vUv.x);
           if (wear > 0.0 && smileZone > 0.0) {
-            vec2 fc = floor(vUv * vec2(150.0, 58.0));
-            float fh = fract(sin(dot(fc, vec2(12.9898, 78.233))) * 43758.5453);
-            vis *= 1.0 - step(fh, wear * 0.38) * smileZone * 0.94;
+            // irregular flakes: thresholded value noise, ragged at the edges
+            vec2 q = vUv * vec2(${(PW / 26).toFixed(1)}, ${(PH / 26).toFixed(1)});
+            vec2 qi = floor(q), qf = fract(q); qf = qf * qf * (3.0 - 2.0 * qf);
+            float n = mix(mix(hwH12(qi), hwH12(qi + vec2(1.0, 0.0)), qf.x), mix(hwH12(qi + vec2(0.0, 1.0)), hwH12(qi + vec2(1.0, 1.0)), qf.x), qf.y);
+            n = n * 0.75 + 0.25 * hwH12(floor(vUv * vec2(${(PW / 5).toFixed(1)}, ${(PH / 5).toFixed(1)})));
+            vis *= 1.0 - smoothstep(wear * 0.42 + 0.02, wear * 0.42 - 0.03, n) * smileZone * 0.95;
             vec2 pp = vUv * vec2(${PW.toFixed(1)}, ${PH.toFixed(1)});
             float drip = 0.0;
             for (int i = 0; i < 6; i++) {
@@ -354,7 +357,7 @@ export class CalendarBoard extends THREE.Group {
   update(t: number) {
     this.u.prog!.value = (t - this.T0) / (this.T1 - this.T0);
     // runs fast at first, then creeps
-    const w = Math.min(1, Math.max(0, (t - this.spec.smile[1] - 0.06) / 0.9));
+    const w = Math.min(1, Math.max(0, (t - this.spec.smile[1] - 0.05) / 0.65));
     this.u.wear!.value = 1 - (1 - w) * (1 - w);
   }
 }

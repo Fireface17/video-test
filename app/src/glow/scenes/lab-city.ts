@@ -118,6 +118,9 @@ export default class LabCity extends Scene {
       // cars up close: a parked row and the avenue's traffic
       { a: 72, b: 74, pos: () => V(this.carAt.x + 3.2, 1.3, this.carAt.z + 5.5), at: () => V(this.carAt.x, 0.7, this.carAt.z), fov: 50, setup: reset },
       { a: 74, b: 76, pos: () => V(-125 + 11.5, 1.5, 60), at: () => V(-125 + 2, 1.0, 20), fov: 50, setup: reset },
+      // the roofs from above (chorus 1 looks down on them)
+      { a: 76, b: 78, pos: () => V(40, 190, 140), at: () => V(30, 0, 60), fov: 50, setup: reset },
+      { a: 78, b: 80, pos: () => V(-60, 75, 200), at: () => V(20, 20, 60), fov: 50, setup: reset },
       { a: 66, b: 72, pos: () => V(40, 70, 260), at: () => V(-60, 25, 20), fov: 50, setup: (t) => { reset(); P.level = 0; P.wave(0, { x: -260, z: -300, r: (t - 66) * 140, soft: 180, to: 1 }); } },
     ];
   }

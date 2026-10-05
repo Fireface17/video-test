@@ -131,7 +131,7 @@ export class LightBridge extends THREE.Group {
   }
 
   /** Per frame: plates settle (spring), panes fly from their people to the plates. `gain` dims/brightens all. */
-  update(t: number, gain = 1, dir = new THREE.Vector3(0, 0, -1)) {
+  update(t: number, gain = 1, dir = new THREE.Vector3(0, 0, -1), heat: { p: THREE.Vector3; k: number; r: number } | null = null) {
     const yaw = Math.atan2(dir.x, dir.z);
     let n = 0, nh = 0, nf = 0;
     for (let i = 0; i < this.steps.length; i++) {
@@ -157,7 +157,10 @@ export class LightBridge extends THREE.Group {
         const bob = 0.02 * Math.sin(t * 2.0 + i * 1.7);
         const flash = 1 + 2.5 * pulse(t, st.t, 0.18);
         this.iP.setXYZW(n, st.pos.x, st.pos.y + bob, st.pos.z, yaw);
-        this.iC.setXYZW(n, st.color.r, st.color.g, st.color.b, gain * flash * (0.85 + 0.15 * noise1(t * 3 + i, 7)));
+        // the lantern's warm light spills onto the steps near it
+        const hk = heat ? heat.k * Math.max(0, 1 - st.pos.distanceTo(heat.p) / heat.r) : 0;
+        const cr = st.color.r + (1.0 - st.color.r) * hk, cg = st.color.g + (0.62 - st.color.g) * hk, cb = st.color.b + (0.25 - st.color.b) * hk;
+        this.iC.setXYZW(n, cr, cg, cb, gain * flash * (1 + 1.2 * hk) * (0.85 + 0.15 * noise1(t * 3 + i, 7)));
         n++;
         this.halos.set(nh++, st.pos.x, st.pos.y - 0.05, st.pos.z, st.color, 0.35 * gain * flash, 2.2 * clamp(grow, 0, 1.2));
       }

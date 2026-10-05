@@ -23,17 +23,18 @@
 import * as THREE from 'three';
 import { Scene, type Frame } from '../../engine/scene';
 import type { Line } from '../../engine/lyrics';
-import { clamp, ease, hash, lerp, mulberry32, noise1, prog, pulse, smoothstep } from '../../engine/util';
+import { clamp, ease, hash, keys, lerp, mulberry32, noise1, prog, pulse, smoothstep } from '../../engine/util';
 import { Stage, aim } from '../lib/stage';
 import { col } from '../lib/palette';
 import { GlowPoints } from '../lib/points';
+import { GlowLines } from '../lib/stars';
 import { Crowd, type Person } from '../lib/crowd';
 import { applyLayers, loadMotion, type Motion } from '../lib/motion';
 import { PaperLantern, StarSticker, heColor, holdIn, makeHeroes, sheColor } from '../lib/heroes';
 import type { RealFigure } from '../lib/people';
 import { MOON_DIR, RoofWorld, type Glow } from './rooftop-world';
 import { RoofSet } from './rooftop-set';
-import { bikeMesh, farPeople, litK, placeKit, tint, type FarPerson } from './rooftop-people';
+import { bikeMesh, farPeople, litK, overShoulder, placeKit, raiseHand, tint, type FarPerson } from './rooftop-people';
 import { LightBridge, Path, Walk } from './rooftops-bridge';
 import { SkyShards } from './rooftops-sky';
 import { Threads } from './rooftops-threads';
@@ -68,6 +69,8 @@ export default class Rooftops extends Scene {
   far: FarPerson[] = [];
   rain = new GlowPoints(110, 1);
   flash = new GlowPoints(4, 1);
+  /** the ring of light that runs out over the street when their hands meet */
+  ring = new GlowLines(96, 0.12);
   L: Line[] = [];
   M = new THREE.Vector3();
   T: Record<string, number> = {};
@@ -87,7 +90,7 @@ export default class Rooftops extends Scene {
     S.add(this.w);
     const w = this.w, set = w.set;
     w.power = 0;
-    const [{ he, she }, walkM, idleHe, idleShe, swayHe, swayShe] = await Promise.all([makeHeroes(), loadMotion('02_01'), loadMotion('111_28'), loadMotion('77_02'), loadMotion('05_02'), loadMotion('60_02')]);
+    const [{ he, she }, walkM, idleHe, idleShe, swayHe, swayShe] = await Promise.all([makeHeroes(), loadMotion('02_01'), loadMotion('111_28'), loadMotion('77_02'), loadMotion('05_02'), loadMotion('05_12')]);
     Object.assign(this, { he, she, walkM, idleHe, idleShe, swayHe, swayShe });
     S.add(he, she, this.star, this.lantern, this.rain, this.flash);
 
@@ -138,7 +141,8 @@ export default class Rooftops extends Scene {
     this.threads = new Threads(pts, [0, 1], T.beautiful - 0.05, 0.1, 3, 1.4);
     S.add(this.threads);
     // the sky that breaks
-    this.shards = new SkyShards(this.M.clone().add(V(0, -6, -8)), 72, 0.45, 140, 7, V(0.05, 1, -0.25).normalize());
+    this.shards = new SkyShards(this.M.clone().add(V(0, -6, -8)), 72, 0.45, 140, 7, V(0.05, 1, -0.25).normalize(), { cam: this.M.clone().add(V(2.3, 0.4, 3.6)), look: this.M.clone().add(V(-6, 55, -22)), n: 7 });
+    S.add(this.ring);
     S.add(this.shards);
     this.bike = bikeMesh(w);
     placeKit(this.bike, V(-6.4, 0.02, -3.0), Math.PI / 2 + 0.15);
@@ -176,7 +180,7 @@ export default class Rooftops extends Scene {
   private castWindows() {
     const set = this.w.set, T = this.T;
     const pick = (b: typeof set.his, floors: number[], xs: number[]) => RoofSet.windows(b).filter((a) => floors.includes(a.floor) && xs.some((x) => Math.abs(a.pos.x - x) < 0.9)).slice(0, 2);
-    const wins = [...pick(set.hers, [4, 5], [3.4, -3.6]), ...pick(set.his, [5, 6], [3.9, -3.9])].slice(0, 4);
+    const wins = [...pick(set.hers, [5, 6], [3.4, -3.6]), ...pick(set.his, [6, 7], [3.9, -3.9])].slice(0, 4);
     wins.forEach((a, i) => {
       const b = i < 2 ? set.hers : set.his;
       this.w.openWindow(i, a, { light: new THREE.Color(1.0, 0.66, 0.38).multiplyScalar(0.45), depth: 3.6 });
@@ -184,7 +188,9 @@ export default class Rooftops extends Scene {
       const color = tint(i * 2 + 1, 1.0);
       const lit = T.wake + 0.35 + i * 0.22;
       const k = (t: number) => litK(t, lit, 1.0, [], 0.4);
-      const p = this.crowd.addPerson({ pos, yaw: a.facing.z > 0 ? 0 : Math.PI, body: (i % 2) as 0 | 1, color, look: 'light', offset: i * 1.7, mirror: i % 2 === 1, clips: [{ clip: '77_02', from: 0 }, { clip: '141_16', from: T.town + 0.1 + i * 0.3, speed: 0.85 }], fade: 0.7, k: (t) => this.near * k(t) });
+      const p = this.crowd.addPerson({ pos, yaw: a.facing.z > 0 ? 0 : Math.PI, body: (i % 2) as 0 | 1, color, look: 'light', offset: i * 1.7, mirror: i % 2 === 1, clips: [{ clip: '77_02', from: 0 }, { clip: '80_43', from: T.town + 0.1 + i * 0.3 }], fade: 0.7, k: (t) => this.near * k(t) * (1 + 0.4 * smoothstep(T.town, T.town + 1, t)),
+        // a big wave over the head, side to side (the other hand on the sill)
+        pose: (fig, t) => { const kk = ease.inOutCubic(clamp((t - T.town - 0.2 - i * 0.25) / 0.6)); if (kk > 0) raiseHand(fig, i % 2, kk, overShoulder(fig, i % 2, 0.72, 0.22 + 0.2 * Math.sin((t - T.town) * 6.5 + i), 0.15)); } });
       this.cast.push({ p, color, pos, lit, chest: () => (p.fig && p.fig.visible ? p.fig.spinePoint(0, 0.3, 0.1) : pos.clone().add(V(0, 1.3, 0))) });
     });
   }
@@ -266,13 +272,17 @@ export default class Rooftops extends Scene {
         pos.copy(sp).add(V(-2.2 + 0.6 * u, 2.6 - 0.3 * u, -3.6 - 0.4 * u)); tgt.copy(sp).add(V(0.3, -0.6, 6.0)); fov = 58; roll = -0.03; break;
       }
       case 4: { const u = k(48.0, 49.6); pos.set(11 - 1.5 * u, 29.6 - 1.0 * u, 5.5 - 0.8 * u); tgt.copy(M).add(V(0, 0.8, 0)); fov = 42 - 4 * u; break; }
-      case 5: { const u = k(49.6, 51.2); pos.set(-10.5 + 0.8 * u, 26.2, 4.4 - 0.3 * u); tgt.copy(M).add(V(0, 2.4 + 4.0 * k(50.75, 51.2, ease.inOutCubic), -2.4)); fov = 34; break; }
+      case 5: {
+        // a slow push that all but stops as their hands meet (a held breath), then drifts on and tilts up to the sky
+        const u = keys(t, [[49.6, 0], [49.98, 0.5, ease.outCubic], [50.34, 0.56, ease.linear], [51.2, 1, ease.inOutCubic]]);
+        pos.set(-10.5 + 1.6 * u, 26.2 - 0.2 * u, 4.4 - 0.6 * u); tgt.copy(M).add(V(0, 2.2 + 4.2 * k(50.75, 51.2, ease.inOutCubic), -2.4)); fov = 34 - 3 * u; break;
+      }
       case 6: { const u = k(51.2, 52.79); pos.copy(M).add(V(2.6 - 0.6 * u, 0.4, 3.6)); tgt.copy(M).add(V(-6, 55, -22)); fov = 70; roll = -0.05; break; }
       case 7: { const u = k(52.79, 54.39, ease.inOutCubic); pos.copy(M).add(V(lerp(1.5, 6, u), lerp(1.6, 26, u), lerp(5, 16, u))); tgt.copy(M).add(V(0, lerp(55, 90, u), lerp(-14, -30, u))); fov = 62; roll = 0.05 * u; break; }
       case 8: { const u = k(54.39, 57.59, ease.linear); const a = 0.3 * u; pos.copy(M).add(V(Math.sin(a) * 60, 360 + 50 * u, 40 + Math.cos(a) * 40)); tgt.copy(M).add(V(0, 0, -40)); fov = 52; roll = 0.2 * u; break; }
       case 9: { const u = k(57.59, 60.79, ease.inOutQuad); pos.copy(M).add(V(80 + 40 * u, 520 + 200 * u, 380 + 120 * u)); tgt.copy(M).add(V(0, 0, -260)); fov = 50; break; }
       case 10: { const u = k(60.79, 63.99, ease.inOutQuad); pos.copy(M).add(V(lerp(-300, -170, u), lerp(250, 120, u), lerp(330, 210, u))); tgt.copy(M).add(V(0, lerp(10, 20, u), -120)); fov = 50; break; }
-      case 11: { const u = k(63.99, 67.18); pos.copy(M).add(V(3.6 - 1.4 * u, 0.7 + 0.3 * u, 5.6 - 0.6 * u)); tgt.copy(M).add(V(0.2, 0.6, -1.5)); fov = 50; roll = 0.02; break; }
+      case 11: { const u = k(63.99, 67.18); pos.copy(M).add(V(4.2 - 1.8 * u, 2.4 - 0.4 * u, 6.8 - 0.8 * u)); tgt.copy(M).add(V(0.0, -2.2 + 0.6 * u, -3.0)); fov = 54; roll = 0.02; break; }
       default: { const u = k(67.18, end + 0.25, ease.inOutCubic); pos.copy(M).add(V(lerp(3.5, 45, u), lerp(1.4, 75, u), lerp(4.5, 95, u))); tgt.copy(M).add(V(0, lerp(1.2, -10, u), lerp(0, -40, u))); fov = lerp(48, 56, u); break; }
     }
     pos.x += noise1(t * 0.5, 31) * 0.06; pos.y += noise1(t * 0.45, 32) * 0.05;
@@ -295,53 +305,59 @@ export default class Rooftops extends Scene {
     const yHe = this.walker(he, this.pathHe, this.wHe, this.idleHe, t, 0.3, false);
     const yShe = this.walker(she, this.pathShe, this.wShe, this.idleShe, t, 1.1, true);
     void yHe; void yShe;
-    // C11/C12: they sway together, hand in hand (a little dance over the idle)
-    const sway = smoothstep(T.okay2 - 0.6, T.okay2 + 0.6, t);
+    // C11/C12: they dance a little on the bridge, hand in hand (a dance clip blended over the idle, eased in)
+    const sway = smoothstep(T.okay2 - 0.8, T.okay2 + 0.9, t);
     if (sway > 0) {
-      applyLayers(he, [{ m: this.idleHe, t: t * 0.8 + 0.3, w: 1 - 0.55 * sway, loop: true, face: true }, { m: this.swayHe, t: (t - T.okay2) * 0.8 + 2.0, w: 0.55 * sway, loop: true, face: true }]);
-      applyLayers(she, [{ m: this.idleShe, t: t * 0.8 + 1.1, w: 1 - 0.55 * sway, loop: true, mirror: true, face: true }, { m: this.swayShe, t: (t - T.okay2) * 0.8 + 4.0, w: 0.55 * sway, loop: true, face: true }]);
+      const dw = 0.8 * sway;
+      applyLayers(he, [{ m: this.idleHe, t: t * 0.8 + 0.3, w: 1 - dw, loop: true, face: true }, { m: this.swayHe, t: (t - T.okay2) * 0.85 + 6.3, w: dw, loop: true, face: true }]);
+      applyLayers(she, [{ m: this.idleShe, t: t * 0.8 + 1.1, w: 1 - dw, loop: true, mirror: true, face: true }, { m: this.swayShe, t: (t - T.okay2) * 0.85 + 4.0, w: dw, loop: true, face: true }]);
     }
+    // where the dance puts their free hands (before we take them over)
+    const freeShe = she.hand(0), freeHe = he.hand(1);
     // her lantern in her right hand, held a little forward; his star in his left hand at his chest
     const ease2 = (a: number, d: number) => ease.inOutCubic(clamp((t - a) / d));
     const offer = ease2(T.take - 0.1, 0.45);           // he holds out his right hand, palm up
     const meet = ease2(T.my - 0.05, T.hand - T.my + 0.05); // she reaches with her left; they meet on "hand"
     const lift = ease2(T.hand + 0.05, 0.35) * (1 - ease2(T.hand + 0.85, 0.5)); // the star to the lantern, then back
-    const contact = M.clone().add(V(0.24, 1.08, 0));
+    // the joined hands: over the middle of the bridge; while they dance, between their chests (they move together)
+    const mid = he.spinePoint(0, 0.15, 0).lerp(she.spinePoint(0, 0.15, 0), 0.5);
+    const contact = M.clone().add(V(0.24, 1.08, 0)).lerp(mid.add(V(0.28, -0.12 + 0.06 * Math.sin((t - T.okay2) * 4.2), 0)), sway);
     const pHe = he.hand(0), pShe = she.hand(1);
     const heOffer = he.spinePoint(-0.24, 0.12, 0.42);
     const heTgt = pHe.clone().lerp(heOffer, offer).lerp(contact.clone().add(V(0, 0, 0.06)), meet);
     if (offer > 0.001) { he.reach(0, heTgt, V(-0.6, -0.8, -0.2)); he.setHand(0, 0.15 + 0.2 * meet); }
     if (meet > 0.001) { she.reach(1, pShe.lerp(contact.clone().add(V(0, 0.02, -0.06)), meet), V(0.6, -0.8, -0.2)); she.setHand(1, 0.35); }
-    // the lantern: in her right hand (index 0), lifted between them when he brings the star
-    const lanHold = she.spinePoint(-0.2, 0.02, 0.27).lerp(M.clone().add(V(-0.26, 1.18, -0.12)), lift);
+    // the lantern: in her right hand (index 0), lifted between them when he brings the star; it swings with her dance
+    const lanHold = she.spinePoint(-0.2, 0.02, 0.27).lerp(M.clone().add(V(-0.26, 1.18, -0.12)), lift).lerp(freeShe, 0.75 * sway);
     she.reach(0, lanHold, V(-0.5, -0.7, -0.3));
     she.setHand(0, 0.75);
     holdIn(she, 0, this.lantern, 0.27);
     // his star in his left hand (index 1)
-    const starHold = he.spinePoint(0.16, 0.28, 0.3).lerp(this.lantern.position.clone().add(V(0.02, 0.06, 0.16)), lift);
+    const starHold = he.spinePoint(0.16, 0.28, 0.3).lerp(this.lantern.position.clone().add(V(0.02, 0.06, 0.16)), lift).lerp(freeHe, 0.8 * sway);
     he.reach(1, starHold, V(0.6, -0.7, -0.3));
     he.setHand(1, 0.25);
     holdIn(he, 1, this.star, -0.02);
     // the lantern lights from his star
     const tLit = T.hand + 0.38;
-    this.lantern.lit = ease.outCubic(prog(t, tLit, tLit + 0.45));
+    // it catches: a flare as the flame takes, then a steady warm light
+    this.lantern.lit = ease.outCubic(prog(t, tLit, tLit + 0.45)) + 0.9 * pulse(t, tLit + 0.05, 0.22);
     this.lantern.time = t;
     this.lantern.update();
     this.star.level = 0.9 + 1.2 * smoothstep(start - 0.3, start + 0.6, t) * (1 - smoothstep(start + 0.6, start + 2.0, t)) + 2.5 * pulse(t, tLit, 0.2) + 0.15 * Math.sin(t * 3);
     he.time = she.time = t;
     // she is barely glowing until he reaches her; then brighter, and both warm a little where their hands meet
     const herLevel = lerp(0.35, 0.75, smoothstep(T.okay, T.take, t)) + 0.35 * smoothstep(T.hand, T.hand + 1, t) + 0.25 * smoothstep(T.wake, T.town, t);
-    she.mat.uniforms.level!.value = herLevel;
-    he.mat.uniforms.level!.value = 0.95 + 0.2 * smoothstep(T.hand, T.hand + 1, t);
+    she.mat.uniforms.level!.value = herLevel + 0.6 * pulse(t, T.hand, 0.3);
+    he.mat.uniforms.level!.value = 0.95 + 0.2 * smoothstep(T.hand, T.hand + 1, t) + 0.6 * pulse(t, T.hand, 0.3);
     for (const [fig, o] of [[he, contact], [she, contact]] as [RealFigure, THREE.Vector3][]) {
       const u = fig.mat.uniforms;
       (u.gold!.value as THREE.Color).copy(col('gold', 1.15));
       (u.goldO!.value as THREE.Vector3).copy(o);
-      u.goldR!.value = t > T.hand ? lerp(-0.2, 0.55, ease.outCubic(prog(t, T.hand, T.hand + 1.2))) : -1;
+      u.goldR!.value = t > T.hand ? lerp(-0.2, 0.55, ease.outCubic(prog(t, T.hand, T.hand + 1.2))) + 1.2 * pulse(t, T.hand, 0.35) : -1;
     }
 
     // ---------------- the bridge, the light rain, the flash where hands meet ----------------
-    this.bridge.update(t, 1 + 0.4 * smoothstep(T.beautiful, T.beautiful + 1, t), V(0, 0, -1));
+    this.bridge.update(t, 1 + 0.4 * smoothstep(T.beautiful, T.beautiful + 1, t), V(0, 0, -1), { p: this.lantern.position, k: Math.min(1.5, this.lantern.lit), r: 3.5 });
     const tRain = start - 0.2;
     for (let i = 0; i < this.rain.n; i++) {
       const life = 2.4, a = t - tRain - hash(i, 2) * 1.0;
@@ -351,11 +367,25 @@ export default class Rooftops extends Scene {
       this.rain.set(i, x, y, z, col('gold', 1).lerp(col('white', 1), 0.4), 1.8 * Math.sin(Math.PI * a / life) * (0.4 + 0.6 * hash(i, 6)), 0.08 + 0.1 * hash(i, 7));
     }
     this.rain.commit();
-    const fl = pulse(t, T.hand, 0.18);
-    this.flash.set(0, contact.x, contact.y, contact.z, col('white', 2).lerp(col('gold', 2), 0.4), fl * 1.6, 0.6 + 1.2 * fl);
+    // "hand": a warm burst from the joined hands, and a soft ring of light running out over the street
+    const fl = pulse(t, T.hand, 0.25);
+    this.flash.set(0, contact.x, contact.y, contact.z, col('white', 2).lerp(col('gold', 2), 0.45), fl * 2.4, 0.8 + 2.6 * fl);
+    this.flash.set(2, contact.x, contact.y, contact.z, col('gold', 1).lerp(col('ember', 1), 0.2), fl * 0.8, 6 + 10 * (1 - fl));
+    let nr = 0;
+    for (const [d0, amp] of [[0, 1], [0.22, 0.55]] as [number, number][]) {
+      const u = prog(t, T.hand + d0, T.hand + d0 + 1.6);
+      if (u <= 0 || u >= 1) continue;
+      const rad = 0.4 + 26 * ease.outCubic(u), kk = amp * (1 - u) * (1 - u) * 1.4;
+      for (let i = 0; i < 48; i++) {
+        const a0 = (i / 48) * Math.PI * 2, a1 = ((i + 1) / 48) * Math.PI * 2;
+        const pa = V(contact.x + Math.cos(a0) * rad, contact.y - 0.2, contact.z + Math.sin(a0) * rad), pb = V(contact.x + Math.cos(a1) * rad, contact.y - 0.2, contact.z + Math.sin(a1) * rad);
+        this.ring.set(nr++, pa, pb, col('gold', 1).lerp(col('white', 1), 0.3), kk);
+      }
+    }
+    this.ring.commit(nr);
     const lp = this.lantern.position;
     this.flash.set(1, lp.x, lp.y, lp.z, col('gold', 2).lerp(col('ember', 2), 0.3), pulse(t, tLit, 0.3) * 1.5, 1 + 2 * pulse(t, tLit, 0.3));
-    this.flash.commit(2);
+    this.flash.commit(3);
 
     // ---------------- the sky breaks into stars ----------------
     this.shards.update(t, T.broken, T.piece, T.star, cam, MOON_DIR, 1.0);
@@ -374,8 +404,8 @@ export default class Rooftops extends Scene {
       { pos: he.spinePoint(0, 0.5, 0.2), color: heColor().multiplyScalar(0.28), radius: 2.4 },
       { pos: she.spinePoint(0, 0.5, 0.2), color: sheColor().multiplyScalar(0.22 * herLevel), radius: 2.2 },
     ];
-    if (this.lantern.lit > 0.01) glows.push({ pos: lp.clone(), color: col('gold', 1).lerp(col('ember', 1), 0.3).multiplyScalar(1.6 * this.lantern.lit), radius: 3.5 });
-    if (fl > 0.02) glows.push({ pos: contact, color: col('white', 1.5 * fl), radius: 3 });
+    if (this.lantern.lit > 0.01) glows.push({ pos: lp.clone(), color: col('gold', 1).lerp(col('ember', 1), 0.3).multiplyScalar(2.2 * this.lantern.lit), radius: 5 });
+    if (fl > 0.02) glows.push({ pos: contact, color: col('gold', 1).lerp(col('white', 1), 0.4).multiplyScalar(4 * fl), radius: 7 });
     glows.push(...this.bridge.glows(t, cam.position, 4));
     const ppl = this.cast.map((c) => ({ c, k: (typeof c.p.k === 'number' ? c.p.k : c.p.k(t)) + (c.dust ? (typeof c.dust.k === 'number' ? c.dust.k : c.dust.k(t)) : 0) })).filter((x) => x.k > 0.02)
       .sort((a, b) => a.c.pos.distanceTo(cam.position) - b.c.pos.distanceTo(cam.position)).slice(0, 16 - glows.length);

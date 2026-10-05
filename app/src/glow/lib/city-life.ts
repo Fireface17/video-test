@@ -743,6 +743,47 @@ export class CityLife extends THREE.Group {
       this.mirrorHide.push(moths);
     }
 
+    // ---- strings of bulbs over the roof terraces ----
+    {
+      const bp: number[] = [], ba: number[] = [];
+      for (const s of plan.bulbs) {
+        const len = Math.hypot(s.b[0] - s.a[0], s.b[2] - s.a[2]), n = Math.max(3, Math.round(len / 0.45));
+        for (let i = 0; i <= n; i++) {
+          const t = i / n;
+          bp.push(s.a[0] + (s.b[0] - s.a[0]) * t, s.a[1] + (s.b[1] - s.a[1]) * t - s.sag * 4 * t * (1 - t), s.a[2] + (s.b[2] - s.a[2]) * t);
+          ba.push(s.seed, fract(i * 0.618 + s.seed * 3.1), 0, 0);
+        }
+      }
+      if (bp.length) {
+        const bg = new THREE.BufferGeometry();
+        bg.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3));
+        bg.setAttribute('aB', new THREE.Float32BufferAttribute(ba, 4));
+        const bulbs = new THREE.Points(bg, new THREE.ShaderMaterial({
+          uniforms: { ...(U as unknown as Record<string, THREE.IUniform>), pxScale: { value: (1080 * SCALE) / 2 } },
+          transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+          vertexShader: `attribute vec4 aB; uniform float pxScale; varying vec3 vC;
+            ${CITY_GLSL}
+            void main() {
+              vec4 w = modelMatrix * vec4(position, 1.0);
+              vec4 mv = viewMatrix * w;
+              float d = -mv.z, p = power(w.xz);
+              float on = step(0.15 + 0.5 * aB.x, p) * (1.0 - uDawn * 0.9);
+              vec3 c = mix(vec3(1.0, 0.72, 0.38), vec3(1.0, 0.85, 0.6), aB.y) * (0.9 + 0.25 * sin(uTime * 2.0 + aB.y * 30.0));
+              vec2 fk = fogK(w.xyz);
+              vC = c * 1.8 * on * fk.y * (1.0 - 0.7 * fk.x);
+              float px = 0.07 * projectionMatrix[1][1] * pxScale / max(d, 1e-3);
+              float m = clamp(px, 1.2, 12.0);
+              vC *= max(min(1.0, (px * px) / (m * m)), 0.25);
+              gl_PointSize = m;
+              gl_Position = projectionMatrix * mv;
+            }`,
+          fragmentShader: `varying vec3 vC; void main() { vec2 p = gl_PointCoord * 2.0 - 1.0; float r2 = dot(p, p); if (r2 > 1.0) discard; gl_FragColor = vec4(vC * (exp(-r2 * 4.0) + 0.5 * exp(-r2 * 20.0)), 1.0); }`,
+        }));
+        bulbs.frustumCulled = false;
+        this.add(bulbs);
+      }
+    }
+
     // ---- moving traffic ----
     const [X0, Z0, X1, Z1] = plan.o.bounds;
     const zLoop = Z1 - Z0 + 1200, z0 = Z0 - 600;

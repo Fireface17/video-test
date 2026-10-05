@@ -36,6 +36,7 @@ import { Birds, LastStars, Mist, Steam, Threads, flock } from './dawn-gfx';
 import { Grade } from './dawn-grade';
 import { LinkGroup, type Spot } from './dawn-people';
 import { RoofSet, type Bld } from './rooftop-set';
+import { CityLOD } from '../lib/city-build';
 import { tint } from './rooftop-people';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -46,7 +47,7 @@ const HE = V(3.2, 0, 11.85), SHE = V(3.2, 0, 11.0);
 const FACE = Math.PI / 2; // yaw: +x
 
 export default class Dawn extends Scene {
-  st = new Stage(46, 0.1, 16000);
+  st = new Stage(46, 0.1, 7000);
   w!: RoofWorld;
   he!: RealFigure;
   she!: RealFigure;
@@ -86,6 +87,8 @@ export default class Dawn extends Scene {
     this.w = new RoofWorld({ clouds: 520 });
     S.add(this.w);
     const w = this.w, set = w.set;
+    // (cheaper: the facades switch to their simpler levels of detail sooner — the morning haze hides it)
+    w.city.traverse((o) => { if (o instanceof CityLOD) for (const l of o.levels) l.distance *= 0.55; });
     this.roof = set.heSpot.y;
     HE.y = SHE.y = this.roof;
     w.power = 1;

@@ -141,7 +141,7 @@ export function plantMaterial(U: CityUniforms) {
         vec3 T = vec3(N.z, 0.0, -N.x);
         float u = dot(vW.xz - vC.xz, T.xz), v = vW.y - vC.y;
         vec3 alb = vF2.rgb * (0.85 + 0.3 * h12(floor(vec2(u, v) * 2.0) + vF0.x)) * (1.0 - step(0.5, vF1.x) * step(0.5, fract(v * 3.0)) * 0.5);
-        vec3 c = alb * (ambient(N) * 1.2 + streetLight(vW.xz + N.xz * 2.0, vW.y, vP) * 0.4 + sunLit(N, 1.0));
+        vec3 c = alb * (ambient(N) * 1.2 + uHazeCol * uGlowK * 0.6 * max(N.y, 0.0) + streetLight(vW.xz + N.xz * 2.0, vW.y, vP) * 0.4 + sunLit(N, 1.0));
         float doorFace = step(0.5, vF1.y) * step(0.5, abs(N.z)) * step(0.0, N.z * (h11(vF0.x) - 0.5)) * step(abs(N.y), 0.5);
         float door = doorFace * step(abs(u), 0.45) * step(v, 2.1);
         float lit = step(0.35, vP) * step(0.3, h11(vF0.x * 3.0));
@@ -345,7 +345,7 @@ export function ringMaterial(U: CityUniforms) {
         vec3 N = normal;
         vP = power(w.xz);
         // lit per vertex: sky, moon (a rim on the top edge), the street from below, the sun, glowing people
-        vL = ambient(N) * 1.4 + streetLight(w.xz + N.xz * 2.0, w.y, vP) * (0.6 + 0.8 * max(-N.y, 0.0)) + sunLow(w.xyz, N) + peopleGlow(w.xyz, N)
+        vL = ambient(N) * 1.4 + uHazeCol * uGlowK * 0.6 * max(N.y, 0.0) + streetLight(w.xz + N.xz * 2.0, w.y, vP) * (0.6 + 0.8 * max(-N.y, 0.0)) + sunLow(w.xyz, N) + peopleGlow(w.xyz, N)
            + uMoonCol * 1.2 * step(0.92, aY) * (1.0 - uDawn);
         vW = w.xyz; vCol = iCol; vY = aY; vFk = fogK(w.xyz);
         vU = vec2(abs(normal.x) > 0.5 ? p.z : p.x, p.y);
@@ -361,6 +361,8 @@ export function ringMaterial(U: CityUniforms) {
         float dent = vCol.a * step(0.25, vY) * step(vY, 0.42) * step(0.5, fract(vU.x / 0.32)) * smoothstep(0.2, 0.05, px);
         float brk = vCol.a * step(0.42, vY) * step(vY, 0.72) * step(0.82, fract(vU.x / 1.1)) * smoothstep(0.4, 0.1, px);
         alb *= 1.0 - 0.45 * dent + 0.25 * brk;
+        // the coping on top of a parapet: lighter stone / terracotta
+        alb = mix(alb, mix(vec3(0.42, 0.4, 0.36), vec3(0.4, 0.2, 0.12), step(0.7, h12(floor(vW.xz / 40.0)))), step(0.999, vY) * (1.0 - vCol.a) * 0.8);
         gl_FragColor = vec4(applyFog(alb * vL, vFk, vP), 1.0);
       }`,
   });
@@ -400,7 +402,7 @@ export function ringBatch(geo: THREE.BufferGeometry, list: RInst[], mat: THREE.M
  * 0 instance colour × rgb, 1 fixed albedo rgb, 2 emissive rgb × instance light × power, 3 glass,
  * 4 emissive rgb × instance light (no power: car lights), 5 iron bars (cut out), 6 slats (cut out).
  */
-export const M = { TINT: 0, ALB: 1, LAMP: 2, GLASS: 3, LIGHT: 4, BARS: 5, SLATS: 6, WOOD: 7, STRIPES: 8, SIGNAL: 9, LEAVES: 10, LATTICE: 11, TIES: 12, CARD: 13, PAINT: 14 } as const;
+export const M = { TINT: 0, ALB: 1, LAMP: 2, GLASS: 3, LIGHT: 4, BARS: 5, SLATS: 6, WOOD: 7, STRIPES: 8, SIGNAL: 9, LEAVES: 10, LATTICE: 11, TIES: 12, CARD: 13, PAINT: 14, PLANKS: 15 } as const;
 
 /** A unit box (x, z in [-0.5, 0.5], y in [0, 1]) without its bottom face. */
 export function boxNoBottom() {
@@ -538,7 +540,7 @@ export function kitMaterial(U: CityUniforms, o: { side?: THREE.Side; streetK?: n
         vec4 w = modelMatrix * vec4(rp + ip.xyz, 1.0);
         vW = w.xyz; vN = n; vV = aV; vCol = icol; vL = aL * isc; vX = iX;
         vP = power(w.xz);
-        vLight = ambient(n) * 1.3 + streetLight(w.xz, w.y, vP) * ${(o.streetK ?? 1).toFixed(2)} + sunLow(w.xyz, n) + peopleGlow(w.xyz, n);
+        vLight = ambient(n) * 1.3 + uHazeCol * uGlowK * 0.6 * max(n.y, 0.0) + streetLight(w.xz, w.y, vP) * ${(o.streetK ?? 1).toFixed(2)} + sunLow(w.xyz, n) + peopleGlow(w.xyz, n);
         // powered lamps: each switches on at its own threshold, flickering, warming from red
         float th = 0.1 + 0.5 * fract(icol.a * 7.31), d = vP - th;
         vOn = step(0.0, d) * mix(step(0.5, h12(vec2(icol.a * 99.0, floor(uTime * 15.0)))), 1.0, smoothstep(0.03, 0.1, d)) * (1.0 - 0.9 * uDawn) * (0.25 + 0.75 * smoothstep(0.0, 0.3, d));
@@ -570,7 +572,10 @@ export function kitMaterial(U: CityUniforms, o: { side?: THREE.Side; streetK?: n
         vec2 cu = vL.xy / max(vX.y, 0.3);
         float leafA = vnoise(cu * 9.0 + vX.z * 13.0) * 0.7 + vnoise(cu * 23.0 + 5.0) * 0.45 - length(cu) * 1.25;
         if (mode > 12.5 && mode < 13.5 && leafA < 0.08) discard;
-        vec3 alb = mode < 0.5 || mode > 13.5 ? vCol.rgb * (mode > 13.5 ? vec3(1.0) : vV.rgb) : vV.rgb;
+        float paintM = step(13.5, mode) * step(mode, 14.5);
+        vec3 alb = mode < 0.5 || paintM > 0.5 ? vCol.rgb * mix(vV.rgb, vec3(1.0), paintM) : vV.rgb;
+        // deck planks
+        alb *= mix(1.0, (0.75 + 0.45 * h11(floor(vL.x * 7.0) + floor(vL.z * 0.8) * 3.0)) * (1.0 - 0.5 * step(fract(vL.x * 7.0), 0.08)), step(14.5, mode));
         alb *= mix(1.0, 0.8 + 0.4 * h11(floor(vL.z / 0.62) + 2.0), step(11.5, mode) * step(mode, 12.5));
         alb *= mix(1.0, 0.65 + 0.7 * clamp(leafA * 2.0, 0.0, 1.0), step(12.5, mode) * step(mode, 13.5));
         alb *= mix(1.0, 0.6 + 0.8 * leafN, step(9.5, mode) * step(mode, 10.5));
@@ -585,7 +590,7 @@ export function kitMaterial(U: CityUniforms, o: { side?: THREE.Side; streetK?: n
         alb *= mix(1.0, (0.8 + 0.35 * h11(floor(sv) + 3.0)) * (1.0 - 0.8 * step(abs(fract(vL.y / 0.78) - 0.5), 0.05)), wood);
         vec3 c = alb * vLight;
         // car paint: door seams and handles, clear-coat reflections
-        if (mode > 13.5) c = carPaint(c, alb, vL, vN, vW, vLight);
+        if (paintM > 0.5) c = carPaint(c, alb, vL, vN, vW, vLight);
         // emissive: powered lamps, unpowered car / aviation lights; glass reflects the sky
         float lampM = step(1.5, mode) * step(mode, 2.5), lightM = step(3.5, mode) * step(mode, 4.5), glassM = step(2.5, mode) * step(mode, 3.5);
         c += vV.rgb * mix(vec3(1.0, 0.25, 0.1), vec3(1.0), vOn) * vOn * fract(vCol.a) * 4.0 * lampM;
@@ -721,3 +726,36 @@ export class TileSet<T> {
   }
 }
 
+
+// ---------------------------------------------------------------- roof things
+
+/** A solar panel: a dark glass plate tilted toward the south (+z), on a frame. Unit 1 × 1 footprint. */
+export function solarGeometry() {
+  const k = new KitBuilder();
+  k.box(0, 0.12, 0, 0.98, 0.04, 0.98, [0.2, 0.2, 0.21, M.ALB], 0, -0.26);
+  k.quad(0, 0.16, 0, 0.96, 0.96, [0.02, 0.03, 0.07, M.GLASS], 0, -Math.PI / 2 - 0.26);
+  for (const x of [-0.45, 0.45]) k.box(x, 0.08, 0.38, 0.04, 0.16, 0.04, [0.2, 0.2, 0.21, M.ALB]).box(x, 0.22, -0.38, 0.04, 0.44, 0.04, [0.2, 0.2, 0.21, M.ALB]);
+  return k.geometry();
+}
+
+/** A raised skylight: a frame and a glass top lit from the stairwell below (powered). Unit footprint. */
+export function skylightGeometry() {
+  const k = new KitBuilder();
+  k.add(boxNoBottom(), new THREE.Matrix4().makeScale(1, 0.8, 1), [0.22, 0.22, 0.22, M.ALB]);
+  k.quad(0, 0.81, 0, 0.86, 0.86, [1.0, 0.75, 0.45, M.LAMP], 0, -Math.PI / 2);
+  for (let i = -1; i <= 1; i++) k.box(i * 0.29, 0.83, 0, 0.03, 0.03, 0.9, [0.1, 0.1, 0.1, M.ALB]);
+  return k.geometry();
+}
+
+/** A deck of planks (unit footprint, 1 thick). */
+export function deckGeometry() {
+  return new KitBuilder().add(boxNoBottom(), new THREE.Matrix4(), [0.3, 0.2, 0.12, M.PLANKS]).geometry();
+}
+
+/** A planter: a box with leafy cards on top. Unit size. */
+export function planterGeometry() {
+  const k = new KitBuilder();
+  k.add(boxNoBottom(), new THREE.Matrix4(), [0.14, 0.1, 0.07, M.ALB]);
+  for (let i = 0; i < 3; i++) k.quad(0, 1.25, 0, 1.3, 1.0, [0.03, 0.06, 0.025, M.CARD], (i * Math.PI) / 3, 0.15);
+  return k.geometry();
+}
