@@ -29,16 +29,21 @@ bunx vite
 
 ## Финальный рендер на MacBook Air M5
 
-Подключи зарядку и не закрывай крышку (закрытый MacBook засыпает). `caffeinate` не даст ему уснуть, пока идёт рендер:
+Подключи зарядку и не закрывай крышку (закрытый MacBook засыпает). `caffeinate` не даст ему уснуть, пока идёт рендер. Готовое видео появится на рабочем столе:
 
 ```sh
+cd ~/glow-video            # папка, куда клонирован репозиторий
+git pull                   # последняя версия клипа
 cd app
-caffeinate -dims bun scripts/render.ts video --samples auto --max-samples 108 --shutter 0.2 --out ../out/glow.mp4
+bun install
+caffeinate -dims bun scripts/render.ts video --samples auto --max-samples 36 --shutter 0.2 --out ~/Desktop/glow.mp4
 ```
 
-- **Что получится:** 1920×1080, 60 кадров/с, x264, звук AAC — файл `out/glow.mp4`.
-- **Размытие движения:** каждый кадр — среднее нескольких подкадров. `--samples auto` сам решает, сколько их нужно: 12 для спокойного кадра, 36–108 для быстрых движений.
-- **Время:** на Air ждать стоит от двух до четырёх часов (сцены тяжёлые: город, толпы, космос), точнее покажет счётчик кадров в терминале. Без вентилятора Air со временем сбрасывает частоту, это нормально. Можно рендерить частями (ниже).
+- **Что получится:** `glow.mp4` на рабочем столе — 1920×1080, 60 кадров/с, x264, звук AAC.
+- **Ход работы:** в терминале строка вида `2400/13664 frames (17.6%) … elapsed 0:41:10 eta 3:12:00`. Первые минуты ETA занижен: интро лёгкое, а сцены с городом (0:31–1:23, 2:00–2:39, 2:51–3:08) в несколько раз тяжелее остальных.
+- **Время:** ориентировочно 4–8 часов (точнее покажет ETA после первых сцен с городом или тест ниже). Без вентилятора Air со временем сбрасывает частоту, это нормально. Можно рендерить частями (ниже).
+- **Размытие движения:** каждый кадр — среднее нескольких подкадров. `--samples auto` сам решает, сколько их нужно: 12 для спокойного кадра, 36 для быстрых движений (`--max-samples 108` даст чуть более гладкие резкие пролёты камеры, но примерно вдвое дольше).
+- **Проверить скорость заранее:** `bun scripts/render.ts video --samples auto --max-samples 36 --shutter 0.2 --from 44 --to 49 --out ~/Desktop/test.mp4` — 5 секунд самой тяжёлой сцены. Время этого куска × 25 ≈ верхняя граница для всего клипа.
 - **Быстрый черновик:** `--samples 4 --preset veryfast` — в разы быстрее, но без плавного размытия.
 - **4K:** добавь `--scale 2 --x264 aq-mode=3:rc-lookahead=30`. Это примерно в 4 раза дольше, файл будет большой.
 
@@ -47,13 +52,13 @@ caffeinate -dims bun scripts/render.ts video --samples auto --max-samples 108 --
 Можно рендерить кусками (например, по ночам) и потом склеить без перекодирования:
 
 ```sh
-bun scripts/render.ts video --samples auto --max-samples 108 --shutter 0.2 --from 0 --to 120 --out ../out/part1.mp4
-bun scripts/render.ts video --samples auto --max-samples 108 --shutter 0.2 --from 120 --to 227.73 --out ../out/part2.mp4
-printf "file 'part1.mp4'\nfile 'part2.mp4'\n" > ../out/parts.txt
-ffmpeg -f concat -safe 0 -i ../out/parts.txt -c copy ../out/glow.mp4
+bun scripts/render.ts video --samples auto --max-samples 36 --shutter 0.2 --from 0 --to 120.53 --out ~/Desktop/part1.mp4
+bun scripts/render.ts video --samples auto --max-samples 36 --shutter 0.2 --from 120.53 --to 227.73 --out ~/Desktop/part2.mp4
+cd ~/Desktop && printf "file 'part1.mp4'\nfile 'part2.mp4'\n" > parts.txt
+ffmpeg -f concat -safe 0 -i parts.txt -c copy glow.mp4
 ```
 
-Границы кусков лучше ставить на склейки сцен (они видны в превью на полосе под кадром).
+Границы кусков лучше ставить на склейки сцен (они видны в превью на полосе под кадром); 120.53 — начало второго припева.
 
 ## Кадры и проверки
 
