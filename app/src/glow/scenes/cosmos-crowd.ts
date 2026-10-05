@@ -34,6 +34,8 @@ export interface CrowdDraw {
   gap?: ChainGap;
   /** 0..1: the people assemble from stars flying in (lib/stardust `draw`). */
   draw?: number;
+  /** 0..1: a stronger outline on everyone (lib/stardust `edge`). */
+  edge?: number;
   /** Collapse toward the centre: positions and sizes × scale, turned by `twist` (rad). */
   scale?: number;
   twist?: number;
@@ -90,6 +92,8 @@ export class Crowd {
   private pose: Pose = new Float32Array(39);
   private js: THREE.Vector3[] = [];
   private o: CrowdDraw = { t: 0 };
+  private partner: Int32Array;
+  private reachPh: Float32Array;
   look: CrowdLook;
 
   /**
@@ -169,6 +173,22 @@ export class Crowd {
       });
     }
     const N = this.people.length;
+    // a few dancers reach out to their nearest neighbour now and then (pairs, each with its own rhythm)
+    this.partner = new Int32Array(N).fill(-1);
+    this.reachPh = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const P = this.people[i]!;
+      if (P.chain || this.partner[i]! >= 0 || hash(i, seed, 31) > 0.16) continue;
+      let best = -1, bd = 2.6 * 2.6;
+      for (let j = 0; j < N; j++) {
+        if (j === i || this.people[j]!.chain || this.partner[j]! >= 0) continue;
+        const d = this.people[j]!.p.distanceToSquared(P.p);
+        if (d < bd) { bd = d; best = j; }
+      }
+      if (best < 0) continue;
+      this.partner[i] = best; this.partner[best] = i;
+      this.reachPh[i] = this.reachPh[best] = hash(i, seed, 32) * 9;
+    }
     this.dist = new Float32Array(N);
     this.wpos = new Float32Array(N * 3);
     this.jw = new Float32Array(N * 39);
@@ -298,6 +318,30 @@ export class Crowd {
     }
   }
 
+  /** How far a reaching pair reach for each other at t (0..1): out, a moment hand in hand, back (a 9 s cycle). */
+  private reachW(i: number, t: number) {
+    const u = (((t + this.reachPh[i]!) / 9) % 1 + 1) % 1;
+    return smoothstep(0.08, 0.28, u) * (1 - smoothstep(0.5, 0.7, u));
+  }
+
+  /** Dancer i reaches the hand nearer j toward the point between their shoulders (j does the same). */
+  private reach(i: number, j: number, w: number) {
+    const sc = this.o.scale ?? 1, e = w * w * (3 - 2 * w);
+    this.base(j);
+    const pj = this.J(j, 1, _g), pi = this.J(i, 1, _h);
+    const si = this.side(i, pj), sj = this.side(j, pi);
+    const S = this.J(i, SH[si]!, V()), Sj = this.J(j, SH[sj]!, V());
+    if (S.distanceTo(Sj) > 2.4 * sc) return;
+    const E0 = this.J(i, EL[si]!, V()), H0 = this.J(i, HA[si]!, V());
+    const L1 = S.distanceTo(E0), L2 = E0.distanceTo(H0);
+    const T = S.clone().lerp(Sj, 0.5).addScaledVector(this.people[i]!.up, -0.08 * sc).addScaledVector(_e.subVectors(S, Sj).normalize(), 0.03 * sc);
+    const pole = _a.subVectors(S, Sj).normalize().multiplyScalar(0.4).addScaledVector(this.people[i]!.up, -0.7);
+    const E = V(), H = V();
+    ik(S, L1, L2, T, pole, E, H);
+    E0.lerp(E, e).toArray(this.jw, i * 39 + EL[si]! * 3);
+    H0.lerp(H, e).toArray(this.jw, i * 39 + HA[si]! * 3);
+  }
+
   /** Person i's own joints (their motion, placed; no hand-holding) at time t, outside a draw. */
   peek(i: number, t: number, out: THREE.Vector3[] = []): THREE.Vector3[] {
     const o = this.o;
@@ -356,13 +400,20 @@ export class Crowd {
         for (const j of [P.prev, P.next]) if (j >= 0 && this.stamp[j] !== this.frameNo) this.wv[j] = o.wave ? o.wave(ppl[j]!.arm, ppl[j]!.lk) : 0;
         if (P.next >= 0) this.armTo(i, P.next);
         if (P.prev >= 0) this.armTo(i, P.prev);
-      } else if (w > 0.003) this.raise(i, w);
+      } else {
+        if (w > 0.003) this.raise(i, w);
+        const pj = this.partner[i]!;
+        if (pj >= 0 && w < 0.6) {
+          const rw = this.reachW(i, o.t) * (1 - w / 0.6);
+          if (rw > 0.003) this.reach(i, pj, rw);
+        }
+      }
       const j = this.joints(i, this.js)!;
       const lit = o.light ? o.light(P.arm, P.lk, _p.fromArray(this.wpos, i * 3)) : 1;
       // (further away, dimmer: depth, and a chain seen along its length doesn't pile up into a white wall)
       const fog = 0.22 + 0.78 * Math.exp(-d / (18 * sc));
       const k = k0 * near * lit * fog * (P.chain ? 1.0 + 0.45 * w : 0.85 + 0.35 * w);
-      D.figure(j, P.body, this.colorOf(i), k, { color2: L.deep, seed: P.seed, draw: o.draw ?? 1 });
+      D.figure(j, P.body, this.colorOf(i), k, { color2: L.deep, seed: P.seed, draw: o.draw ?? 1, edge: o.edge });
     }
   }
 

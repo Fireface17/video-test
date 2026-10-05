@@ -24,6 +24,7 @@ import * as THREE from 'three';
 import { Scene, type Frame } from '../../engine/scene';
 import { clamp, ease, hash, lerp, noise1, prog, pulse, smoothstep } from '../../engine/util';
 import { Stage, aim } from '../lib/stage';
+import { GlowPoints } from '../lib/points';
 import { col } from '../lib/palette';
 import { RealFigure, loadBody } from '../lib/people';
 import { starJoints } from '../lib/stars';
@@ -86,6 +87,8 @@ export default class Cosmos extends Scene {
   flares = new Flares(96);
   /** Glows behind the people (the core): drawn before the giants' dark bodies. */
   bgFlares = new Flares(8);
+  /** Drifting dust around the camera (sparkles of stardust in the air between the people). */
+  motes = new GlowPoints(420, 1);
   neb!: THREE.Mesh;
   far!: THREE.Points;
   /** The giants (he, she). */
@@ -143,7 +146,7 @@ export default class Cosmos extends Scene {
     this.heM = { clip: this.moves.index('49_09'), body: 0, off: (this.n === 3 ? 6.0 : 0.4) - this.T.d, rate: 1, mirror: false };
     this.sheM = { clip: this.moves.index('49_12'), body: 1, off: (this.n === 3 ? 1.2 : 0.3) - this.T.d, rate: 1, mirror: true };
     this.tint();
-    S.add(this.neb, this.far, this.gal.group, this.bgFlares, this.he, this.she, this.D, this.flares, this.sticker, this.lantern, this.sunDisc);
+    S.add(this.neb, this.far, this.gal.group, this.motes, this.bgFlares, this.he, this.she, this.D, this.flares, this.sticker, this.lantern, this.sunDisc);
     this.D.renderOrder = 4;
 
     // the gap in drop 1's chain: arm 0, about halfway out
@@ -309,10 +312,10 @@ export default class Cosmos extends Scene {
       // racing beside the chain as the light runs out along it
       sh(B(12), B(13), 'fly', { arm: 0, rg: true, vr: 3.0, c0: [-3, 1.0, 4.4], c1: [-3, 0.8, 4.0], g0: [5, 0.3, -0.3], roll0: 0.05, roll1: -0.05, fov0: 58, joined: true }),
       // he and she reach across the core; framed from their feet, the core below the frame
-      sh(B(13), B(14), 'giants', { d0: 28, d1: 20, el0: 1.08, el1: 1.16, az0: 0.4, az1: 0.12, tu: 0.1, aim: 'grip', join: true, core: 0.1 }),
+      sh(B(13), B(14), 'giants', { d0: 22, d1: 16, el0: 1.08, el1: 1.16, az0: 0.4, az1: 0.12, tu: 0.1, aim: 'grip', join: true, core: 0.1 }),
       // a slow orbit round the two holding hands, the waves running out through the galaxy
       sh(B(14), B(15), 'giants', { d0: 20, d1: 24, el0: 1.25, el1: 1.3, az0: 0.6, az1: 1.5, tu: 0.1, aim: 'grip', join: true, waves: 'core', core: 0.2 }),
-      sh(B(15), end, 'giants', { d0: 40, d1: 3, el0: 0.85, el1: 0.8, az0: 0.15, az1: 0.1, tu: 0.3, aim: 'grip', join: true, rush: true, core: 0.15 }),
+      sh(B(15), end, 'giants', { d0: 24, d1: 3, el0: 0.85, el1: 0.8, az0: 0.15, az1: 0.1, tu: 0.3, aim: 'grip', join: true, rush: true, core: 0.15 }),
     ];
   }
 
@@ -391,6 +394,7 @@ export default class Cosmos extends Scene {
 
     // the galaxy's own light; the core pulses on the kicks
     this.crowd.sky(cam, st.core, st.disk ?? 1);
+    ((this.gal.disk.material as THREE.ShaderMaterial).uniforms.warm!.value as THREE.Vector3).set(...L.diskWarm).multiplyScalar(st.warmK ?? 1);
     (this.gal.stars.material.uniforms.fogDensity!.value as number) = st.starFog ?? 0;
     if (st.scale !== 1 || st.twist) { this.gal.group.scale.setScalar(st.scale); this.gal.group.rotation.y = -st.twist; }
     const ck = (st.coreK ?? 1) * st.scale;
@@ -398,6 +402,10 @@ export default class Cosmos extends Scene {
       this.bgFlares.glow(V(), L.core, (0.35 + 0.5 * this.kick) * ck, 3.5 * st.scale, 1, 4);
       this.bgFlares.glow(V(), L.accent, 0.05 * (1 + this.kick) * ck, 30 * st.scale, 1, 3);
     }
+    // the dust in the air: around the camera, drifting slowly, sparkling (in the shots among the people)
+    const mL = st.motes ?? 0;
+    this.motes.visible = mL > 0;
+    if (mL > 0) this.dust(t, mL);
     // the people
     const D = this.D;
     D.time = t * 3;
@@ -406,7 +414,7 @@ export default class Cosmos extends Scene {
       t: st.clock, k: st.k, scale: st.scale, twist: st.twist, near: st.near, range: st.range,
       wave: (arm, lk) => this.waveAt(arm, lk, t),
       light: (arm, lk, p) => this.lightAt(arm, lk, p, t),
-      hide: st.hide, gap: st.gap, draw: this.reveal(t),
+      hide: st.hide, gap: st.gap, draw: this.reveal(t), edge: this.n === 3 ? 0.9 : 0.5,
     });
     st.extra?.();
     D.end();
@@ -521,6 +529,25 @@ export default class Cosmos extends Scene {
     if (t >= tH && t - tH < 0.12) this.shake = Math.max(this.shake, 0.6 * (1 - (t - tH) / 0.12));
   }
 
+  /** Motes in a box of side mL around the camera, each drifting on its own; faded near the box's edges. */
+  private dust(t: number, mL: number) {
+    const cp = this.st.cam.position, M = this.motes, c = new THREE.Color(), L = this.look;
+    for (let i = 0; i < M.n; i++) {
+      const h = (k: number) => hash(i, 41, k);
+      const rel = [0, 1, 2].map((a) => {
+        const b = h(a) * mL + (h(a + 3) - 0.5) * 0.35 * t + noise1(t * 0.2 + i, a) * 0.6;
+        const q = cp.getComponent(a);
+        return ((((b - q) % mL) + mL) % mL) - mL / 2;
+      });
+      const r = Math.hypot(rel[0]!, rel[1]!, rel[2]!);
+      const fade = 1 - smoothstep(mL * 0.3, mL * 0.5, r);
+      const tw = 0.4 + 0.6 * Math.pow(0.5 + 0.5 * Math.sin(t * (2 + 3 * h(7)) + i), 3);
+      c.copy(h(8) < 0.6 ? L.crowd.a : L.crowd.chain);
+      M.set(i, cp.x + rel[0]!, cp.y + rel[1]!, cp.z + rel[2]!, c, 0.35 * fade * tw, mL * (0.0016 + 0.0024 * h(9)));
+    }
+    M.commit();
+  }
+
   // ---- shots ----
 
   /** The chain line of arm a at radius r: point, outward normal (the people's up), tangent (outward along the arm). */
@@ -545,6 +572,7 @@ export default class Cosmos extends Scene {
     cam.fov = lerp(o.fov0 ?? 56, o.fov1 ?? o.fov0 ?? 56, e);
     st.near = pos;
     st.range = o.dive ? 140 : 90;
+    st.motes = o.dive ? 0 : 14;
     // (inside the disk: true blacks behind the people)
     st.disk = 0.6;
     st.neb = 0.75;
@@ -581,6 +609,7 @@ export default class Cosmos extends Scene {
     cam.fov = o.fov ?? 46;
     st.near = pos;
     st.range = 80;
+    st.motes = 10;
     st.disk = 0.5;
     st.neb = 0.7;
     st.core = 0.6 + 0.3 * this.kick;
@@ -614,9 +643,12 @@ export default class Cosmos extends Scene {
     const ck = o.core ?? (o.reveal ? 0.75 : 0.3);
     st.core = ck * (1 + 0.45 * this.kick);
     st.coreK = ck;
-    st.disk = 0.15;
+    st.motes = o.rush ? 0 : 40;
+    st.disk = this.n === 1 ? 0.4 : 0.15;
     st.neb = 0.7;
-    st.starFog = o.reveal ? 0.012 : 0.028;
+    st.starFog = o.reveal ? 0.012 : this.n === 1 ? 0.016 : 0.028;
+    // (drop 1's last bars: the people and the arms lifted, so every frame shows them clearly up to the cut)
+    if (this.n === 1) { st.k = (st.k ?? 1) * 1.3; st.heroGain = 1.3; }
     if (o.rush) {
       // into the light of their joined hands
       const k = ease.inCubic(u);
@@ -643,12 +675,17 @@ export default class Cosmos extends Scene {
     // opening the entry out of the city's rising lights (a zoom centred high in the frame): the core starts
     // up there, where the lights went, and settles to the middle
     if (this.reveal(t) < 1 && sh.t0 <= this.ctx.start + 0.01) {
-      const lift = 0.29 * (1 - ease.inOutCubic(prog(t, this.ctx.start - 0.35, this.ctx.start + 1.1)));
+      const lift = 0.06 * (1 - ease.inOutCubic(prog(t, this.ctx.start - 0.35, this.ctx.start + 1.1)));
       const f = tgt.clone().sub(pos).normalize(), uu = up.clone().addScaledVector(f, -up.dot(f)).normalize();
       tgt.addScaledVector(uu, -lift * d);
     }
     aim(cam, pos, tgt, lerp(o.roll0 ?? 0, o.roll1 ?? 0, sine(u)), up);
     cam.fov = 55;
+    // (the core glows, but never as a white blob: the arms made of people must read)
+    st.core = 0.4 * (1 + 0.4 * this.kick);
+    st.coreK = 0.35;
+    st.warmK = 0.45;
+    st.k = (st.k ?? 1) * 1.2;
     if (o.rings) this.rings = 1;
     this.addWaves(t, sh, o.waves === 'core' ? 'chops' : undefined, () => 0, 1, -1, 40);
     if (o.rings) for (const b of this.downs) if (b >= sh.t0 - 1 && b <= t) this.waves.push({ t0: b, arm: -1, L0: 0, dir: 1, v: 60, amp: 1 });
@@ -689,11 +726,11 @@ export default class Cosmos extends Scene {
       prev?.();
       const D = this.D;
       const [ca, cb] = L.hero;
-      const hk = (1 + 0.25 * this.kick) * (st.heroK ?? 1);
+      const hk = (1 + 0.25 * this.kick) * (st.heroK ?? 1) * (st.heroGain ?? 1);
       // (a figure's stardust holds the same light at any size: spread over a giant it needs more of it)
       for (const f of [this.he, this.she]) f.mat.uniforms.alpha!.value = 0.5 * Math.min(1, st.heroK ?? 1);
-      D.figure(jA, 0, ca, GK * hk, { color2: L.heroDeep, seed: 1.3, size: 1.1, shatter: st.heroShatter ?? 0 });
-      D.figure(jB, 1, cb, GK * hk, { color2: L.heroDeep, seed: 4.1, size: 1.1, shatter: st.heroShatter ?? 0 });
+      D.figure(jA, 0, ca, GK * hk, { color2: L.heroDeep, seed: 1.3, size: 1.1, shatter: st.heroShatter ?? 0, edge: 0.6 });
+      D.figure(jB, 1, cb, GK * hk, { color2: L.heroDeep, seed: 4.1, size: 1.1, shatter: st.heroShatter ?? 0, edge: 0.6 });
       this.giantDust(t, jA, jB, st.heroK ?? 1);
       if (join && (st.heroK ?? 1) > 0.5) {
         // "take": a light runs down their reaching arms; "hand": the flash, the ring, the kick
@@ -800,6 +837,7 @@ export default class Cosmos extends Scene {
     cam.fov = lerp(48, 42, ease.inOutCubic(prog(t, T.take1 - 0.3, T.hand1 + 0.4)));
     st.near = g.pos;
     st.range = 70;
+    st.motes = 9;
     st.disk = 0.4;
     st.neb = 0.6;
     st.core = 0.4;
@@ -912,7 +950,7 @@ export default class Cosmos extends Scene {
 
 interface DrawState {
   k?: number; core: number; coreK?: number; disk?: number; neb?: number; scale: number; twist: number; clock: number;
-  near?: THREE.Vector3; range?: number; heroK?: number; heroShatter?: number; lightK?: number; zoom?: number; starFog?: number;
+  near?: THREE.Vector3; range?: number; heroK?: number; heroShatter?: number; lightK?: number; zoom?: number; starFog?: number; heroGain?: number; warmK?: number; motes?: number;
   hide?: (i: number) => boolean; gap?: ChainGap;
   extra?: () => void; post: Record<string, any>;
 }

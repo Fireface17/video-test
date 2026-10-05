@@ -203,6 +203,9 @@ export interface DustLook {
   joints?: number;
   /** Variation seed (shimmer phase). */
   seed?: number;
+  /** 0..1: a stronger outline (more of the light at the silhouette, less inside) — keeps a small or dense body
+   * reading as a person (default 0 = as before). */
+  edge?: number;
 }
 
 /** Levels of detail: the share of a body's stars drawn for near, middle and far figures. */
@@ -289,7 +292,7 @@ export class Stardust extends THREE.Group {
     const s = B.segments(j, D, o);
     const c2 = look.color2 ?? color;
     D.set([color.r * k, color.g * k, color.b * k, look.draw ?? 1], o + 30 * 4);
-    D.set([s, look.seed ?? C.n * 0.618, look.size ?? 1, 0], o + 31 * 4);
+    D.set([s, look.seed ?? C.n * 0.618, look.size ?? 1, look.edge ?? 0], o + 31 * 4);
     D.set([c2.r * k, c2.g * k, c2.b * k, 0], o + 32 * 4);
     D.set([j[8]!.x, j[8]!.y, j[8]!.z, look.shatter ?? 0], o + 33 * 4);
     C.n++;
@@ -375,7 +378,7 @@ function dustMaterial(tex: THREE.DataTexture, size: number, gain: number, frac: 
         float tw = mix(1.0, 0.35 + 0.65 * (0.5 + 0.5 * sin(time * (2.5 + 5.0 * aP.z) + aP.w * 40.0)), step(0.55, aP.w));
         vec3 c = mix(E.rgb, C.rgb, smoothstep(0.15, 0.85, aP.z));
         c = mix(c, (C.rgb + vec3(dot(C.rgb, vec3(0.3333)))) * 0.9, big);
-        c *= (0.5 + 0.5 * aP.w) * (1.0 + 2.5 * big) * mix(tw, 0.07, haze) * mix(0.4, 1.9, fres * fres) * reveal * (1.0 - shed * u) * glow * gain / eff;
+        c *= (0.5 + 0.5 * aP.w) * (1.0 + 2.5 * big) * mix(tw, 0.07, haze) * mix(0.4 * (1.0 - 0.6 * D.w), 1.9 + 1.3 * D.w, pow(max(fres, 0.0), 2.0 + 1.5 * D.w)) * reveal * (1.0 - shed * u) * glow * gain / eff;
         c *= min(1.0, (px * px) / (m * m)) * smoothstep(0.25, 0.9, d);
         vC = c;
         gl_PointSize = m;
