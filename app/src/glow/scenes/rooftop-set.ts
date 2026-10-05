@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import { mulberry32 } from '../../engine/util';
 import type { City } from '../lib/city';
 import { KitBuilder, M, antennaGeometry, fireEscapeGeometry, kitBatch, kitMaterial, roofBoxGeometry, waterTowerGeometry, type KInst } from '../lib/city-build';
+import { acUnit, bike, crate, deckChair, grill, lemonTree, planter, plant, pot, tomatoes, wateringCan, wire } from './rooftop-props';
 
 /** The city street (index j) we stand on, and the city's offset that puts its centreline at world z = 0. */
 export const STREET_J = 1;
@@ -34,7 +35,6 @@ const P = { walkup: { fH: 3.05, gH: 3.4, bayW: 2.4, winW: 0.42, winH: 0.56, sill
 const IRON = [0.045, 0.045, 0.05, M.ALB];
 const STONE = [0.36, 0.34, 0.31, M.ALB];
 const WOOD = [0.2, 0.13, 0.08, M.ALB];
-const LEAF = (r: () => number) => [0.03 + r() * 0.03, 0.075 + r() * 0.05, 0.03, M.ALB];
 
 export class RoofSet extends THREE.Group {
   his!: Bld;
@@ -114,7 +114,7 @@ export class RoofSet extends THREE.Group {
       this.add(g);
     }
     const kit = kitMaterial(U), kit2 = kitMaterial(U, { side: THREE.DoubleSide, streetK: 1.2 });
-    const K = new KitBuilder();
+    const K = new KitBuilder(), Lf = new KitBuilder();
     const r = mulberry32(17);
 
     // ---- parapets with the gap and the fire escape's gooseneck rails, on both hero roofs ----
@@ -179,15 +179,17 @@ export class RoofSet extends THREE.Group {
     K.box(bx + 0.5, hy + 1.05, bz - 2.02, 0.95, 2.1, 0.06, [0.04, 0.07, 0.05, M.ALB]);
     K.sphere(bx + 0.5, hy + 2.35, bz - 2.1, 0.07, [1, 0.75, 0.45, M.LAMP]);
     this.redLights.push(new THREE.Vector3(bx - 0.6, hy + 3.1 + 6.6, bz + 0.8));
-    // the garden behind him: planters along the east parapet, tomatoes on canes, a watering can
+    // the garden behind him: wooden planters along the east parapet (herbs, geraniums, a fern), tomatoes on stakes,
+    // a watering can
     const gx = H.x1 - 1.0;
+    const flowers: (number[] | null)[] = [[0.5, 0.05, 0.06, M.ALB], null, [0.55, 0.45, 0.4, M.ALB], [0.45, 0.12, 0.3, M.ALB]];
     for (let k = 0; k < 4; k++) {
       const z = H.z0 + 5.0 + k * 2.0;
-      K.box(gx, hy + 0.28, z, 1.2, 0.56, 1.7, [0.16, 0.1, 0.06, M.ALB]);
-      for (let j = 0; j < 6; j++) { const s = 0.2 + r() * 0.28; K.sphere(gx - 0.4 + r() * 0.8, hy + 0.6 + s * 0.6, z - 0.65 + r() * 1.3, s, LEAF(r), 1, 1.3, 1, 0); }
+      const soil = planter(K, r, gx, hy, z, 1.1, 1.7, 0.5);
+      if (k === 3) { tomatoes(K, Lf, r, gx, soil, z, 3, 1.0); continue; }
+      for (let j = 0; j < 3; j++) plant(K, Lf, r, gx + (r() - 0.5) * 0.35, soil, z - 0.55 + j * 0.55, { h: 0.35 + r() * 0.3, w: 0.3, flower: flowers[(k + j) % 4] ?? null });
     }
-    for (let j = 0; j < 5; j++) K.cyl(gx - 0.4 + j * 0.2, hy + 1.1, H.z0 + 13.6, 0.01, 0.01, 1.2, 4, WOOD);
-    K.cyl(gx - 1.1, hy + 0.15, H.z0 + 4.4, 0.13, 0.15, 0.3, 10, [0.15, 0.35, 0.2, M.ALB]);
+    wateringCan(K, gx - 1.0, hy, H.z0 + 4.2, 0.6);
     // string lights between four posts around the table
     const tx = GAP_X + 2.4, tz = H.z0 + 8.5;
     const posts = [new THREE.Vector3(H.x1 - 0.4, hy, H.z0 + 3.0), new THREE.Vector3(H.x1 - 0.4, hy, H.z0 + 13.0), new THREE.Vector3(GAP_X + 0.4, hy, H.z0 + 13.0), new THREE.Vector3(GAP_X + 0.4, hy, H.z0 + 5.0)];
@@ -195,7 +197,10 @@ export class RoofSet extends THREE.Group {
     for (let k = 0; k < posts.length; k++) {
       const a = posts[k]!.clone().setY(hy + 2.35), b = posts[(k + 1) % posts.length]!.clone().setY(hy + 2.35);
       const nb = Math.round(a.distanceTo(b) / 0.55);
-      for (let j = 1; j < nb; j++) { const u = j / nb, q = a.clone().lerp(b, u); q.y -= Math.sin(u * Math.PI) * 0.35; this.bulbs.push(q.add(new THREE.Vector3(0, -0.06, 0))); }
+      const seg = [a.clone().add(new THREE.Vector3(0, -0.06, 0))];
+      for (let j = 1; j < nb; j++) { const u = j / nb, q = a.clone().lerp(b, u); q.y -= Math.sin(u * Math.PI) * 0.35; this.bulbs.push(q.add(new THREE.Vector3(0, -0.06, 0))); seg.push(q.clone()); }
+      seg.push(b.clone().add(new THREE.Vector3(0, -0.06, 0)));
+      wire(K, seg);
     }
     K.cyl(tx, hy + 0.72, tz, 0.42, 0.42, 0.04, 16, [0.25, 0.25, 0.26, M.ALB]);
     K.cyl(tx, hy + 0.36, tz, 0.03, 0.03, 0.72, 6, IRON);
@@ -214,11 +219,13 @@ export class RoofSet extends THREE.Group {
     // skylight
     K.box(H.x0 + 2.4, hy + 0.25, H.z0 + 9.0, 2.4, 0.5, 2.4, [0.2, 0.2, 0.21, M.ALB]);
     K.add(new THREE.ConeGeometry(1.62, 0.6, 4, 1), new THREE.Matrix4().compose(new THREE.Vector3(H.x0 + 2.4, hy + 0.8, H.z0 + 9.0), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 4, 0)), new THREE.Vector3(1, 1, 1)), [0.04, 0.05, 0.06, M.GLASS]);
-    // a lemon tree in a pot by his gap, an old crate, a coiled hose, vent pipes
-    K.cyl(GAP_X - 1.5, hy + 0.22, H.z0 + 1.0, 0.25, 0.19, 0.44, 10, [0.3, 0.12, 0.07, M.ALB]);
-    for (let j = 0; j < 7; j++) K.sphere(GAP_X - 1.5 + (r() - 0.5) * 0.55, hy + 0.85 + r() * 0.55, H.z0 + 1.0 + (r() - 0.5) * 0.55, 0.18 + r() * 0.1, LEAF(r), 1, 1, 1, 0);
-    for (let j = 0; j < 3; j++) K.sphere(GAP_X - 1.5 + (r() - 0.5) * 0.5, hy + 0.9 + r() * 0.4, H.z0 + 0.75, 0.045, [0.5, 0.42, 0.08, M.ALB]);
-    K.box(GAP_X + 1.7, hy + 0.22, H.z0 + 1.3, 0.6, 0.44, 0.45, WOOD, 0.3);
+    // a lemon tree in a pot by his gap, a crate of empty bottles, a kettle grill, his bike against the bulkhead, a
+    // deck chair folded against its door wall, a coiled hose, vent pipes
+    lemonTree(K, Lf, r, GAP_X - 1.5, hy, H.z0 + 1.0);
+    crate(K, r, GAP_X + 1.75, hy, H.z0 + 1.3, 0.3, 5);
+    grill(K, tx + 1.7, hy, tz + 2.3, 0.5);
+    bike(K, bx + 1.7 + 0.2, hy, bz + 0.4, Math.PI / 2, 0.12, false);
+    deckChair(K, bx - 1.0, hy, bz - 2.0 - 0.46, 0, true);
     K.add(new THREE.TorusGeometry(0.3, 0.03, 5, 16), new THREE.Matrix4().compose(new THREE.Vector3(H.x0 + 1.2, hy + 0.05, H.z0 + 6.5), new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0)), new THREE.Vector3(1, 1, 1)), [0.08, 0.2, 0.08, M.ALB]);
     for (const [px, pz, ph] of [[H.x0 + 4.5, H.z1 - 1.5, 1.4], [H.x0 + 5.0, H.z1 - 1.2, 0.9], [GAP_X + 3.0, H.z1 - 1.0, 1.1]] as [number, number, number][]) {
       K.cyl(px, hy + ph / 2, pz, 0.08, 0.08, ph, 8, [0.22, 0.22, 0.22, M.ALB]);
@@ -235,13 +242,13 @@ export class RoofSet extends THREE.Group {
     this.laundry.push({ a: la, b: lb, sag: 0.25, items: [{ u: 0.12, w: 0.55, h: 0.7, c: [0.5, 0.48, 0.45] }, { u: 0.27, w: 0.42, h: 0.5, c: [0.3, 0.08, 0.06] }, { u: 0.47, w: 1.2, h: 1.1, c: [0.55, 0.55, 0.58] }, { u: 0.67, w: 0.4, h: 0.75, c: [0.08, 0.12, 0.25] }, { u: 0.83, w: 0.5, h: 0.6, c: [0.45, 0.35, 0.15] }] });
     // a lawn chair facing the skyline, pots by the gap, a bench of bricks with a radio, chimneys
     const cx = GAP_X - 3.4, cz = R.z1 - 6.0;
-    K.box(cx, sy + 0.37, cz, 0.6, 0.05, 1.0, [0.1, 0.25, 0.22, M.ALB], 0.3);
-    K.box(cx + 0.15, sy + 0.7, cz + 0.5, 0.6, 0.65, 0.05, [0.1, 0.25, 0.22, M.ALB], 0.3, 0.35);
-    for (const [dx, dz] of [[-0.25, -0.45], [0.25, -0.45], [-0.25, 0.45], [0.25, 0.45]]) K.box(cx + dx!, sy + 0.18, cz + dz!, 0.03, 0.36, 0.03, [0.4, 0.4, 0.42, M.ALB]);
-    for (const [px, pz] of [[GAP_X - 1.4, R.z1 - 0.9], [GAP_X + 1.5, R.z1 - 0.8], [GAP_X + 2.1, R.z1 - 1.0], [R.x0 + 1.0, R.z1 - 1.0]] as [number, number][]) {
-      K.cyl(px, sy + 0.2, pz, 0.22, 0.17, 0.4, 10, [0.3, 0.12, 0.07, M.ALB]);
-      for (let j = 0; j < 4; j++) K.sphere(px + (r() - 0.5) * 0.25, sy + 0.55 + r() * 0.25, pz + (r() - 0.5) * 0.25, 0.18 + r() * 0.1, LEAF(r), 1, 1, 1, 0);
-    }
+    deckChair(K, cx, sy, cz, Math.PI + 0.3, false);
+    const fl2: number[][] = [[0.5, 0.05, 0.06, M.ALB], [0.55, 0.3, 0.45, M.ALB], [0.55, 0.5, 0.1, M.ALB]];
+    [[GAP_X - 1.4, R.z1 - 0.9, 0.22], [GAP_X + 1.5, R.z1 - 0.8, 0.18], [GAP_X + 2.1, R.z1 - 1.0, 0.24], [R.x0 + 1.0, R.z1 - 1.0, 0.2], [cx - 0.9, cz + 0.2, 0.17]].forEach(([px, pz, pr], i) => {
+      const soil = pot(K, r, px!, sy, pz!, pr!, pr! * 1.7);
+      plant(K, Lf, r, px!, soil, pz!, { h: 0.3 + r() * 0.25, w: pr! * 1.6, flower: i === 3 ? null : fl2[i % 3]!, droop: i === 3 ? 0.9 : 0.3 });
+    });
+    crate(K, r, cx + 1.3, sy, cz + 0.9, -0.4, 3);
     K.box(cx + 1.2, sy + 0.2, cz - 0.6, 0.9, 0.4, 0.45, [0.3, 0.12, 0.08, M.ALB]);
     K.box(cx + 1.2, sy + 0.5, cz - 0.6, 0.32, 0.2, 0.12, [0.1, 0.1, 0.11, M.ALB]);
     const chim = (x: number, y: number, z: number, h: number, wall: [number, number, number], steam: boolean) => {
@@ -256,14 +263,15 @@ export class RoofSet extends THREE.Group {
     for (let k = 0; k < 5; k++) this.perches.push({ p: new THREE.Vector3(GAP_X + 1.8 + k * 0.42 + (k % 2) * 0.1, sy + 0.71, R.z1 - 0.15), yaw: k % 2 ? 0.5 : -0.7 });
     for (let k = 0; k < 3; k++) this.perches.push({ p: new THREE.Vector3(H.x0 + 2.5 + k * 0.5, hy + 0.71, H.z0 + 0.15), yaw: k % 2 ? 2.6 : -2.9 });
 
+    acUnit(K, GAP_X + 2.0, hy, H.z1 - 2.2, 0);
+    acUnit(K, GAP_X + 3.4, hy, H.z1 - 2.2, 0.05);
+    acUnit(K, GAP_X + 1.0, sy, R.z0 + 2.0, Math.PI, 1.0, 0.8, 0.85);
     this.add(kitBatch(K.geometry(), [{ x: 0, y: 0, z: 0, yaw: 0, sx: 1, sy: 1, sz: 1, col: [1, 1, 1], k: 0.5 }], kit, new THREE.Vector3(0, 0, 0), 60));
+    // the leaves, two-sided
+    this.add(kitBatch(Lf.geometry(), [{ x: 0, y: 0, z: 0, yaw: 0, sx: 1, sy: 1, sz: 1, col: [1, 1, 1], k: 0.5 }], kit2, new THREE.Vector3(0, 0, 0), 60));
     // her water tower (the city's kit), his mast, AC boxes and vents on all the roofs we built
     const wt: KInst[] = [{ x: R.x0 + 2.8, y: sy - 0.3, z: R.z0 + 3.6, yaw: 0.4, sx: 1.8, sy: 1.0, sz: 1.8, col: [1, 1, 1], k: 0 }];
-    const boxes: KInst[] = [
-      { x: GAP_X + 2.0, y: hy, z: H.z1 - 2.2, yaw: 0, sx: 1.3, sy: 1.0, sz: 0.9, col: [0.4, 0.4, 0.38], k: 0 },
-      { x: GAP_X + 3.6, y: hy, z: H.z1 - 2.2, yaw: 0, sx: 1.3, sy: 1.0, sz: 0.9, col: [0.4, 0.4, 0.38], k: 0 },
-      { x: GAP_X + 1.0, y: sy, z: R.z0 + 2.0, yaw: 0, sx: 1.2, sy: 0.9, sz: 0.9, col: [0.38, 0.38, 0.37], k: 0 },
-    ];
+    const boxes: KInst[] = [];
     for (const b of this.blds) {
       if (b === this.his || b === this.hers) continue;
       const y = RoofSet.roofTop(b), cxb = (b.x0 + b.x1) / 2, czb = (b.z0 + b.z1) / 2;

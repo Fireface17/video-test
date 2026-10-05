@@ -64,6 +64,8 @@ export class Threads extends THREE.Mesh {
   }
 
   begin() { this.n = 0; }
+  /** (continue adding after an earlier batch: nothing to do, kept for symmetry) */
+  begin2() {}
 
   seg(a: THREE.Vector3Like, b: THREE.Vector3Like, c: THREE.Color, k: number, w: number) {
     if (this.n >= this.cap || k <= 0.002) return;
@@ -209,40 +211,108 @@ export function flock(B: Birds, t: number, t0: number, from: THREE.Vector3, towa
 }
 
 /**
- * The last stars of the night: points in the western sky (around `c` at radius R) that come loose and drift down,
- * turning gold and melting into the light as they sink into the dawn. `t0` they begin, over `span` s.
+ * Soft five-pointed stars (like his sticker's glint): additive point sprites with a star-shaped core, a halo and
+ * a slow turn; per star a world position, colour × brightness, world size and rotation.
  */
-export class LastStars extends GlowPoints {
+export class StarGlints extends THREE.Points {
+  declare material: THREE.ShaderMaterial;
+  private P: Float32Array; private Cc: Float32Array; private Sz: Float32Array;
+  constructor(public n: number) {
+    const g = new THREE.BufferGeometry();
+    const P = new Float32Array(n * 3), Cc = new Float32Array(n * 3), Sz = new Float32Array(n * 2);
+    g.setAttribute('position', new THREE.BufferAttribute(P, 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('color', new THREE.BufferAttribute(Cc, 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('sr', new THREE.BufferAttribute(Sz, 2).setUsage(THREE.DynamicDrawUsage));
+    const mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      uniforms: { pxScale: { value: (1080 * SCALE) / 2 } },
+      vertexShader: /* glsl */ `
+        attribute vec3 color; attribute vec2 sr; uniform float pxScale;
+        varying vec3 vC; varying float vR;
+        void main() {
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          float d = max(-mv.z, 1e-3);
+          float px = sr.x * projectionMatrix[1][1] * pxScale / d;
+          float m = clamp(px, 2.0, 220.0 * pxScale / 540.0);
+          vC = color * min(1.0, (px * px) / (m * m)) * smoothstep(0.3, 1.0, d);
+          vR = sr.y;
+          gl_PointSize = m;
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: /* glsl */ `
+        varying vec3 vC; varying float vR;
+        void main() {
+          vec2 p = gl_PointCoord * 2.0 - 1.0;
+          float c = cos(vR), s = sin(vR);
+          p = vec2(c * p.x - s * p.y, s * p.x + c * p.y);
+          float r = length(p);
+          if (r > 1.0) discard;
+          float a = atan(p.x, p.y);
+          float k = pow(0.5 + 0.5 * cos(5.0 * a), 3.0);
+          float R = mix(0.12, 0.62, k);
+          float star = smoothstep(R + 0.05, R - 0.05, r);
+          float glow = exp(-r * r * 12.0) * 0.25 + exp(-r * r * 3.0) * 0.06;
+          gl_FragColor = vec4(vC * (star * 0.8 + glow + 0.8 * exp(-r * r * 80.0)), 1.0);
+        }`,
+    });
+    super(g, mat);
+    this.P = P; this.Cc = Cc; this.Sz = Sz;
+    this.frustumCulled = false;
+    this.renderOrder = 4;
+  }
+  set(i: number, p: THREE.Vector3Like, c: THREE.Color, k: number, size: number, rot: number) {
+    this.P[i * 3] = p.x; this.P[i * 3 + 1] = p.y; this.P[i * 3 + 2] = p.z;
+    this.Cc[i * 3] = c.r * k; this.Cc[i * 3 + 1] = c.g * k; this.Cc[i * 3 + 2] = c.b * k;
+    this.Sz[i * 2] = size; this.Sz[i * 2 + 1] = rot;
+  }
+  hide(i: number) { this.Sz[i * 2] = 0; this.Cc.fill(0, i * 3, i * 3 + 3); }
+  commit() { for (const k of ['position', 'color', 'sr']) (this.geometry.getAttribute(k) as THREE.BufferAttribute).needsUpdate = true; }
+}
+
+/**
+ * The last stars of the night: five-pointed stars in the western sky (around `c` at radius R) that come loose and
+ * drift down, turning gold and melting into the light; and a few near ones that drift past the camera (around
+ * `near`, within `nr`).
+ */
+export class LastStars extends StarGlints {
   private dirs: Float32Array;
-  constructor(n: number, seed: number) {
-    super(n, 1);
+  constructor(n: number, public nNear: number, seed: number) {
+    super(n + nNear);
     this.dirs = new Float32Array(n * 4);
     for (let i = 0; i < n; i++) {
       const h = (k: number) => hash(i, seed, k);
-      // the western half of the sky, higher up more of them
-      const az = Math.PI * (0.55 + 0.9 * h(1)), el = 0.12 + Math.pow(h(2), 0.7) * 1.1;
+      const az = Math.PI * (0.6 + 0.8 * h(1)), el = 0.1 + Math.pow(h(2), 0.7) * 0.9;
       this.dirs.set([Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el), h(3)], i * 4);
     }
-    this.renderOrder = 4;
   }
-  update(t: number, c: THREE.Vector3, R: number, t0: number, span: number, k: number, white: THREE.Color, gold: THREE.Color) {
+  update(t: number, c: THREE.Vector3, R: number, t0: number, span: number, k: number, white: THREE.Color, gold: THREE.Color, near?: THREE.Vector3, nr = 6) {
     const col = new THREE.Color();
-    for (let i = 0; i < this.n; i++) {
+    const nFar = this.n - this.nNear;
+    for (let i = 0; i < nFar; i++) {
       const h = (q: number) => hash(i, 77, q);
       const dx = this.dirs[i * 4]!, dy = this.dirs[i * 4 + 1]!, dz = this.dirs[i * 4 + 2]!, r = this.dirs[i * 4 + 3]!;
-      const tl = t0 + r * span * 0.7, age = Math.max(0, t - tl);
-      const fall = age * (0.06 + 0.06 * h(1)) + age * age * 0.02;
-      const el = Math.asin(clamp(dy)) - fall;
+      const tl = t0 + r * span * 0.6, age = Math.max(0, t - tl);
+      const el = Math.asin(clamp(dy)) - (age * (0.05 + 0.05 * h(1)) + age * age * 0.025);
       if (el < -0.02) { this.hide(i); continue; }
       const az = Math.atan2(dz, dx) + noise1(age * 0.6, i) * 0.03 * age;
       const p = new THREE.Vector3(Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el)).multiplyScalar(R).add(c);
-      const g = smoothstep(0, 1.2, age);
-      const melt = smoothstep(0.2, 2.6, age + 0.6 * h(2)) * (1 - smoothstep(0.05, 0.22, el) * 0.3);
+      const g = smoothstep(0, 1.0, age);
+      const melt = smoothstep(0.6, 2.4, age + 0.5 * h(2));
       col.copy(white).lerp(gold, g);
-      const tw = 0.75 + 0.25 * Math.sin(t * (3 + 4 * h(3)) + i);
-      // twinkle, then a brief swell as it turns gold, then gone
-      const kk = k * tw * (0.5 + 0.9 * h(4)) * (1 + 1.4 * g * (1 - melt)) * (1 - melt);
-      this.set(i, p.x, p.y, p.z, col, kk, R * (0.0035 + 0.004 * h(5)) * (1 + 1.5 * g * (1 - melt)));
+      const tw = 0.8 + 0.2 * Math.sin(t * (3 + 4 * h(3)) + i);
+      const kk = k * tw * (0.5 + 0.8 * h(4)) * (1 + 1.6 * g * (1 - melt)) * (1 - melt);
+      this.set(i, p, col, kk * 0.8, R * (0.012 + 0.014 * h(5)) * (1 + 1.0 * g * (1 - melt)), h(6) * 6.28 + age * 0.4);
+    }
+    for (let j = 0; j < this.nNear; j++) {
+      const i = nFar + j, h = (q: number) => hash(j, 91, q);
+      if (!near) { this.hide(i); continue; }
+      const tl = t0 + h(1) * span, age = t - tl;
+      if (age < 0 || age > 3.2) { this.hide(i); continue; }
+      const p = new THREE.Vector3(near.x + (h(2) - 0.5) * nr * 2, near.y + 1 + h(3) * nr - age * (0.6 + 0.5 * h(4)), near.z + (h(5) - 0.5) * nr * 2);
+      p.x += noise1(t * 0.4, j) * 0.4; p.z += noise1(t * 0.4, j + 9) * 0.4;
+      const g = smoothstep(0, 1.2, age), melt = smoothstep(1.6, 3.2, age);
+      col.copy(white).lerp(gold, g);
+      this.set(i, p, col, k * 0.7 * smoothstep(0, 0.3, age) * (1 + g) * (1 - melt), (0.16 + 0.14 * h(6)) * (1 + 0.4 * g * (1 - melt)), h(7) * 6.28 + age * 0.8);
     }
     this.commit();
   }

@@ -400,7 +400,7 @@ export function ringBatch(geo: THREE.BufferGeometry, list: RInst[], mat: THREE.M
  * 0 instance colour × rgb, 1 fixed albedo rgb, 2 emissive rgb × instance light × power, 3 glass,
  * 4 emissive rgb × instance light (no power: car lights), 5 iron bars (cut out), 6 slats (cut out).
  */
-export const M = { TINT: 0, ALB: 1, LAMP: 2, GLASS: 3, LIGHT: 4, BARS: 5, SLATS: 6, WOOD: 7, STRIPES: 8, SIGNAL: 9, LEAVES: 10, LATTICE: 11, TIES: 12 } as const;
+export const M = { TINT: 0, ALB: 1, LAMP: 2, GLASS: 3, LIGHT: 4, BARS: 5, SLATS: 6, WOOD: 7, STRIPES: 8, SIGNAL: 9, LEAVES: 10, LATTICE: 11, TIES: 12, CARD: 13, PAINT: 14 } as const;
 
 /** A unit box (x, z in [-0.5, 0.5], y in [0, 1]) without its bottom face. */
 export function boxNoBottom() {
@@ -461,6 +461,15 @@ export class KitBuilder {
     const m = new THREE.Matrix4().compose(new THREE.Vector3(cx, cy, cz), new THREE.Quaternion().setFromEuler(new THREE.Euler(rotX, rotY, 0, 'YXZ')), new THREE.Vector3(w, h, 1));
     return this.add(new THREE.PlaneGeometry(1, 1), m, v);
   }
+  /** a quad with per-corner normals (a, b, c, d in order; wound so the normals face out) */
+  quadN(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3, na: THREE.Vector3, nb: THREE.Vector3, nc: THREE.Vector3, nd: THREE.Vector3, v: number[]) {
+    const base = this.P.length / 3;
+    this.push(a, na, v, a); this.push(b, nb, v, b); this.push(c, nc, v, c); this.push(d, nd, v, d);
+    const fn = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a));
+    if (fn.dot(new THREE.Vector3().add(na).add(nb).add(nc).add(nd)) >= 0) this.I.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    else this.I.push(base, base + 2, base + 1, base, base + 3, base + 2);
+    return this;
+  }
   /** a triangle (counter-clockwise seen from its front) */
   tri(a: number[], b: number[], c: number[], v: number[]) {
     const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), C = new THREE.Vector3(...c);
@@ -491,6 +500,22 @@ export class KitBuilder {
 }
 
 /** The kit material: lit per vertex by sky, moon, sun, the street light map and the glowing people. */
+/** GLSL: car paint (seams, handles, clear coat) — c lit colour, alb albedo, L local position (car frame: z forward). */
+export const CAR_PAINT_GLSL = /* glsl */ `
+  vec3 carPaint(vec3 c, vec3 alb, vec3 L, vec3 Nw, vec3 W, vec3 light) {
+    vec3 N = normalize(Nw), V = normalize(W - cameraPosition);
+    float side = step(abs(N.y), 0.6) * step(0.3, L.y) * step(L.y, 1.02) * step(0.72, abs(L.x));
+    float seam = side * (step(abs(L.z - 0.98), 0.012) + step(abs(L.z + 0.18), 0.012) + step(abs(L.z + 1.2), 0.012));
+    float handle = side * step(abs(L.y - 0.86), 0.025) * (step(abs(L.z - 0.62), 0.08) + step(abs(L.z + 0.5), 0.08));
+    c *= 1.0 - 0.6 * clamp(seam, 0.0, 1.0);
+    c = mix(c, light * 0.5, clamp(handle, 0.0, 1.0));
+    float fres = pow(1.0 - clamp(abs(dot(V, N)), 0.0, 1.0), 4.0);
+    vec3 R = reflect(V, N);
+    c += (skyRefl(R) * 0.35 + light * 0.25 * pow(max(R.y, 0.0), 2.0)) * (0.06 + 0.9 * fres);
+    return c;
+  }
+`;
+
 export function kitMaterial(U: CityUniforms, o: { side?: THREE.Side; streetK?: number; extraVert?: string; extraHead?: string } = {}) {
   return new THREE.ShaderMaterial({
     defines: { SIG_P: '30.0' },
@@ -523,6 +548,7 @@ export function kitMaterial(U: CityUniforms, o: { side?: THREE.Side; streetK?: n
     fragmentShader: /* glsl */ `
       varying vec3 vW, vN, vL, vLight; varying vec4 vV, vCol, vX; varying vec2 vFk; varying float vP, vOn;
       ${CITY_GLSL}
+      ${CAR_PAINT_GLSL}
       void main() {
         float mode = vV.a;
         // cut-outs: iron bars (vertical, with a top and bottom rail) / stair treads (horizontal)
@@ -536,13 +562,18 @@ export function kitMaterial(U: CityUniforms, o: { side?: THREE.Side; streetK?: n
           float flange = step(vL.y, 0.12) + step(0.88, vL.y);
           if (web + flange < 0.5) discard;
         }
-        if (mode > 11.5 && fract(vL.z / 0.62) > 0.42) discard;
+        if (mode > 11.5 && mode < 12.5 && fract(vL.z / 0.62) > 0.42) discard;
         // leaves: a ragged canopy (holes where the noise is low), lighter and darker clumps
         float leafN = vnoise(vL.xz * 2.2 + vL.y * 1.7 + vCol.a * 9.0);
-        if (mode > 9.5 && leafN < 0.36) discard;
-        vec3 alb = mode < 0.5 ? vCol.rgb * vV.rgb : vV.rgb;
-        alb *= mix(1.0, 0.8 + 0.4 * h11(floor(vL.z / 0.62) + 2.0), step(11.5, mode));
-        alb *= mix(1.0, 0.6 + 0.8 * leafN, step(9.5, mode));
+        if (mode > 9.5 && mode < 10.5 && leafN < 0.36) discard;
+        // leaf cards: clusters of leaves (alpha-tested), denser in the middle of the card
+        vec2 cu = vL.xy / max(vX.y, 0.3);
+        float leafA = vnoise(cu * 9.0 + vX.z * 13.0) * 0.7 + vnoise(cu * 23.0 + 5.0) * 0.45 - length(cu) * 1.25;
+        if (mode > 12.5 && mode < 13.5 && leafA < 0.08) discard;
+        vec3 alb = mode < 0.5 || mode > 13.5 ? vCol.rgb * (mode > 13.5 ? vec3(1.0) : vV.rgb) : vV.rgb;
+        alb *= mix(1.0, 0.8 + 0.4 * h11(floor(vL.z / 0.62) + 2.0), step(11.5, mode) * step(mode, 12.5));
+        alb *= mix(1.0, 0.65 + 0.7 * clamp(leafA * 2.0, 0.0, 1.0), step(12.5, mode) * step(mode, 13.5));
+        alb *= mix(1.0, 0.6 + 0.8 * leafN, step(9.5, mode) * step(mode, 10.5));
         // stripes (awnings with k > 0.5; Con Ed stacks: orange and white bands)
         float stripeM = step(7.5, mode) * step(mode, 8.5);
         float isBand = step(vV.g, 0.9);
@@ -553,6 +584,8 @@ export function kitMaterial(U: CityUniforms, o: { side?: THREE.Side; streetK?: n
         float wood = step(6.5, mode);
         alb *= mix(1.0, (0.8 + 0.35 * h11(floor(sv) + 3.0)) * (1.0 - 0.8 * step(abs(fract(vL.y / 0.78) - 0.5), 0.05)), wood);
         vec3 c = alb * vLight;
+        // car paint: door seams and handles, clear-coat reflections
+        if (mode > 13.5) c = carPaint(c, alb, vL, vN, vW, vLight);
         // emissive: powered lamps, unpowered car / aviation lights; glass reflects the sky
         float lampM = step(1.5, mode) * step(mode, 2.5), lightM = step(3.5, mode) * step(mode, 4.5), glassM = step(2.5, mode) * step(mode, 3.5);
         c += vV.rgb * mix(vec3(1.0, 0.25, 0.1), vec3(1.0), vOn) * vOn * fract(vCol.a) * 4.0 * lampM;

@@ -69,34 +69,76 @@ export function mirrorOnly(city: City, hide: THREE.Object3D[]) {
   });
 }
 
-/** A yellow cab, nose toward local +x (4.7 m long), wheels on y = 0. */
-export function taxiKit() {
+/** A side profile (x along the car, y up) extruded across it (width w, centred on z = 0), edges rounded. */
+function sideExtrude(pts: [number, number][], w: number, bevel: number, curve = 6) {
+  const sh = new THREE.Shape();
+  pts.forEach(([x, y], i) => (i ? sh.lineTo(x, y) : sh.moveTo(x, y)));
+  sh.closePath();
+  const g = new THREE.ExtrudeGeometry(sh, { depth: w - 2 * bevel, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 3, curveSegments: curve });
+  g.translate(0, 0, -(w - 2 * bevel) / 2);
+  g.deleteAttribute('uv');
+  g.computeVertexNormals();
+  return g;
+}
+/** Points along an arc (centre cx, cy; radius r; angles a0 → a1). */
+function arc(cx: number, cy: number, r: number, a0: number, a1: number, n = 8): [number, number][] {
+  return Array.from({ length: n + 1 }, (_, i) => { const a = a0 + ((a1 - a0) * i) / n; return [cx + Math.cos(a) * r, cy + Math.sin(a) * r] as [number, number]; });
+}
+
+/**
+ * A New York cab (a big sedan), nose toward local +x, 5.2 m long, wheels on y = 0: a rounded body with wheel
+ * arches, a sloped windshield and rear window (glass reflecting the street), the cabin's pillars and roof, tyres
+ * with rims, chrome bumpers and belt line, door seams, mirrors, head- and taillights, the lit roof sign.
+ */
+export function taxiKit(paint: [number, number, number] = [0.62, 0.4, 0.035]) {
   const k = new KitBuilder();
-  const yellow = [0.62, 0.4, 0.035, M.ALB], dark = [0.02, 0.02, 0.022, M.ALB], chrome = [0.35, 0.35, 0.36, M.ALB], glass = [0.02, 0.022, 0.026, M.GLASS];
-  // body: lower hull, hood and trunk slopes, the cabin with its glass
-  k.box(0, 0.55, 0, 4.7, 0.62, 1.82, yellow);
-  k.box(1.55, 0.92, 0, 1.55, 0.14, 1.74, yellow, 0, 0, -0.06); // hood
-  k.box(-1.75, 0.92, 0, 1.15, 0.14, 1.74, yellow, 0, 0, 0.05); // trunk
-  k.box(-0.15, 1.18, 0, 2.3, 0.5, 1.62, glass); // cabin glass
-  k.box(-0.15, 1.45, 0, 2.05, 0.06, 1.56, yellow); // roof
-  for (const x of [-1.25, -0.15, 0.95]) k.box(x, 1.18, 0, 0.08, 0.5, 1.64, yellow); // pillars
-  k.box(-0.15, 0.82, 0, 2.3, 0.08, 1.84, dark); // the belt line
-  k.box(0, 0.32, 0, 4.72, 0.08, 1.84, chrome); // the rocker strip
-  // bumpers, grille, lights
-  k.box(2.38, 0.42, 0, 0.12, 0.2, 1.86, chrome).box(-2.38, 0.42, 0, 0.12, 0.2, 1.86, chrome);
-  k.box(2.36, 0.66, 0, 0.06, 0.18, 0.9, dark);
-  k.box(2.37, 0.68, 0.68, 0.05, 0.12, 0.3, [1.4, 1.3, 1.1, M.LIGHT]).box(2.37, 0.68, -0.68, 0.05, 0.12, 0.3, [1.4, 1.3, 1.1, M.LIGHT]);
-  k.box(-2.37, 0.7, 0.7, 0.05, 0.14, 0.26, [1.2, 0.05, 0.03, M.LIGHT]).box(-2.37, 0.7, -0.7, 0.05, 0.14, 0.26, [1.2, 0.05, 0.03, M.LIGHT]);
-  // the roof sign (lit: the cab is free)
-  k.box(-0.15, 1.6, 0, 0.36, 0.24, 1.0, [1.2, 0.95, 0.5, M.LIGHT]);
-  // wheels and arches
-  for (const x of [1.5, -1.45]) for (const z of [0.82, -0.82]) {
-    k.cyl(x, 0.34, z, 0.34, 0.34, 0.24, 14, dark, false, Math.PI / 2);
-    k.cyl(x, 0.34, z * 1.02, 0.18, 0.18, 0.25, 10, chrome, false, Math.PI / 2);
+  const P = [...paint, M.ALB], dark = [0.015, 0.015, 0.017, M.ALB], chrome = [0.42, 0.42, 0.44, M.ALB], glass = [0.015, 0.017, 0.02, M.GLASS], rubber = [0.02, 0.02, 0.022, M.ALB];
+  const I = new THREE.Matrix4();
+  const W = 1.9, R = 0.4, wx = 1.6;
+  // the body up to the belt line: the hood sloping down to the nose, the trunk, the arches cut out
+  const body: [number, number][] = [
+    [-2.6, 0.3], [-wx - R - 0.06, 0.3], ...arc(-wx, 0.36, R + 0.06, Math.PI, 0, 9), [wx - R - 0.06, 0.3], ...arc(wx, 0.36, R + 0.06, Math.PI, 0, 9), [2.6, 0.3],
+    [2.66, 0.5], [2.6, 0.74], [2.42, 0.82], [1.25, 0.95], [0.9, 0.97], [-1.75, 0.98], [-2.48, 0.94], [-2.62, 0.78], [-2.64, 0.52],
+  ];
+  k.add(sideExtrude(body, W, 0.09), I, P);
+  // the cabin: glass all round, then the roof and the pillars over it
+  const cab: [number, number][] = [[1.18, 0.96], [0.32, 1.4], [-0.9, 1.42], [-1.72, 0.98]];
+  k.add(sideExtrude(cab, W - 0.34, 0.05, 2), I, glass);
+  k.add(sideExtrude([[0.38, 1.38], [0.3, 1.45], [-0.92, 1.47], [-0.98, 1.4]], W - 0.3, 0.05, 2), I, P);
+  const pillar = (x0: number, y0: number, x1: number, y1: number, wdt: number) => {
+    const L = Math.hypot(x1 - x0, y1 - y0), ang = Math.atan2(y1 - y0, x1 - x0);
+    for (const z of [-(W - 0.34) / 2 - 0.005, (W - 0.34) / 2 + 0.005]) k.box((x0 + x1) / 2, (y0 + y1) / 2, z, L, wdt, 0.05, P, 0, 0, ang);
+  };
+  pillar(1.18, 0.97, 0.32, 1.41, 0.07); // A
+  pillar(-0.32, 0.98, -0.32, 1.43, 0.1); // B
+  pillar(-1.72, 0.99, -0.92, 1.42, 0.12); // C
+  // wheels: tyres, rims, hub caps
+  for (const x of [wx, -wx]) for (const z of [W / 2 - 0.16, -(W / 2 - 0.16)]) {
+    k.cyl(x, 0.36, z, 0.36, 0.36, 0.25, 18, rubber, false, Math.PI / 2);
+    k.cyl(x, 0.36, z + Math.sign(z) * 0.06, 0.22, 0.22, 0.15, 14, chrome, false, Math.PI / 2);
+    k.cyl(x, 0.36, z + Math.sign(z) * 0.13, 0.08, 0.1, 0.02, 10, [0.6, 0.6, 0.62, M.ALB], false, Math.PI / 2);
   }
-  // mirrors, a checker band
-  k.box(0.85, 1.0, 0.98, 0.12, 0.1, 0.16, yellow).box(0.85, 1.0, -0.98, 0.12, 0.1, 0.16, yellow);
-  for (let i = 0; i < 12; i++) k.box(-1.6 + i * 0.27, 0.72, 0.915, 0.13, 0.05, 0.01, i % 2 ? dark : [0.5, 0.5, 0.5, M.ALB]).box(-1.6 + i * 0.27, 0.72, -0.915, 0.13, 0.05, 0.01, i % 2 ? dark : [0.5, 0.5, 0.5, M.ALB]);
+  // bumpers (rounded bars), the grille, the belt line, door seams and handles, mirrors
+  const bar = new THREE.CapsuleGeometry(0.1, W - 0.2, 3, 8).rotateX(Math.PI / 2);
+  k.add(bar, new THREE.Matrix4().makeTranslation(2.68, 0.42, 0), chrome).add(bar, new THREE.Matrix4().makeTranslation(-2.68, 0.42, 0), chrome);
+  k.box(2.66, 0.65, 0, 0.04, 0.16, 0.95, dark);
+  for (let i = 0; i < 6; i++) k.box(2.675, 0.59 + i * 0.025, 0, 0.02, 0.008, 0.9, chrome);
+  for (const z of [W / 2 + 0.002, -W / 2 - 0.002]) {
+    k.box(-0.4, 0.88, z, 3.9, 0.025, 0.01, chrome);
+    for (const x of [1.08, -0.33, -1.72]) k.box(x, 0.62, z, 0.012, 0.6, 0.012, dark);
+    for (const x of [0.22, -1.1]) k.box(x, 0.8, z, 0.16, 0.035, 0.03, chrome);
+    k.box(-0.35, 0.68, z, 2.8, 0.06, 0.008, [0.04, 0.04, 0.04, M.ALB]); // the checker band's base
+    for (let i = 0; i < 14; i++) k.box(-1.5 + i * 0.2, 0.68, z + Math.sign(z) * 0.004, 0.1, 0.06, 0.006, i % 2 ? dark : [0.6, 0.6, 0.6, M.ALB]);
+  }
+  for (const z of [W / 2 + 0.08, -W / 2 - 0.08]) k.box(1.0, 1.03, z, 0.1, 0.1, 0.16, P);
+  // head- and taillights, the indicator, the roof sign (lit: the cab is free)
+  for (const z of [0.62, -0.62]) {
+    k.sphere(2.62, 0.66, z, 0.1, [1.6, 1.5, 1.25, M.LIGHT], 0.5, 1, 1.4, 1);
+    k.box(2.6, 0.5, z * 1.15, 0.05, 0.06, 0.18, [1.2, 0.55, 0.05, M.LIGHT]);
+    k.box(-2.62, 0.72, z * 1.05, 0.05, 0.16, 0.34, [1.3, 0.06, 0.03, M.LIGHT]);
+  }
+  k.add(new THREE.CapsuleGeometry(0.12, 0.85, 3, 8).rotateX(Math.PI / 2).scale(1.4, 1, 1), new THREE.Matrix4().makeTranslation(-0.3, 1.6, 0), [1.25, 1.0, 0.55, M.LIGHT]);
+  k.box(-0.3, 1.49, 0, 0.12, 0.06, 0.5, dark);
   return k;
 }
 

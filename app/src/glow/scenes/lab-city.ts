@@ -25,6 +25,7 @@ export default class LabCity extends Scene {
   lm!: Landmarks;
   steamAt = new THREE.Vector3();
   steamCam = new THREE.Vector3();
+  carAt = new THREE.Vector3();
 
   override async init() {
     const S = this.st;
@@ -59,6 +60,8 @@ export default class LabCity extends Scene {
     this.anchors = c.anchors({ x: 40, z: 108, r: 45, kinds: ['window', 'fireEscape', 'balcony', 'roofEdge'], max: 40, seed: 3, spacing: 5, from: V(62, 9, 124) });
     const P = c.power;
     // the steam source nearest the origin, for the steam shot
+    const pc = [...c.plan.parked].filter((p) => p.type === 0 && p.dz === 0).sort((a, b) => Math.hypot(a.x - 60, a.z - 120) - Math.hypot(b.x - 60, b.z - 120))[0];
+    if (pc) this.carAt.set(pc.x, 0, pc.z);
     const sNear = [...c.plan.steam].sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z))[0];
     if (sNear) {
       this.steamAt.set(sNear.x, 0, sNear.z);
@@ -112,6 +115,9 @@ export default class LabCity extends Scene {
       { a: 60, b: 62, pos: () => V(1170, 1.7, 110), at: () => V(1146, 6, -120), fov: 55, setup: reset },
       { a: 62, b: 64, pos: () => V(-500, 32, -60), at: () => V(-500, 0, -300), fov: 55, setup: reset },
       { a: 64, b: 66, pos: () => this.steamCam, at: () => V(this.steamAt.x, 2.5, this.steamAt.z), fov: 55, setup: reset },
+      // cars up close: a parked row and the avenue's traffic
+      { a: 72, b: 74, pos: () => V(this.carAt.x + 3.2, 1.3, this.carAt.z + 5.5), at: () => V(this.carAt.x, 0.7, this.carAt.z), fov: 50, setup: reset },
+      { a: 74, b: 76, pos: () => V(-125 + 11.5, 1.5, 60), at: () => V(-125 + 2, 1.0, 20), fov: 50, setup: reset },
       { a: 66, b: 72, pos: () => V(40, 70, 260), at: () => V(-60, 25, 20), fov: 50, setup: (t) => { reset(); P.level = 0; P.wave(0, { x: -260, z: -300, r: (t - 66) * 140, soft: 180, to: 1 }); } },
     ];
   }

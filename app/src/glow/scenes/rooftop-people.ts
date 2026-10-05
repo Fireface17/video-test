@@ -6,7 +6,8 @@ import * as THREE from 'three';
 import { clamp, ease, hash, mulberry32, pulse, smoothstep } from '../../engine/util';
 import type { RealFigure } from '../lib/people';
 import type { Crowd, Person } from '../lib/crowd';
-import { KitBuilder, M, kitBatch, kitMaterial } from '../lib/city-build';
+import { KitBuilder, kitBatch, kitMaterial } from '../lib/city-build';
+import { bike } from './rooftop-props';
 import type { RoofWorld } from './rooftop-world';
 import type { AnchorKind } from '../lib/city';
 
@@ -87,28 +88,10 @@ export function farPeople(w: RoofWorld, crowd: Crowd, o: { c: THREE.Vector3; r0:
   return out;
 }
 
-/** The courier's bike: a city bike with a delivery box, lit by the city (and by him). */
+/** The courier's bike: a city bike with a delivery box, lit by the city (and by him); place it with placeKit. */
 export function bikeMesh(w: RoofWorld) {
   const k = new KitBuilder();
-  const IR = [0.05, 0.05, 0.055, M.ALB];
-  const tyre = [0.02, 0.02, 0.02, M.ALB];
-  for (const x of [-0.52, 0.52]) {
-    k.add(new THREE.TorusGeometry(0.33, 0.025, 6, 24), new THREE.Matrix4().makeTranslation(x, 0.35, 0), tyre);
-    for (let s = 0; s < 8; s++) k.box(x, 0.35, 0, 0.006, 0.62, 0.006, IR, 0, 0, (s / 8) * Math.PI);
-  }
-  const bar = (a: number[], b: number[], v = IR, r = 0.018) => {
-    const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), d = B.clone().sub(A);
-    k.add(new THREE.CylinderGeometry(r, r, d.length(), 5), new THREE.Matrix4().compose(A.clone().add(B).multiplyScalar(0.5), new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()), new THREE.Vector3(1, 1, 1)), v);
-  };
-  const red = [0.32, 0.05, 0.04, M.ALB];
-  bar([-0.52, 0.35, 0], [-0.05, 0.4, 0], red); bar([-0.05, 0.4, 0], [0.38, 0.82, 0], red); bar([-0.52, 0.35, 0], [-0.18, 0.85, 0], red);
-  bar([-0.05, 0.4, 0], [-0.2, 0.9, 0], red); bar([-0.18, 0.85, 0], [0.38, 0.82, 0], red); bar([0.38, 0.82, 0], [0.52, 0.35, 0]);
-  bar([0.38, 0.82, 0], [0.33, 1.02, 0]); bar([0.33, 1.02, -0.25], [0.33, 1.02, 0.25]);
-  k.box(-0.22, 0.94, 0, 0.24, 0.05, 0.1, [0.03, 0.03, 0.03, M.ALB]);
-  // the delivery box on the rack
-  bar([-0.6, 0.7, 0], [-0.2, 0.7, 0]);
-  k.box(-0.42, 0.98, 0, 0.42, 0.5, 0.42, [0.5, 0.36, 0.06, M.ALB]);
-  k.sphere(0.4, 0.95, 0, 0.035, [1, 0.95, 0.85, M.LIGHT]);
+  bike(k, 0, 0, 0, 0, 0, true);
   return kitBatch(k.geometry(), [{ x: 0, y: -100, z: 0, yaw: 0, sx: 1, sy: 1, sz: 1, col: [1, 1, 1], k: 0.4 }], kitMaterial(w.city.U), new THREE.Vector3(0, 0, 0), 2);
 }
 

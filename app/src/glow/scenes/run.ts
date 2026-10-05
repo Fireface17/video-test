@@ -75,7 +75,7 @@ export default class Run extends Scene {
   R2!: Route;
   R3!: Route;
   taxi = V(413.6, 0, 124.0);
-  hood = V(412.0, 0.97, 123.6);
+  hood = V(412.0, 1.0, 123.6);
   tracks: { he: HeroTrack; she: HeroTrack } | null = null;
   freezes: [number, number][] = [];
   heC = heColor();
@@ -195,10 +195,13 @@ export default class Run extends Scene {
     const idles = ['77_02', '111_28', '142_15', '79_71', '13_04', '13_05', '140_06'];
     await this.folk.init(idles, [run, runB]);
     this.world.add(this.folk.crowd);
-    const pal = [col('cyan', 1.2), col('white', 1.2).lerp(col('cyan', 1.2), 0.35), col('violet', 1.1).lerp(col('white', 1.1), 0.45), col('blue', 1.2).lerp(col('cyan', 1.2), 0.5), col('gold', 1.1).lerp(col('white', 1.1), 0.55), col('white', 1.1).lerp(col('pink', 1.1), 0.2)];
+    const pal = [col('cyan', 1.1), col('violet', 1.0).lerp(col('white', 1.0), 0.2), col('#ff7fb6', 1.0), col('blue', 1.1).lerp(col('cyan', 1.1), 0.4), col('gold', 1.0).lerp(col('white', 1.0), 0.3), col('#9dff8a', 0.9), col('#ff9a6b', 1.0)];
     // the stream: the train's crowd first (they come down the stairs behind them), then more and more
     const nS = 260;
-    this.folk.addStream(nS, 2.5, 230, 1.0, (i) => (i < 16 ? T.c0 - 1 : T.c0 + Math.pow((i - 16) / (nS - 16), 0.75) * (T.L - T.c0 - 2)), pal, figs, PACE);
+    // near them, people of light, each in their own colour (the train's crowd); stardust only further back
+    const lightPal = [col('cyan', 1.0), col('violet', 1.0).lerp(col('white', 1.0), 0.25), col('#ff7fb6', 1.0), col('gold', 1.0).lerp(col('white', 1.0), 0.3), col('blue', 1.1).lerp(col('cyan', 1.1), 0.4), col('#9dff8a', 0.95), col('#ff9a6b', 1.0), col('#b9a6ff', 1.0)];
+    this.folk.addStream(9, 3.2, 15, 1.4, (k) => (k < 6 ? T.c0 - 1 : T.B + k * 0.5), lightPal, figs, PACE, 'light', 5000);
+    this.folk.addStream(nS, 15, 240, 1.3, (i) => (i < 16 ? T.c0 - 1 : T.c0 + Math.pow((i - 16) / (nS - 16), 0.75) * (T.L - T.c0 - 2)), pal, figs, PACE);
     this.addJoiners(figs, pal);
 
     // ---- prints, pigeons, splashes ----
@@ -272,17 +275,17 @@ export default class Run extends Scene {
     P.scatter(18, V(395, 0, 110.52), V(408, 0, 110.52), V(0, 0, 1), this.legs[1]!.t0 + 0.9, this.T.E + 2, cols, 21, 0.9, 1.9);
     // C: his palm on the cab's hood, hers on its roof, then the crowd's all over it
     P.print({ pos: this.hood.clone(), normal: V(0, 1, 0), up: V(0.5, 0, 0.8), t: this.T.tv0 + 0.1, color: pc[0]!, size: 0.2 });
-    P.print({ pos: V(413.2, 1.49, 124.2), normal: V(0, 1, 0), up: V(0.6, 0, 0.8), t: this.T.grip + 0.1, color: pc[1]!, size: 0.18 });
+    P.print({ pos: V(413.9, 1.53, 124.2), normal: V(0, 1, 0), up: V(0.6, 0, 0.8), t: this.T.grip + 0.1, color: pc[1]!, size: 0.18 });
     const pr = mulberry32(5);
     for (let i = 0; i < 26; i++) {
       const onRoof = pr() < 0.4;
-      P.print({ pos: V(this.taxi.x + (onRoof ? (pr() - 0.5) * 1.8 : -2.2 + pr() * 1.6), onRoof ? 1.49 : 0.96, this.taxi.z + (pr() - 0.5) * 1.5), normal: V(0, 1, 0), up: V(pr() - 0.5, 0, 1), t: this.T.E + 0.5 + pr() * 6, color: cols[i % 4]!, size: 0.16 + pr() * 0.05, left: pr() < 0.5 });
+      P.print({ pos: V(this.taxi.x + (onRoof ? -0.3 + (pr() - 0.5) * 1.0 : -2.2 + pr() * 1.2), onRoof ? 1.53 : 0.99, this.taxi.z + (pr() - 0.5) * 1.3), normal: V(0, 1, 0), up: V(pr() - 0.5, 0, 1), t: this.T.E + 0.5 + pr() * 6, color: cols[i % 4]!, size: 0.16 + pr() * 0.05, left: pr() < 0.5 });
     }
     // E: his star hand on the window's frame; the crowd's along the shopfronts
     P.print({ pos: V(432.2, 1.4, 129.47), normal: V(0, 0, -1), up: V(0.3, 1, 0), t: T.piece - 0.2, color: pc[0]! });
     P.scatter(40, V(420, 0, 129.47), V(470, 0, 129.47), V(0, 0, -1), T.piece + 0.4, T.G1 + 1, cols, 33, 0.8, 1.9);
     // G: the cabs at the light
-    for (let i = 0; i < 18; i++) P.print({ pos: V(620 + (pr() - 0.5) * 6, 0.97 + (pr() < 0.4 ? 0.52 : 0), 113 + (pr() - 0.5) * 3), normal: V(0, 1, 0), up: V(pr() - 0.5, 0, 1), t: T.G1 + 0.6 + pr() * 3, color: cols[i % 4]!, size: 0.17, left: pr() < 0.5 });
+    for (let i = 0; i < 18; i++) P.print({ pos: V(620 + (pr() - 0.5) * 6, 0.99 + (pr() < 0.4 ? 0.54 : 0), 113 + (pr() - 0.5) * 3), normal: V(0, 1, 0), up: V(pr() - 0.5, 0, 1), t: T.G1 + 0.6 + pr() * 3, color: cols[i % 4]!, size: 0.17, left: pr() < 0.5 });
     // I: the shopfronts of the long street
     P.scatter(70, V(645, 0, 129.47), V(700, 0, 129.47), V(0, 0, -1), T.I + 0.5, T.J + 1, cols, 44, 0.8, 2.0);
     P.scatter(50, V(645, 0, 125.4), V(700, 0, 125.4), V(0, 0, 1), T.I + 0.8, T.J + 1, cols, 45, 0.6, 1.0);
@@ -420,7 +423,7 @@ export default class Run extends Scene {
       { pos: this.lantern.position.clone(), color: col('gold', 0.18), radius: 2.5 },
     ];
     // ---- everyone else ----
-    const lv = { route: leg.route, sH: leg.s0 + PACE * (tm - leg.t0), v: PACE, index: li, hideKept: leg.id === 'I' || leg.id === 'C', gapExtra: leg.id === 'C' ? 9 : 0 };
+    const lv = { route: leg.route, sH: leg.s0 + PACE * (tm - leg.t0), v: PACE, index: li, hideKept: leg.id === 'I' || leg.id === 'C', gapExtra: leg.id === 'C' ? 9 : leg.id === 'I' ? 7 : 0 };
     if (leg.id === 'C') lv.sH = Math.max(keys(tm, this.tracks!.he.s), keys(tm, this.tracks!.she.s));
     this.folk.update(tm, lv, S.cam);
     this.city.setGlows([...glows, ...this.folk.glows(S.cam.position, 9)]);
@@ -546,9 +549,11 @@ export default class Run extends Scene {
         // (on the walkway past the top of the stairs: they come up toward us and run by, the city behind them)
         const oy = this.R3.at(9999).y;
         // (at the top of the stairs, looking down them: they climb at us, the crowd pouring up behind, the city below)
-        pos = V(1134.6, oy + 1.7 + 0.3 * u, 151.2 + 0.8 * u);
-        tgt = mid.clone().add(V(0, 0.9, 0)).lerp(V(1133.6, 2, 136), 0.3 * (1 - u));
-        fov = 48;
+        // (from the street beside the stairs: they climb them in profile, the crowd pouring up behind, the deck above)
+        pos = V(1112.5 + 2 * u, 3.6 + 1.2 * u, 135.5 + 3 * u);
+        tgt = mid.clone().add(V(0, 0.9, 0)).lerp(V(1133.6, 5, 141), 0.4);
+        fov = 50;
+        void oy;
         break;
       }
       case 'K': {

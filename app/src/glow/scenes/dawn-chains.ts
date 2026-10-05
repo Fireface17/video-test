@@ -56,7 +56,7 @@ export class CityChains {
    * Chains along the roof edges facing the streets within R of `c` (world), two across the street below; link
    * times out from `c` at v m/s from `tTake`, raised hands from `tUp` at vUp m/s.
    */
-  static async build(w: RoofWorld, o: { c: THREE.Vector3; R: number; seed: number; tTake: number; v: number; tUp: number; vUp: number; avoid: (x: number, z: number) => boolean; clips: string[] }) {
+  static async build(w: RoofWorld, o: { c: THREE.Vector3; R: number; seed: number; tTake: number; v: number; tUp: number; vUp: number; avoid: (x: number, z: number) => boolean; clips: string[]; skip?: unknown[] }) {
     const C = new CityChains();
     const [rp, mi] = await Promise.all([loadBody('rpm'), loadBody('michelle')]);
     const figs = [new RealFigure(rp!, 'rpm', col('white')), new RealFigure(mi!, 'michelle', col('white'))];
@@ -107,7 +107,7 @@ export class CityChains {
     }
     // the street's own buildings (the location's, not the city's): their street-side roof edges
     for (const b of w.set.blds) {
-      if (b === w.set.his) continue;
+      if (b === w.set.his || o.skip?.includes(b)) continue;
       const y = b.h + 0.3, south = b.z0 > 0;
       const nz = south ? -1 : 1, z = (south ? b.z0 + 0.75 : b.z1 - 0.75);
       const xa = b.x0 + 0.8, xb = b.x1 - 0.8;

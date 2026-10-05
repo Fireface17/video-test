@@ -641,7 +641,8 @@ export default class Train extends Scene {
     // the display
     const dispOn = t > T.cB - 0.6 && t < T.cC + 0.2;
     if (dispOn) lights.push({ p: this.car.localToWorld(V3(8.6, 2.0, 0)), r: 0.6, c: new THREE.Color(1.0, 0.45, 0.1), k: 0.6 });
-    this.applyLights(lights, cam.position);
+    // (outside, where the light falls mostly on the city's own surfaces, only the strongest few)
+    this.applyLights(lights, cam.position, 'GHI'.includes(shot.id) ? 4 : MAXL);
     U.uCeilC.value.setRGB(0.5, 0.56, 0.7).multiplyScalar(0.2);
     U.uAmb.value.setRGB(0.004, 0.005, 0.009).multiplyScalar(1 + 2 * ceil);
 
@@ -663,8 +664,8 @@ export default class Train extends Scene {
     };
   }
 
-  private applyLights(ls: Train['lights'], camPos: THREE.Vector3) {
-    const scored = ls.filter((l) => l.k > 0.005).map((l) => ({ l, s: l.k * Math.abs(l.r) / (1 + l.p.distanceToSquared(camPos) / 60) })).sort((a, b) => b.s - a.s).slice(0, MAXL);
+  private applyLights(ls: Train['lights'], camPos: THREE.Vector3, max: number) {
+    const scored = ls.filter((l) => l.k > 0.005).map((l) => ({ l, s: l.k * Math.abs(l.r) / (1 + l.p.distanceToSquared(camPos) / 60) })).sort((a, b) => b.s - a.s).slice(0, max);
     const P = this.U.uPts.value, C = this.U.uPtC.value;
     this.U.uN.value = scored.length;
     for (let i = 0; i < MAXL; i++) {

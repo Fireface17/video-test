@@ -102,7 +102,7 @@ export class Folk {
   beacons = new GlowPoints(700, 0.8);
 
   constructor(dust: [number, number, number]) {
-    this.crowd = new Crowd({ dust, dustGain: 0.1 });
+    this.crowd = new Crowd({ dust, dustGain: 0.075 });
     this.crowd.add(this.beacons);
   }
 
@@ -134,16 +134,17 @@ export class Folk {
   }
 
   /** The stream: n members over gaps [g0, g1] behind, lanes ±w, appearing from times in `from(i)`. */
-  addStream(n: number, g0: number, g1: number, w: number, from: (i: number) => number, colors: THREE.Color[], figs: [RealFigure, RealFigure], v: number) {
-    for (let i = 0; i < n; i++) {
+  addStream(n: number, g0: number, g1: number, w: number, from: (i: number) => number, colors: THREE.Color[], figs: [RealFigure, RealFigure], v: number, look: 'light' | 'dust' = 'dust', seed = 0) {
+    for (let k = 0; k < n; k++) {
+      const i = k + seed;
       const b = (hash(i, 11) < 0.5 ? 0 : 1) as 0 | 1, run = i % this.runs.length;
-      const c = colors[Math.floor(hash(i, 12) * colors.length)]!.clone();
-      const gap = g0 + (g1 - g0) * Math.pow((i + hash(i, 13)) / n, 1.5);
+      const c = colors[look === 'light' ? k % colors.length : Math.floor(hash(i, 12) * colors.length)]!.clone();
+      const gap = g0 + (g1 - g0) * Math.pow((k + hash(i, 13)) / n, look === 'light' ? 1 : 1.5);
       const p = this.crowd.addPerson({
-        pos: V(), yaw: 0, look: 'dust', body: b, color: c, k: 0, mirror: hash(i, 14) < 0.5, offset: hash(i, 15) * 3,
+        pos: V(), yaw: 0, look, body: b, color: c, k: 0, mirror: hash(i, 14) < 0.5, offset: hash(i, 15) * 3,
         clips: [{ clip: `run${run}`, from: -1e9, speed: this.rate(b, run, v * (0.97 + 0.06 * hash(i, 16)), figs), at: hash(i, 17) }],
       });
-      this.stream.push({ gap, lane: (hash(i, 18) * 2 - 1) * w, from: from(i), p, ph: hash(i, 19) * 100, c });
+      this.stream.push({ gap, lane: (hash(i, 18) * 2 - 1) * w, from: from(k), p, ph: hash(i, 19) * 100, c });
     }
   }
 
@@ -206,7 +207,7 @@ export class Folk {
       if (s < -R.extendBack) { p.k = 0; continue; }
       R.side(s, m.lane + 0.5 * noise1(t * 0.25 + m.ph, 5), p.pos);
       p.yaw = R.yaw(s);
-      p.k = smoothstep(m.from, m.from + 0.6, t) * (0.85 + 0.15 * Math.sin(t * 3 + m.ph));
+      p.k = smoothstep(m.from, m.from + 0.6, t) * (p.look === 'light' ? 0.85 : 0.6 + 0.1 * Math.sin(t * 3 + m.ph));
     }
     this.crowd.update(t, cam);
     // far people: a soft glow at the chest

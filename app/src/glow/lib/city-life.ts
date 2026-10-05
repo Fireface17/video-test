@@ -8,7 +8,8 @@ import * as THREE from 'three';
 import { mulberry32 } from '../../engine/util';
 import type { City, CityOpts } from './city';
 import { CITY_GLSL, type CityUniforms } from './city-glsl';
-import { KitBuilder, M, TileSet, kitBatch, kitMaterial, type KInst } from './city-build';
+import { CAR_PAINT_GLSL, KitBuilder, M, TileSet, kitBatch, kitMaterial, type KInst } from './city-build';
+import { carDetailGeometry } from './city-cars';
 import { SHOP } from './city-plan';
 import { signAtlas, type SignAtlas } from './city-signs';
 import { overpassCars } from './city-rail';
@@ -278,13 +279,29 @@ function signalGeometry() {
   return k.geometry();
 }
 
-function treeGeometry() {
+function treeGeometry(variant: number) {
   const k = new KitBuilder();
-  k.cyl(0, 1.7, 0, 0.09, 0.15, 3.4, 5, [0.06, 0.05, 0.04, M.ALB], true);
-  k.cyl(0.35, 3.6, 0.1, 0.05, 0.08, 1.4, 4, [0.06, 0.05, 0.04, M.ALB], true, 0.2, -0.5);
-  // a ragged crown of lumpy clumps (dark leaves; the street lamps light them from below)
-  const blobs: [number, number, number, number][] = [[0, 4.9, 0, 1.75], [1.1, 5.4, 0.4, 1.25], [-1.0, 5.1, -0.5, 1.3], [0.2, 6.1, -0.3, 1.15], [-0.4, 4.3, 0.9, 1.05]];
-  blobs.forEach(([x, y, z, r], i) => k.sphere(x, y, z, r, [0.03 + 0.01 * (i % 2), 0.05 + 0.012 * (i % 3), 0.022, M.LEAVES], 1.1, 0.85, 1.1, 0, 0.55));
+  const bark = [0.06, 0.05, 0.04, M.ALB];
+  k.cyl(0, 1.75, 0, 0.08, 0.15, 3.5, 6, bark, true);
+  // a few limbs into the crown
+  const rr = (i: number) => { const x = Math.sin(i * 12.9898 + variant * 78.233) * 43758.5453; return x - Math.floor(x); };
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + rr(i) * 0.8;
+    k.cyl(Math.cos(a) * 0.45, 4.0 + rr(i + 9) * 0.6, Math.sin(a) * 0.45, 0.03, 0.06, 1.6, 4, bark, true, Math.sin(a) * 0.7, -Math.cos(a) * 0.7);
+  }
+  // the crown: clusters of leaves, each two crossed cards (alpha-tested in the shader)
+  const N = 22;
+  for (let i = 0; i < N; i++) {
+    const u = rr(i * 3 + 1), v = rr(i * 3 + 2), w = rr(i * 3 + 3);
+    const th = u * Math.PI * 2, ph = Math.acos(1 - 2 * v) * 0.9;
+    const R = 0.55 + 0.45 * Math.cbrt(w);
+    const x = Math.sin(ph) * Math.cos(th) * 2.0 * R, y = 5.0 + Math.cos(ph) * 1.35 * R, z = Math.sin(ph) * Math.sin(th) * 2.0 * R;
+    const sz = 1.5 + rr(i + 50) * 0.9, yaw = rr(i + 70) * Math.PI;
+    const g = 0.75 + rr(i + 90) * 0.5;
+    const col = [0.028 * g, 0.055 * g, 0.022 * g, M.CARD];
+    k.quad(x, y, z, sz, sz * 0.85, col, yaw, (rr(i + 30) - 0.5) * 0.8);
+    k.quad(x, y, z, sz, sz * 0.85, col, yaw + Math.PI / 2, (rr(i + 40) - 0.5) * 0.8);
+  }
   // the tree pit, its low steel guard
   k.quad(0, 0.012, 0, 1.4, 1.4, [0.03, 0.025, 0.02, M.ALB], 0, -Math.PI / 2);
   for (const r of [0, 1, 2, 3]) k.quad(Math.sin((r * Math.PI) / 2) * 0.7, 0.22, Math.cos((r * Math.PI) / 2) * 0.7, 1.4, 0.42, [0.05, 0.05, 0.055, M.BARS], (r * Math.PI) / 2);
@@ -354,6 +371,8 @@ function stackGeometry() {
 
 // ---------------------------------------------------------------- traffic
 
+interface CarBuf { mesh: THREE.Mesh; iPos: THREE.InstancedBufferAttribute; iCol: THREE.InstancedBufferAttribute }
+
 /** A moving car: L = (kind 0 avenue / 1 street / 2 highway, lane coordinate, direction, s0 | queue x), S = (slot k, copy, offsets | highway params). */
 export interface MovingCar { L: number[]; S: number[]; col: number[]; type: number }
 
@@ -393,7 +412,7 @@ function carMaterial(U: CityUniforms) {
     vertexShader: /* glsl */ `
       attribute vec4 aV; attribute vec3 aL;
       attribute vec4 iPos; attribute vec4 iCol; // x, y, z, heading; rgb, brake
-      varying vec3 vW, vN, vLight; varying vec4 vV, vCol; varying vec2 vFk; varying float vP;
+      varying vec3 vW, vN, vLight, vL; varying vec4 vV, vCol; varying vec2 vFk; varying float vP;
       ${CITY_GLSL}
       void main() {
         vec2 dir = vec2(sin(iPos.w), cos(iPos.w));
@@ -401,20 +420,22 @@ function carMaterial(U: CityUniforms) {
         vec3 rp = vec3(dir.y * lp.x + dir.x * lp.z, lp.y, -dir.x * lp.x + dir.y * lp.z);
         vec3 n = vec3(dir.y * normal.x + dir.x * normal.z, normal.y, -dir.x * normal.x + dir.y * normal.z);
         vec4 w = modelMatrix * vec4(rp + iPos.xyz, 1.0);
-        vW = w.xyz; vN = n; vV = aV; vCol = iCol;
+        vW = w.xyz; vN = n; vV = aV; vCol = iCol; vL = aL;
         vP = power(w.xz);
         vLight = ambient(n) * 1.3 + streetLight(w.xz, w.y, vP) + sunLow(w.xyz, n) + peopleGlow(w.xyz, n);
         vFk = fogK(w.xyz);
         gl_Position = projectionMatrix * viewMatrix * w;
       }`,
     fragmentShader: /* glsl */ `
-      varying vec3 vW, vN, vLight; varying vec4 vV, vCol; varying vec2 vFk; varying float vP;
+      varying vec3 vW, vN, vLight, vL; varying vec4 vV, vCol; varying vec2 vFk; varying float vP;
       ${CITY_GLSL}
+      ${CAR_PAINT_GLSL}
       void main() {
         float mode = vV.a;
         vec3 N = normalize(vN), V = normalize(vW - cameraPosition);
-        vec3 alb = mode < 0.5 ? vCol.rgb : vV.rgb;
+        vec3 alb = mode < 0.5 || mode > 13.5 ? vCol.rgb : vV.rgb;
         vec3 c = alb * vLight;
+        if (mode > 13.5) { c = carPaint(c, alb, vL, vN, vW, vLight); gl_FragColor = vec4(applyFog(c, vFk, vP), 1.0); return; }
         // paint: the sky and the street light in it; glass; head- and taillights (brighter on the brakes)
         float fres = pow(1.0 - clamp(abs(dot(V, N)), 0.0, 1.0), 3.0);
         c += (skyRefl(reflect(V, N)) * 0.25 + vLight * 0.15) * fres * step(mode, 0.5);
@@ -549,7 +570,9 @@ export class CityLife extends THREE.Group {
   /** moving cars (see carPose), drawn as meshes within `carDist` of the camera, their lights everywhere */
   cars: MovingCar[] = [];
   carDist = 520;
-  private carMeshes: { type: number; list: MovingCar[]; mesh: THREE.Mesh; iPos: THREE.InstancedBufferAttribute; iCol: THREE.InstancedBufferAttribute }[] = [];
+  private carMeshes: { type: number; list: MovingCar[]; near: CarBuf; far: CarBuf }[] = [];
+  /** moving cars closer than this get the detailed body */
+  carDetail = 130;
   private lights!: THREE.Points;
   private lightPos!: THREE.BufferAttribute;
   private lightL!: THREE.BufferAttribute;
@@ -606,7 +629,7 @@ export class CityLife extends THREE.Group {
       const type = p.type === 1 ? 1 : p.type === 3 ? 3 : 0;
       near.add('car' + type, p.x, p.z, { x: p.x, y: 0, z: p.z, yaw: Math.atan2(p.dx, p.dz), sx: 1, sy: 1, sz: 1, col: CAR_COLORS[p.color % CAR_COLORS.length]!, k: 0 });
     }
-    for (const t of plan.trees) near.add('tree', t.x, t.z, { x: t.x, y: 0.15, z: t.z, yaw: t.seed * 6.28, sx: t.s, sy: t.s * (0.9 + 0.2 * t.seed), sz: t.s, col: [1, 1, 1], k: 0 });
+    for (const t of plan.trees) near.add('tree' + Math.floor(t.seed * 3), t.x, t.z, { x: t.x, y: 0.15, z: t.z, yaw: t.seed * 6.28, sx: t.s, sy: t.s * (0.9 + 0.2 * t.seed), sz: t.s, col: [1, 1, 1], k: 0, x4: [0, t.s, t.seed * 10, 0] });
     for (const p of plan.props) {
       const col: [number, number, number] = p.kind === 0 ? (p.seed < 0.5 ? [0.45, 0.06, 0.04] : p.seed < 0.8 ? [0.5, 0.45, 0.08] : [0.35, 0.36, 0.38]) : [1, 1, 1];
       near.add('prop' + p.kind, p.x, p.z, { x: p.x, y: 0.15, z: p.z, yaw: p.rot, sx: 1, sy: 1, sz: 1, col, k: 0.5 + p.seed * 0.49 });
@@ -619,14 +642,24 @@ export class CityLife extends THREE.Group {
     for (const sh of plan.sheds) near.add('shed', sh.x, sh.z, { x: sh.x, y: 0.15, z: sh.z, yaw: Math.atan2(sh.nx, sh.nz), sx: sh.w, sy: 1, sz: 1, col: [1, 1, 1], k: 0.5 + sh.seed * 0.49 });
     const kitM = kitMaterial(U), kitM2 = kitMaterial(U, { side: THREE.DoubleSide });
     const geos: Record<string, THREE.BufferGeometry> = {
-      awning: awningGeometry(), shed: shedGeometry(), car0: carGeometry(0), car1: carGeometry(1), car3: carGeometry(3), tree: treeGeometry(), signal: signalGeometry(), stack: stackGeometry(),
+      awning: awningGeometry(), shed: shedGeometry(), car0: carGeometry(0), car1: carGeometry(1), car3: carGeometry(3), tree0: treeGeometry(0), tree1: treeGeometry(1), tree2: treeGeometry(2), signal: signalGeometry(), stack: stackGeometry(),
     };
     for (const k of [0, 2, 3, 4, 5, 6, 7, 8]) geos['prop' + k] = propGeometry(k);
     const dists: Record<string, number> = { awning: 520, tree: 520, signal: 650 };
+    const detail: Record<string, THREE.BufferGeometry> = { car0: carDetailGeometry(0), car1: carDetailGeometry(1), car3: carDetailGeometry(3) };
     const make = (kind: string, list: KInst[], origin: THREE.Vector3) => {
       const geo = geos[kind];
       if (!geo) return null;
-      return kitBatch(geo, list, kind === 'awning' || kind === 'shed' || kind === 'tree' || kind.startsWith('prop') || kind.startsWith('car') ? kitM2 : kitM, origin, kind === 'signal' ? 8 : 6);
+      if (detail[kind]) {
+        // parked cars: the detailed body close up, the cheap one further away
+        const l = new THREE.LOD();
+        l.position.copy(origin);
+        const a = kitBatch(detail[kind]!, list, kitM2, origin, 6), b = kitBatch(geo, list, kitM2, origin, 6);
+        for (const m of [a, b]) { m.position.set(0, 0, 0); m.updateMatrix(); }
+        l.addLevel(a, 0); l.addLevel(b, 140 * lod);
+        return l;
+      }
+      return kitBatch(geo, list, kind === 'awning' || kind === 'shed' || kind.startsWith('tree') || kind.startsWith('prop') || kind.startsWith('car') ? kitM2 : kitM, origin, kind === 'signal' ? 8 : 6);
     };
     near.build(this, 430 * lod, make, this.lods);
     void mid; void dists;
@@ -759,19 +792,21 @@ export class CityLife extends THREE.Group {
     for (const type of [0, 1, 2, 3]) {
       const list = cars.filter((c) => c.type === type);
       if (!list.length) continue;
-      const base = carGeometry(type);
-      const geo = new THREE.InstancedBufferGeometry();
-      geo.index = base.index;
-      for (const k of ['position', 'normal', 'aV', 'aL']) geo.setAttribute(k, base.attributes[k]!);
-      const iPos = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 4), 4).setUsage(THREE.DynamicDrawUsage);
-      const iCol = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 4), 4).setUsage(THREE.DynamicDrawUsage);
-      geo.setAttribute('iPos', iPos); geo.setAttribute('iCol', iCol);
-      geo.instanceCount = 0;
-      const m = new THREE.Mesh(geo, carM);
-      m.frustumCulled = false;
-      this.add(m);
-      this.mirrorHide.push(m);
-      this.carMeshes.push({ type, list, mesh: m, iPos, iCol });
+      const mk = (base: THREE.BufferGeometry) => {
+        const geo = new THREE.InstancedBufferGeometry();
+        geo.index = base.index;
+        for (const k of ['position', 'normal', 'aV', 'aL']) geo.setAttribute(k, base.attributes[k]!);
+        const iPos = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 4), 4).setUsage(THREE.DynamicDrawUsage);
+        const iCol = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 4), 4).setUsage(THREE.DynamicDrawUsage);
+        geo.setAttribute('iPos', iPos); geo.setAttribute('iCol', iCol);
+        geo.instanceCount = 0;
+        const m = new THREE.Mesh(geo, carM);
+        m.frustumCulled = false;
+        this.add(m);
+        this.mirrorHide.push(m);
+        return { mesh: m, iPos, iCol };
+      };
+      this.carMeshes.push({ type, list, near: mk(carDetailGeometry(type)), far: mk(carGeometry(type)) });
     }
     // their lights: 4 points a car, written every frame
     const nl = cars.length * 4;
@@ -819,17 +854,19 @@ export class CityLife extends THREE.Group {
     const cx = cam.x - o.x, cz = cam.z - o.z, R2 = this.carDist * this.carDist;
     const lp = this.lightPos.array as Float32Array, ll = this.lightL.array as Float32Array;
     let nl = 0;
+    const D2 = this.carDetail * this.carDetail;
     for (const cm of this.carMeshes) {
-      const ip = cm.iPos.array as Float32Array, ic = cm.iCol.array as Float32Array;
-      let n = 0;
+      const cnt = [0, 0];
       const Lz = cm.type === 3 ? 2.65 : 2.36, W = cm.type === 3 ? 0.7 : 0.62;
       for (const c of cm.list) {
         carPose(c, t, tr.z0, tr.loop, tr.pitch, P);
         if (!P.vis) continue;
-        if ((P.x - cx) ** 2 + (P.z - cz) ** 2 < R2) {
+        const d2 = (P.x - cx) ** 2 + (P.z - cz) ** 2;
+        if (d2 < R2) {
+          const which = d2 < D2 ? 0 : 1, buf = which ? cm.far : cm.near, n = cnt[which]!++;
+          const ip = buf.iPos.array as Float32Array, ic = buf.iCol.array as Float32Array;
           ip[n * 4] = P.x; ip[n * 4 + 1] = P.y; ip[n * 4 + 2] = P.z; ip[n * 4 + 3] = Math.atan2(P.dx, P.dz);
           ic[n * 4] = c.col[0]!; ic[n * 4 + 1] = c.col[1]!; ic[n * 4 + 2] = c.col[2]!; ic[n * 4 + 3] = P.brake;
-          n++;
         }
         // lights: (x across, z along) in the car's frame
         for (const [lx, ly, lz, head] of [[-W, 0.72, Lz + 0.05, 1], [W, 0.72, Lz + 0.05, 1], [-W, 0.8, -Lz - 0.05, 0], [W, 0.8, -Lz - 0.05, 0]] as const) {
@@ -838,9 +875,12 @@ export class CityLife extends THREE.Group {
           nl++;
         }
       }
-      (cm.mesh.geometry as THREE.InstancedBufferGeometry).instanceCount = n;
-      cm.iPos.needsUpdate = cm.iCol.needsUpdate = true;
-      cm.iPos.addUpdateRange(0, n * 4); cm.iCol.addUpdateRange(0, n * 4);
+      [cm.near, cm.far].forEach((buf, i) => {
+        const n = cnt[i]!;
+        (buf.mesh.geometry as THREE.InstancedBufferGeometry).instanceCount = n;
+        buf.iPos.needsUpdate = buf.iCol.needsUpdate = true;
+        buf.iPos.addUpdateRange(0, n * 4); buf.iCol.addUpdateRange(0, n * 4);
+      });
     }
     this.lightPos.needsUpdate = this.lightL.needsUpdate = true;
     this.lights.geometry.setDrawRange(0, nl);

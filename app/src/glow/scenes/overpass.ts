@@ -246,11 +246,11 @@ export default class Overpass extends Scene {
     } else if (t < bar(4)) {
       // close: the lantern, from beyond the railing, the river and the paling sky behind
       const k = ease.inOutQuad(clamp((t - bar(3)) / (bar(4) - bar(3))));
-      // (from above, between them: the hands, the lantern, the street far below beyond the railing)
+      // (from over the railing, looking back at the hands and the lantern, the river and the paling sky behind them)
       const h = mid.clone().addScaledVector(this.F, 0.26).setY(this.deckY + 1.1);
-      pos = h.clone().addScaledVector(this.F, -0.6 + 0.1 * k).addScaledVector(this.R, 0.12).add(V(0, 0.8 - 0.1 * k, 0));
-      tgt = h.clone().addScaledVector(this.F, 0.3).add(V(0, -0.3, 0));
-      fov = 36 - 3 * k;
+      pos = h.clone().addScaledVector(this.F, 1.25 - 0.15 * k).addScaledVector(this.R, -0.3 + 0.15 * k).add(V(0, 0.3, 0));
+      tgt = h.clone().add(V(0, -0.06, 0));
+      fov = 30 - 3 * k;
     } else if (t < bar(6)) {
       // together at the railing, the camera circling slowly from behind them round to their side
       const k = ease.inOutCubic(clamp((t - bar(4)) / (bar(6) - bar(4))));
