@@ -359,7 +359,7 @@ export default class Dawn extends Scene {
     if (fl > 0.02) glows.push({ pos: g.clone(), color: col('white', 1.2 * fl), radius: 3 });
     w.glows(glows);
     w.cat.visible = false;
-    w.update(t, cam, { wind: 0.45 }); w.city.life.visible = false;
+    w.update(t, cam, { wind: 0.45 }); w.city.life.visible = true; for (const l of w.city.lods) l.visible = false;
 
     S.render(this.ctx.renderer, this.grade.scene);
     // (shafts: strong in the wide shots, gentle close up and among the stars; only the sun and the sky make them)
