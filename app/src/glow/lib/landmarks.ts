@@ -85,8 +85,12 @@ export class Landmarks extends THREE.Group {
   beacons = new GlowPoints(8, 2.2);
   mats: THREE.ShaderMaterial[] = [];
 
+  private city: City;
+  private wtcCrown!: THREE.MeshBasicMaterial;
+
   constructor(city: City) {
     super();
+    this.city = city;
     // ---- Empire State Building: 381 m roof, antenna to 443 m ----
     this.esbFlood = towerMaterial(city, [17, 0.7, 0.7, 3], { y: 268, c: new THREE.Color(0.25, 0.22, 0.18) }, [0.4, 0.37, 0.32]);
     this.esbFlood.uniforms.top!.value = 381;
@@ -177,7 +181,8 @@ export class Landmarks extends THREE.Group {
     const parapet = new THREE.CylinderGeometry(Tt * 1.02, Tt * 1.02, 5, 4, 1, true);
     parapet.rotateY(Math.PI / 4);
     parapet.translate(0, y1 + 2.5, 0);
-    this.wtc.add(new THREE.Mesh(parapet, glowMat(new THREE.Color(0.55, 0.6, 0.7))));
+    this.wtcCrown = glowMat(new THREE.Color(0.55, 0.6, 0.7));
+    this.wtc.add(new THREE.Mesh(parapet, this.wtcCrown));
     const spire = new THREE.CylinderGeometry(0.8, 2.2, 124, 8);
     spire.translate(0, 417 + 62, 0);
     this.wtc.add(new THREE.Mesh(spire, new THREE.MeshBasicMaterial({ color: new THREE.Color(0.2, 0.21, 0.23) })));
@@ -185,17 +190,24 @@ export class Landmarks extends THREE.Group {
     this.add(this.esb, this.chrysler, this.wtc, this.beacons);
   }
 
-  /** Per frame: the ESB crown colour, the beacons. */
+  /** Per frame: the ESB crown colour, the beacons; floodlights and crowns follow the city's power where each tower stands. */
   update(t: number, crown: THREE.Color) {
-    this.esbFlood.uniforms.floodC!.value.copy(crown).multiplyScalar(0.3);
-    this.esbMast.color.copy(crown).multiplyScalar(1.4);
-    const blink = (ph: number) => (Math.sin((t + ph) * Math.PI * 0.9) > 0.7 ? 1 : 0.06);
     const w = (g: THREE.Group, y: number) => new THREE.Vector3(0, y, 0).applyMatrix4(g.matrixWorld);
     this.updateMatrixWorld(true);
     const e = w(this.esb, 443), c = w(this.chrysler, 320), o = w(this.wtc, 542);
-    this.beacons.set(0, e.x, e.y, e.z, new THREE.Color(1, 0.1, 0.05), blink(0.3) * 2, 1);
-    this.beacons.set(1, c.x, c.y, c.z, new THREE.Color(1, 0.1, 0.05), blink(0.9) * 2, 1);
-    this.beacons.set(2, o.x, o.y, o.z, new THREE.Color(1, 1, 1), (Math.sin(t * Math.PI * 0.7) > 0.8 ? 3 : 0.3), 1.6);
+    // (power is looked up in city-local coordinates; floodlights switch on with a short flicker)
+    const org = this.city.U.uOrigin.value;
+    const pw = (v: THREE.Vector3, th: number) => { const p = this.city.power.at(v.x - org.x, v.z - org.z), d = p - th; return d < 0 ? 0 : d > 0.1 ? 1 : (Math.sin(t * 40 + th * 90) > 0 ? 1 : 0.15); };
+    const pe = pw(e, 0.3), pc = pw(c, 0.35), po = pw(o, 0.32);
+    this.esbFlood.uniforms.floodC!.value.copy(crown).multiplyScalar(0.3 * pe);
+    this.esbMast.color.copy(crown).multiplyScalar(1.4 * pe).addScalar(0.02);
+    this.chryslerArches.uniforms.k!.value = pc;
+    this.wtcCrown.color.setRGB(0.55 * po + 0.01, 0.6 * po + 0.01, 0.7 * po + 0.012);
+    const blink = (ph: number) => (Math.sin((t + ph) * Math.PI * 0.9) > 0.7 ? 1 : 0.06);
+    // aviation lights run on backup power: dimmer in a blackout, never off
+    this.beacons.set(0, e.x, e.y, e.z, new THREE.Color(1, 0.1, 0.05), blink(0.3) * 2 * (0.4 + 0.6 * pe), 1);
+    this.beacons.set(1, c.x, c.y, c.z, new THREE.Color(1, 0.1, 0.05), blink(0.9) * 2 * (0.4 + 0.6 * pc), 1);
+    this.beacons.set(2, o.x, o.y, o.z, new THREE.Color(1, 1, 1), (Math.sin(t * Math.PI * 0.7) > 0.8 ? 3 : 0.3) * (0.4 + 0.6 * po), 1.6);
     this.beacons.commit(3);
   }
 }

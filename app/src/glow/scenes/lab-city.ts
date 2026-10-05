@@ -1,9 +1,11 @@
-// Lab (not in the edit; `--lab lab-city`): test frames of the night city (lib/city.ts). Each 4 s is one setup:
-//  0 aerial from a rooftop (45 m) across to midtown      1 high aerial (300 m) over the grid
-//  2 street level (1.6 m) down an avenue                3 on the elevated line
-//  4 blackout from the rooftop (power 0)                5 power coming back in a wave from a point (20–26 s)
-//  7 the river and the overpass                         8 a side street at eye level (walk-ups, fire escapes, trees)
-//  9 dawn                                               10 anchors: glowing people in windows, on fire escapes, balconies, roof edges
+// Lab (not in the edit; `--lab lab-city`): test frames of the night city (lib/city.ts), one setup per window of t:
+//  0–4 aerial from a rooftop (46 m) to midtown · 4–8 high aerial (300 m) · 8–12 street level down an avenue ·
+//  12–16 on the el's station platform · 16–20 blackout (power 0) · 20–26 power coming back in a wave from a point ·
+//  26–30 the river and the overpass · 30–34 a side street at eye level · 34–38 dawn · 38–42 anchors in the blackout
+//  (people of light in windows / fire escapes / roof edges, setGlows, two windows cut open) · 42–54 close-ups (shops,
+//  hip height, an intersection, a walk-up's fire escapes, a roof) · 54–58 under the el, its stairs · 58–62 the
+//  overpass walkway, under it · 62–66 the park from a roof, steam · 66–72 a wave over the roofs · 72–76 cars up
+//  close · 76–80 the roofs from above.
 import * as THREE from 'three';
 import { Scene, type Frame } from '../../engine/scene';
 import { clamp, ease, lerp, prog } from '../../engine/util';
@@ -37,9 +39,11 @@ export default class LabCity extends Scene {
     const put = (o: THREE.Object3D, x: number, z: number, ry: number) => { const r = this.city.roofNear(x, z)!; o.position.set((r.x0 + r.x1) / 2, 0, (r.z0 + r.z1) / 2); o.rotation.y = ry; };
     put(this.lm.esb, -250, -1150, 0); put(this.lm.chrysler, 375 + 125, -1480, 0); put(this.lm.wtc, 760, -2050, 0);
     S.add(this.lm);
+    // (handles for the profiling scripts)
     (window as unknown as { __labCity: LabCity; __THREE: unknown }).__labCity = this;
     (window as unknown as { __THREE: unknown; __CityLOD: unknown }).__THREE = THREE;
     (window as unknown as { __CityLOD: unknown }).__CityLOD = CityLOD;
+    // (handles for the profiling scripts)
     (window as unknown as { __labCity: LabCity; __THREE: unknown }).__labCity = this;
     (window as unknown as { __THREE: unknown; __CityLOD: unknown }).__THREE = THREE;
     (window as unknown as { __CityLOD: unknown }).__CityLOD = CityLOD;

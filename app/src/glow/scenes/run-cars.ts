@@ -206,15 +206,15 @@ export class StreetCars extends THREE.Group {
   }
 }
 
-/** A New York litter basket (green wire mesh, a rim) with two smooth black bags by it. Base at y = 0. */
+/** A New York litter basket (green wire mesh, a rim) with a bag in it. Base at y = 0. */
 export function trashKit() {
   const k = new KitBuilder();
   const green = [0.06, 0.12, 0.07, M.BARS], rim = [0.06, 0.12, 0.07, M.ALB], bag = [0.012, 0.012, 0.015, M.GLASS];
   k.cyl(0, 0.45, 0, 0.3, 0.26, 0.9, 16, green, true);
   k.cyl(0, 0.9, 0, 0.31, 0.31, 0.05, 16, rim, true);
   k.cyl(0, 0.03, 0, 0.26, 0.26, 0.06, 16, rim);
-  k.sphere(0.6, 0.3, 0.1, 0.36, bag, 1, 0.82, 1.1, 3);
-  k.sphere(0.95, 0.24, -0.22, 0.28, bag, 1.1, 0.85, 1, 3);
-  k.cyl(0.6, 0.62, 0.1, 0.02, 0.07, 0.12, 6, bag);
+  // a bag of rubbish in it, its knot showing over the rim
+  k.sphere(0, 0.62, 0, 0.27, bag, 1, 1.1, 1, 3);
+  k.cyl(0.03, 0.97, 0.02, 0.015, 0.05, 0.1, 6, bag);
   return k;
 }

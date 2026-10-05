@@ -88,7 +88,7 @@ export default class Dawn extends Scene {
     S.add(this.w);
     const w = this.w, set = w.set;
     // (cheaper: the facades switch to their simpler levels of detail sooner — the morning haze hides it)
-    w.city.traverse((o) => { if (o instanceof CityLOD) for (const l of o.levels) l.distance *= 0.55; });
+    w.city.traverse((o) => { if (o instanceof CityLOD) for (const l of o.levels) l.distance *= 0.42; });
     this.roof = set.heSpot.y;
     HE.y = SHE.y = this.roof;
     w.power = 1;
@@ -120,7 +120,7 @@ export default class Dawn extends Scene {
     this.g2 = new LinkGroup([rp!, mi!], row(this.b2, false, 6, 2), [gm[3]!, gm[0]!, gm[5]!, gm[1]!, gm[4]!, gm[2]!], 22, (k) => t2 + k * 0.1, tints.slice(3));
     S.add(this.g1, this.g2);
     this.chains = await CityChains.build(w, {
-      c: this.grip, R: 430, seed: 5, tTake: T.hand - 0.25, v: 55, tUp: T.glow2 - 0.1, vUp: 140,
+      c: this.grip, R: 340, seed: 5, tTake: T.hand - 0.25, v: 55, tUp: T.glow2 - 0.1, vUp: 140,
       avoid: (x, z) => Math.abs(x) < 7.5 && Math.abs(z) < 32,
       clips: ['77_02', '111_28', '140_06', '80_43', '141_16', '79_69', '113_04'],
       skip: [this.b1, this.b2],
@@ -315,22 +315,22 @@ export default class Dawn extends Scene {
     D.begin(cam);
     this.threads.begin();
     const crane = shot === 9 ? smoothstep(this.T.beautiful, this.T.beautiful + 2.5, t) : 0;
-    this.chains.draw(t, cam, D, this.pts, this.threads, {
+    if (false) this.chains.draw(t, cam, D, this.pts, this.threads, {
       k: 1, ptK: 2.6 - 1.4 * crane, near: shot === 9 ? lerp(70, 25, crane) : shot === 3 || shot === 6 ? 90 : 60, maxNear: shot === 3 || shot === 6 ? 24 : 14,
-      ptSize: lerp(0.7, 2.0, crane), threadK: 1 - 0.7 * crane,
+      ptSize: lerp(0.7, 1.6, crane), threadK: 1 - 0.75 * crane, far: crane,
     });
     D.end();
 
     // ---- the last stars of the night, birds, steam, mist ----
     // the close groups: the neighbours (his side), across the street (west of hers)
-    const gv1 = shot >= 3 && shot <= 6, gv2 = shot >= 4 && shot <= 6;
+    const gv1 = shot >= 3 && shot <= 5, gv2 = shot >= 4 && shot <= 5;
     this.g1.visible = gv1; this.g2.visible = gv2;
     if (gv1) this.g1.update(t);
     if (gv2) this.g2.update(t);
     this.threads.begin2();
     if (gv1) this.g1.thread(this.threads, t, 1, g, this.g2.grips[0] ?? null, 3.5);
     if (gv2) this.g2.thread(this.threads, t, 1, null, null);
-    this.threads.end();
+    this.threads.end(); this.pts.commit(0);
     this.stars.visible = t > T.broken - 0.6 && t < T.look + 0.6;
     if (this.stars.visible) this.stars.update(t, g, 600, T.broken - 0.1, 1.5, 0.6, col('white', 1.3), col('gold', 1.5).lerp(col('white', 1.5), 0.2), g.clone().add(V(-4, 0, 0)), 3.5);
     flock(this.birds, t, T.okay - 0.15, V(9, this.roof + 0.5, -16), V(1, 0.15, -0.2).normalize(), 3, 8);
@@ -338,7 +338,7 @@ export default class Dawn extends Scene {
     this.steam.update(t, 0.35, new THREE.Color(0.32, 0.2, 0.11));
     // (the mist only matters once we rise toward it)
     this.mist.visible = shot === 9 && t > this.T.beautiful - 0.2;
-    if (this.mist.visible) this.mist.update(t, 0.5 + 0.3 * crane, this.sun, new THREE.Color(1.0, 0.66, 0.46).multiplyScalar(0.95 + 0.3 * crane), sunC.clone().multiplyScalar(1.6));
+    if (this.mist.visible) this.mist.update(t, 0.55 + 0.4 * crane, this.sun, new THREE.Color(1.0, 0.66, 0.46).multiplyScalar(0.95 + 0.3 * crane), sunC.clone().multiplyScalar(1.6));
 
     // ---- light: their glow on the walls, the flash of "hand", the sun's glare, the flare into the drop ----
     this.flares.begin();
@@ -363,7 +363,7 @@ export default class Dawn extends Scene {
 
     S.render(this.ctx.renderer, this.grade.scene);
     // (shafts: strong in the wide shots, gentle close up and among the stars; only the sun and the sky make them)
-    const rays = [0.45, 0.8, 0.7, 1.1, 0.8, 0.8, 1.1, 0.35, 0.6, 0.9][shot]!;
+    const rays = [0.2, 0.8, 0.7, 1.1, 0.8, 0.8, 1.1, 0.35, 0.6, 0.9][shot]!;
     this.grade.render(this.ctx.renderer, cam, this.sun, out, { warm: 1, contrast: 1.18 - 0.1 * end, rays: rays + 0.6 * end, lift: 0.35, thr: shot === 9 || shot === 7 ? 2.2 : 1.1 });
     return {
       bloom: 0.85 + 0.4 * end, bloomThreshold: 0.8 - 0.2 * end, bloomRadius: 0.85, halation: 0.14, vignette: 0.45 - 0.2 * end, grain: 0.04, ca: 0.5,

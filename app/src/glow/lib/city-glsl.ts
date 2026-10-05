@@ -10,7 +10,6 @@ export function cityUniforms(o: { fog: number; fogColor: THREE.Color }) {
   const wave = () => new THREE.Vector4(0, 0, -1, 100);
   return {
     uTime: { value: 0 },
-    uDebug: { value: 0 },
     /** the City group's world position (shaders look the plan up in city-local coordinates) */
     uOrigin: { value: new THREE.Vector3() },
     // power
@@ -51,7 +50,6 @@ export type CityUniforms = ReturnType<typeof cityUniforms>;
 /** Uniform declarations + helpers: hashes, noise, power, light map, ambient, haze, environment. (Lean: the
  * cloud renderer, SwiftShader, runs every instruction of a shader for every pixel, branches or not.) */
 export const CITY_GLSL = /* glsl */ `
-  uniform float uDebug;
   uniform float uTime, uPow, uGlowK, wake, wakeR, wakeSoft, gold, goldR, gain, fogD, uHazeD, uHazeH, uMirrorOn;
   uniform vec4 uWave[4]; uniform vec4 uWaveK[4];
   uniform sampler2D uBlockMask; uniform vec4 uMaskRect;

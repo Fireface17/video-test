@@ -7,62 +7,8 @@
 import * as THREE from 'three';
 import { CITY_GLSL, FACADE_GLSL, FACADE_VS, OPEN_GLSL, ROOF_GLSL, type CityUniforms } from './city-glsl';
 
-// ---------------------------------------------------------------- merging
-
-/**
- * Expand an instanced geometry into one static geometry (every instance attribute repeated per vertex, same
- * names, so the same shaders work). SwiftShader (the cloud renderer) handles instanced draws instance by
- * instance, which is slow for thousands of small instances; merged buffers are drawn in one go.
- */
-export function mergeInstanced(g: THREE.InstancedBufferGeometry): THREE.BufferGeometry {
-  const n = g.instanceCount;
-  const out = new THREE.BufferGeometry();
-  const base = g.index;
-  const vCount = g.attributes.position!.count;
-  for (const [name, attr] of Object.entries(g.attributes)) {
-    const a = attr as THREE.BufferAttribute;
-    const isInst = (a as THREE.InstancedBufferAttribute).isInstancedBufferAttribute;
-    const sz = a.itemSize, src = a.array as Float32Array;
-    const dst = new Float32Array(n * vCount * sz);
-    if (isInst) {
-      for (let i = 0; i < n; i++) {
-        const off = i * vCount * sz;
-        for (let v = 0; v < vCount; v++) for (let c = 0; c < sz; c++) dst[off + v * sz + c] = src[i * sz + c]!;
-      }
-    } else {
-      for (let i = 0; i < n; i++) dst.set(src.subarray(0, vCount * sz), i * vCount * sz);
-    }
-    const ba = new THREE.BufferAttribute(dst, sz);
-    ba.onUpload(function (this: THREE.BufferAttribute) { (this as { array: unknown }).array = new Float32Array(0); });
-    out.setAttribute(name, ba);
-  }
-  if (base) {
-    const bi = base.array, m = bi.length;
-    const idx = n * vCount > 65535 ? new Uint32Array(n * m) : new Uint16Array(n * m);
-    for (let i = 0; i < n; i++) for (let k = 0; k < m; k++) idx[i * m + k] = bi[k]! + i * vCount;
-    out.setIndex(new THREE.BufferAttribute(idx, 1));
-  }
-  out.boundingSphere = g.boundingSphere?.clone() ?? null;
-  return out;
-}
-
 // ---------------------------------------------------------------- buildings
 
-/** A box without its bottom: x, z in [-0.5, 0.5], y in [0, 1]. */
-export function boxGeometry() {
-  const g = new THREE.BoxGeometry(1, 1, 1);
-  g.translate(0, 0.5, 0);
-  // drop the bottom face (group 3: -y)
-  const idx = g.index!.array as Uint16Array, keep: number[] = [];
-  for (let i = 0; i < idx.length; i += 3) {
-    const a = idx[i]!, ny = (g.attributes.normal as THREE.BufferAttribute).getY(a);
-    if (ny > -0.5) keep.push(idx[i]!, idx[i + 1]!, idx[i + 2]!);
-  }
-  g.setIndex(keep);
-  g.clearGroups();
-  g.deleteAttribute('uv');
-  return g;
-}
 
 const BUILDING_VS_HEAD = /* glsl */ `
   varying vec3 vW, vN; varying vec4 vF0, vF1, vF2, vF3;
@@ -240,15 +186,13 @@ export function buildingBatch(list: BInst[], mat: THREE.Material, origin: THREE.
   const hMax = list.reduce((m, b) => Math.max(m, b.y0 + b.h), 0);
   g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, hMax / 2, 0), Math.sqrt(r2) + hMax / 2 + 1);
   g.boundingBox = new THREE.Box3(new THREE.Vector3(-1e4, 0, -1e4), new THREE.Vector3(1e4, hMax, 1e4));
-  const m = new THREE.Mesh(MERGE ? mergeInstanced(g) : g, mat);
+  const m = new THREE.Mesh(g, mat);
   m.position.copy(origin);
   m.matrixAutoUpdate = false;
   m.updateMatrix();
   return m;
 }
 
-/** merge instances into static buffers (see mergeInstanced) */
-export const MERGE = false;
 
 /** A LOD whose level can be forced for every instance at once (the mirror pass draws the far level). */
 export class CityLOD extends THREE.LOD {
@@ -274,16 +218,6 @@ export function buildingMeshes(list: BInst[], origin: THREE.Vector3, facM: THREE
   return lod;
 }
 
-/** A depth-only copy of a building batch drawn first, so each pixel of the facades is shaded once. */
-export function depthPrepass(m: THREE.Mesh, mat: THREE.ShaderMaterial) {
-  const d = new THREE.ShaderMaterial({ vertexShader: mat.vertexShader, fragmentShader: 'void main(){ gl_FragColor = vec4(0.0); }', colorWrite: false });
-  const pm = new THREE.Mesh(m.geometry, d);
-  pm.position.copy(m.position);
-  pm.matrixAutoUpdate = false;
-  pm.updateMatrix();
-  pm.renderOrder = -5;
-  return pm;
-}
 
 // ---------------------------------------------------------------- rings (parapets, cornices)
 
@@ -518,12 +452,13 @@ export const CAR_PAINT_GLSL = /* glsl */ `
   }
 `;
 
-export function kitMaterial(U: CityUniforms, o: { side?: THREE.Side; streetK?: number; extraVert?: string; extraHead?: string } = {}) {
+export function kitMaterial(U: CityUniforms, o: { side?: THREE.Side; streetK?: number; extraVert?: string; extraHead?: string; cullNear?: THREE.IUniform<number> } = {}) {
   return new THREE.ShaderMaterial({
-    defines: { SIG_P: '30.0' },
-    uniforms: U as unknown as Record<string, THREE.IUniform>,
+    defines: { SIG_P: '30.0', ...(o.cullNear ? { CULL_NEAR: 1 } : {}) },
+    uniforms: { ...(U as unknown as Record<string, THREE.IUniform>), uCullNear: o.cullNear ?? { value: 0 } },
     side: o.side ?? THREE.FrontSide,
     vertexShader: /* glsl */ `
+      uniform float uCullNear;
       attribute vec4 aV; attribute vec3 aL;
       attribute vec4 iPos; attribute vec3 iScale; attribute vec4 iCol; attribute vec4 iX;
       varying vec3 vW, vN, vL, vLight; varying vec4 vV, vCol, vX; varying vec2 vFk; varying float vP, vOn;
@@ -546,6 +481,11 @@ export function kitMaterial(U: CityUniforms, o: { side?: THREE.Side; streetK?: n
         vOn = step(0.0, d) * mix(step(0.5, h12(vec2(icol.a * 99.0, floor(uTime * 15.0)))), 1.0, smoothstep(0.03, 0.1, d)) * (1.0 - 0.9 * uDawn) * (0.25 + 0.75 * smoothstep(0.0, 0.3, d));
         vFk = fogK(w.xyz);
         gl_Position = projectionMatrix * viewMatrix * w;
+        #ifdef CULL_NEAR
+          // (instances closer than uCullNear are drawn by a detailed copy instead)
+          vec3 iw = (modelMatrix * vec4(ip.xyz, 1.0)).xyz;
+          if (distance(iw.xz, cameraPosition.xz) < uCullNear) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+        #endif
       }`,
     fragmentShader: /* glsl */ `
       varying vec3 vW, vN, vL, vLight; varying vec4 vV, vCol, vX; varying vec2 vFk; varying float vP, vOn;

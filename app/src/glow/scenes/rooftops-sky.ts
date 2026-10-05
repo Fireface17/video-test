@@ -129,7 +129,7 @@ export class SkyShards extends THREE.Group {
     this.mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, fog: false }));
     this.mesh.frustumCulled = false;
     this.cracks = new GlowLines(ne * 4 + 8, 0.035);
-    this.glints = new GlowPoints(this.shards.length * 2 + 16, 1);
+    this.glints = new GlowPoints(this.shards.length * 6 + 16, 1);
     this.nEdges = ne;
     this.add(this.mesh, this.cracks, this.glints);
   }
@@ -144,7 +144,7 @@ export class SkyShards extends THREE.Group {
     let o = 0, ne = 0, ng = 0;
     const q = new THREE.Quaternion(), V = new THREE.Vector3(), N = new THREE.Vector3(), R = new THREE.Vector3(), view = new THREE.Vector3();
     const white = new THREE.Color(0.8, 0.9, 1.0), warm = new THREE.Color(1.0, 0.8, 0.5);
-    const sky = [0.004, 0.006, 0.014], edgeTint = [0.05, 0.11, 0.1];
+    const sky = [0.003, 0.0045, 0.01], edgeTint = [0.04, 0.1, 0.09];
     const fr: number[] = [], bk: number[] = [];
     // the light a glossy face of black glass shows: what it reflects (the sky, the city's glow, the moon)
     const shade = (n: THREE.Vector3, at: THREE.Vector3, out: number[], base: number[], k = 1) => {
@@ -154,7 +154,7 @@ export class SkyShards extends THREE.Group {
       const cosi = Math.max(0, -view.dot(N)), fres = 0.04 + 0.96 * Math.pow(1 - cosi, 5);
       const m = Math.max(0, R.dot(moonDir));
       const spec = Math.pow(m, 220) * 9 + Math.pow(m, 18) * 0.25;
-      const env = R.y < 0 ? [0.06, 0.04, 0.032] : [0.012 + 0.02 * (1 - R.y), 0.016 + 0.02 * (1 - R.y), 0.03];
+      const env = R.y < 0 ? [0.018, 0.014, 0.013] : [0.008 + 0.012 * (1 - R.y), 0.011 + 0.012 * (1 - R.y), 0.022];
       out[0] = (base[0]! + (env[0]! * fres + spec * 0.85) * k); out[1] = (base[1]! + (env[1]! * fres + spec * 0.9) * k); out[2] = (base[2]! + (env[2]! * fres + spec) * k);
       return spec;
     };
@@ -227,7 +227,8 @@ export class SkyShards extends THREE.Group {
           // refraction: each bit of a crack splits the moonlight into a different colour
           const hue = new THREE.Color().setHSL((h + 0.55) % 1, 0.55, 0.62);
           const sparkle = 0.35 + 0.65 * Math.pow(0.5 + 0.5 * Math.sin(t * 9 + h * 40), 3);
-          this.cracks.set(ne++, a, b, white.clone().lerp(hue, 0.6), edgeK * 0.5 * fr2 * sparkle * gain);
+          this.cracks.set(ne++, a, b, white.clone().lerp(hue, 0.6), edgeK * 0.85 * fr2 * sparkle * gain);
+          if (m === 1 && sparkle > 0.8 && ng < this.glints.n - 4) this.glints.set(ng++, a.x, a.y, a.z, white.clone().lerp(hue, 0.4), edgeK * 0.9 * sparkle * gain, 1.4);
         }
       }
       if (k > 0.05) this.glints.set(ng++, centre.x, centre.y, centre.z, warm, k * 0.5 * gain * fadeStar, 5 * shrink + 4 * clamp(rise / 3));

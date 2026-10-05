@@ -70,7 +70,7 @@ export default class Rooftops extends Scene {
   rain = new GlowPoints(110, 1);
   flash = new GlowPoints(4, 1);
   /** the ring of light that runs out over the street when their hands meet */
-  ring = new GlowLines(96, 0.12);
+  ring = new GlowLines(144, 0.06);
   L: Line[] = [];
   M = new THREE.Vector3();
   T: Record<string, number> = {};
@@ -372,13 +372,13 @@ export default class Rooftops extends Scene {
     this.flash.set(0, contact.x, contact.y, contact.z, col('white', 2).lerp(col('gold', 2), 0.45), fl * 2.4, 0.8 + 2.6 * fl);
     this.flash.set(2, contact.x, contact.y, contact.z, col('gold', 1).lerp(col('ember', 1), 0.2), fl * 0.8, 6 + 10 * (1 - fl));
     let nr = 0;
-    for (const [d0, amp] of [[0, 1], [0.22, 0.55]] as [number, number][]) {
+    for (const [d0, amp, dy] of [[0, 0.8, 0], [0.04, 0.3, 0.25], [0.24, 0.4, -0.1]] as [number, number, number][]) {
       const u = prog(t, T.hand + d0, T.hand + d0 + 1.6);
       if (u <= 0 || u >= 1) continue;
-      const rad = 0.4 + 26 * ease.outCubic(u), kk = amp * (1 - u) * (1 - u) * 1.4;
+      const rad = 0.4 + 26 * ease.outCubic(u), kk = amp * (1 - u) * (1 - u);
       for (let i = 0; i < 48; i++) {
         const a0 = (i / 48) * Math.PI * 2, a1 = ((i + 1) / 48) * Math.PI * 2;
-        const pa = V(contact.x + Math.cos(a0) * rad, contact.y - 0.2, contact.z + Math.sin(a0) * rad), pb = V(contact.x + Math.cos(a1) * rad, contact.y - 0.2, contact.z + Math.sin(a1) * rad);
+        const pa = V(contact.x + Math.cos(a0) * rad, contact.y - 0.2 + dy, contact.z + Math.sin(a0) * rad), pb = V(contact.x + Math.cos(a1) * rad, contact.y - 0.2 + dy, contact.z + Math.sin(a1) * rad);
         this.ring.set(nr++, pa, pb, col('gold', 1).lerp(col('white', 1), 0.3), kk);
       }
     }

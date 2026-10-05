@@ -311,6 +311,20 @@ export class City extends THREE.Group {
     roofT.build(this, 680 * lod, make, this.lods);
     this.midTiles = mid; this.nearTiles = near;
 
+    // ---- spires on the tallest towers (a stainless needle on art deco, a mast on glass), always drawn ----
+    const spires: KInst[] = [];
+    for (const b of plan.buildings) {
+      if (!b.spire) continue;
+      const t = b.tiers[b.tiers.length - 1]!;
+      spires.push({ x: t.cx, y: t.y0 + t.h, z: t.cz, yaw: 0, sx: b.style === ST.DECO ? 1 : 0.6, sy: b.spire, sz: b.style === ST.DECO ? 1 : 0.6, col: [1, 1, 1], k: 0 });
+    }
+    if (spires.length) {
+      const sg = new KitBuilder().cyl(0, 0.5, 0, 0.04, 1.6, 1, 8, [0.55, 0.55, 0.58, M.ALB], true).cyl(0, 0.02, 0, 1.9, 1.9, 0.04, 8, [0.3, 0.3, 0.32, M.ALB]).geometry();
+      const sm = kitBatch(sg, spires, kitMat, new THREE.Vector3(), 2);
+      sm.frustumCulled = false;
+      this.add(sm);
+    }
+
     // ---- ground, sidewalks, water ----
     // the street surface: a cheap version everywhere, a detailed patch that follows the camera at street level
     this.groundMat = groundMaterial(U, g.glsl(), river, false);
@@ -780,8 +794,11 @@ class Mirror {
     const clip = new THREE.Vector4(plane.normal.x, plane.normal.y, plane.normal.z, plane.constant);
     const pm = v.projectionMatrix.elements;
     const q4 = new THREE.Vector4((Math.sign(clip.x) + pm[8]!) / pm[0]!, (Math.sign(clip.y) + pm[9]!) / pm[5]!, -1, (1 + pm[10]!) / pm[14]!);
-    clip.multiplyScalar(2 / clip.dot(q4));
-    pm[2] = clip.x; pm[6] = clip.y; pm[10] = clip.z + 1 - 0.003; pm[14] = clip.w;
+    const den = clip.dot(q4);
+    if (Math.abs(den) > 1e-6 && Number.isFinite(den)) {
+      clip.multiplyScalar(2 / den);
+      pm[2] = clip.x; pm[6] = clip.y; pm[10] = clip.z + 1 - 0.003; pm[14] = clip.w;
+    }
     v.projectionMatrixInverse.copy(v.projectionMatrix).invert();
     this.busy = true;
     U.uMirrorOn.value = 0;

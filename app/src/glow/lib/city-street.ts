@@ -99,8 +99,8 @@ const WET_GLSL = /* glsl */ `
   vec3 wetReflection(vec3 W, vec2 nrm, float rough, float p) {
     vec4 mp = uMirrorMat * vec4(W, 1.0);
     vec2 uv = mp.xy / max(mp.w, 1e-3) + nrm * 0.012;
-    float s = rough * 0.02;
-    vec3 r = (texture2D(uMirror, uv + vec2(0.0, -s)).rgb + texture2D(uMirror, uv).rgb * 1.4 + texture2D(uMirror, uv + vec2(0.0, s)).rgb) / 3.4;
+    float s = rough * 0.028;
+    vec3 r = (texture2D(uMirror, uv + vec2(0.0, -s)).rgb + texture2D(uMirror, uv + vec2(0.0, -0.35 * s)).rgb * 1.2 + texture2D(uMirror, uv + vec2(0.0, 0.35 * s)).rgb * 1.2 + texture2D(uMirror, uv + vec2(0.0, s)).rgb) / 4.4;
     vec3 V = normalize(W - cameraPosition);
     vec3 alt = skyRefl(reflect(V, vec3(0.0, 1.0, 0.0))) * 0.6 + lightMap(W.xz) * p * 0.12;
     return mix(alt, r, uMirrorOn);
@@ -180,7 +180,8 @@ export function groundMaterial(U: CityUniforms, gridGlsl: string, riverX: number
           mirrorK = max(pud, gutter * 0.8);
           wet = clamp(0.45 + 0.55 * mirrorK - 0.15 * patchN, 0.0, 1.0);
           rough = mix(1.0, 0.15, mirrorK);
-          ripple = (vec2(vnoise(xz * 2.3 + uTime * 0.3), vnoise(xz * 2.3 + 17.0 - uTime * 0.25)) - 0.5) * (1.0 - mirrorK * 0.8);
+          // ripples only close up (further away they alias into bands); there the smear is vertical streaks
+          ripple = (vec2(vnoise(xz * 2.3 + uTime * 0.3), vnoise(xz * 2.3 + 17.0 - uTime * 0.25)) - 0.5) * (1.0 - mirrorK * 0.8) * smoothstep(0.06, 0.015, px) * 0.6;
         #endif
         alb = mix(alb, mix(vec3(0.6, 0.6, 0.58), vec3(0.55, 0.4, 0.08), yellow), mk);
         alb = mix(vec3(0.035), alb, road);

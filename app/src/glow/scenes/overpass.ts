@@ -199,7 +199,8 @@ export default class Overpass extends Scene {
     this.lantern.update();
 
     // ---- the morning coming ----
-    const dawn = 0.04 + 0.08 * clamp((t - this.ctx.start) / (T.end - this.ctx.start));
+    // (the city's own dawn brightens the whole sky: keep it night, the dawn comes up in the east band only)
+    const dawn = 0;
     this.city.dawn = dawn;
     this.city.power.level = 1;
     this.city.windowGain = 0.85;
@@ -216,7 +217,7 @@ export default class Overpass extends Scene {
     this.camera(t, mid);
     // the east starting to lighten behind them; the river's reflection only in the shots that look at it
     this.dawnBand.position.copy(S.cam.position);
-    this.dawnBand.k = 0.55 + 0.45 * clamp((t - this.ctx.start) / (T.end - this.ctx.start));
+    this.dawnBand.k = 0.9 + 0.8 * clamp((t - this.ctx.start) / (T.end - this.ctx.start));
     this.city.mirrorOn = t >= D[3]! && t < D[6]!;
     this.city.setGlows([
       { pos: he.position.clone(), color: heColor().multiplyScalar(0.14), radius: 3 },
@@ -253,16 +254,16 @@ export default class Overpass extends Scene {
       const k = ease.inOutQuad(clamp((t - bar(3)) / (bar(4) - bar(3))));
       // (from over the railing, looking back at the hands and the lantern, the river and the paling sky behind them)
       const h = mid.clone().addScaledVector(this.F, 0.26).setY(this.deckY + 1.1);
-      pos = h.clone().addScaledVector(this.F, 1.25 - 0.15 * k).addScaledVector(this.R, -0.3 + 0.15 * k).add(V(0, 0.3, 0));
-      tgt = h.clone().add(V(0, -0.06, 0));
-      fov = 30 - 3 * k;
+      // (from beyond the edge, a little below the hands: the lantern against the sky over the river, paling)
+      pos = h.clone().addScaledVector(this.F, 1.35 - 0.15 * k).addScaledVector(this.R, -0.3 + 0.15 * k).add(V(0, -0.45, 0));
+      tgt = h.clone().add(V(0, 0.05, 0));
+      fov = 32 - 3 * k;
     } else if (t < bar(6)) {
-      // together at the railing, the camera circling slowly from behind them round to their side
+      // together at the railing, seen from beyond the edge: the deck, the river and the dawn coming up behind them
       const k = ease.inOutCubic(clamp((t - bar(4)) / (bar(6) - bar(4))));
-      const a = Math.PI * (0.95 - 0.55 * k), Rr = 4.4 - 0.8 * k;
-      pos = ground.clone().addScaledVector(this.F, Math.cos(a) * Rr).addScaledVector(this.R, Math.sin(a) * Rr).add(V(0, 1.75 + 0.4 * Math.sin(k * 3), 0));
-      tgt = ground.clone().addScaledVector(this.F, 1.5).add(V(0, 1.2, 0));
-      fov = 44;
+      pos = ground.clone().addScaledVector(this.F, 4.2 - 0.8 * k).addScaledVector(this.R, -1.6 + 3.0 * k).add(V(0, 0.5 + 0.3 * k, 0));
+      tgt = ground.clone().addScaledVector(this.F, -2).add(V(0, 1.8, 0));
+      fov = 46;
     } else {
       // behind them, low: they look at each other, take hands, and step up onto the edge, the city before them
       const k = ease.inOutQuad(clamp((t - bar(6)) / (T.end - bar(6))));

@@ -229,7 +229,7 @@ export class CityChains {
    * the threads through joined hands. `k` overall brightness, `goldK` how far everyone has turned gold (besides
    * their own link).
    */
-  draw(t: number, cam: THREE.PerspectiveCamera, D: Stardust, pts: GlowPoints, th: Threads, o: { k: number; ptK?: number; near: number; maxNear?: number; ptSize?: number; threadK?: number; dustGain?: number }) {
+  draw(t: number, cam: THREE.PerspectiveCamera, D: Stardust, pts: GlowPoints, th: Threads, o: { k: number; ptK?: number; near: number; maxNear?: number; ptSize?: number; threadK?: number; dustGain?: number; far?: number }) {
     this.frame++;
     cam.updateMatrixWorld();
     const fr = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
@@ -283,7 +283,8 @@ export class CityChains {
     pts.commit(np);
     // the threads through the joined hands (each grows from the earlier-linked side)
     const tk = o.threadK ?? 1;
-    const g = this.gold, ga = new THREE.Vector3(), gb = new THREE.Vector3();
+    // (seen from high above, the threads are deep gold filaments, not white strokes)
+    const g = this.gold.clone().lerp(col('gold', 0.9).lerp(col('ember', 0.9), 0.25), o.far ?? 0), ga = new THREE.Vector3(), gb = new THREE.Vector3();
     for (const ch of this.chains) {
       for (let k = 0; k + 1 < ch.people.length; k++) {
         const i = ch.people[k]!, j = ch.people[k + 1]!;

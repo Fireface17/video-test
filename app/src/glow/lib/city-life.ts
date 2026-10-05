@@ -318,8 +318,9 @@ function propGeometry(kind: number) {
   } else if (kind === 2) {
     k.cyl(0, 0.45, 0, 0.32, 0.27, 0.9, 7, [0.06, 0.12, 0.07, M.BARS], true);
     k.cyl(0, 0.04, 0, 0.27, 0.27, 0.06, 7, [0.06, 0.12, 0.07, M.ALB]);
-    k.sphere(0.55, 0.32, 0.1, 0.38, [0.015, 0.015, 0.018, M.GLASS], 1, 0.85, 1, 0);
-    k.sphere(0.9, 0.26, -0.25, 0.3, [0.015, 0.015, 0.018, M.GLASS], 1, 0.9, 1, 0);
+    k.sphere(0.55, 0.3, 0.1, 0.38, [0.012, 0.012, 0.014, M.GLASS], 1, 0.8, 1, 1, 0.25);
+    k.sphere(0.9, 0.25, -0.25, 0.3, [0.012, 0.012, 0.014, M.GLASS], 1, 0.85, 1, 1, 0.25);
+    k.sphere(0.72, 0.62, -0.05, 0.22, [0.3, 0.3, 0.32, M.GLASS], 1, 0.9, 1, 1, 0.3);
   } else if (kind === 3) {
     k.box(0, 0.55, 0, 0.48, 1.1, 0.5, [0.04, 0.12, 0.35, M.ALB]);
     k.cyl(0, 1.1, 0, 0.25, 0.25, 0.48, 8, [0.04, 0.12, 0.35, M.ALB], false, 0, Math.PI / 2);
@@ -573,6 +574,10 @@ export class CityLife extends THREE.Group {
   private carMeshes: { type: number; list: MovingCar[]; near: CarBuf; far: CarBuf }[] = [];
   /** moving cars closer than this get the detailed body */
   carDetail = 110;
+  /** parked cars closer than this (m) get the detailed body */
+  parkedNearR: THREE.IUniform<number> = { value: 90 };
+  private parkedGrid = new Map<string, { x: number; z: number; yaw: number; type: number; col: [number, number, number] }[]>();
+  private parkedNear: { type: number; mesh: THREE.Mesh; iPos: THREE.InstancedBufferAttribute; iCol: THREE.InstancedBufferAttribute; max: number }[] = [];
   private lights!: THREE.Points;
   private lightPos!: THREE.BufferAttribute;
   private lightL!: THREE.BufferAttribute;
@@ -647,18 +652,37 @@ export class CityLife extends THREE.Group {
     for (const k of [0, 2, 3, 4, 5, 6, 7, 8]) geos['prop' + k] = propGeometry(k);
     const dists: Record<string, number> = { awning: 520, tree: 520, signal: 650 };
     const detail: Record<string, THREE.BufferGeometry> = { car0: carDetailGeometry(0), car1: carDetailGeometry(1), car3: carDetailGeometry(3) };
+    const kitCull = kitMaterial(U, { side: THREE.DoubleSide, cullNear: this.parkedNearR });
+    // the detailed parked cars near the camera: a grid to find them, a dynamic batch per type
+    for (const p of plan.parked) {
+      const type = p.type === 1 ? 1 : p.type === 3 ? 3 : 0;
+      const key = `${Math.floor(p.x / 50)},${Math.floor(p.z / 50)}`;
+      let cell = this.parkedGrid.get(key);
+      if (!cell) this.parkedGrid.set(key, (cell = []));
+      cell.push({ x: p.x, z: p.z, yaw: Math.atan2(p.dx, p.dz), type, col: CAR_COLORS[p.color % CAR_COLORS.length]! });
+    }
+    for (const type of [0, 1, 3]) {
+      const max = 600, base = detail['car' + type]!;
+      const geo = new THREE.InstancedBufferGeometry();
+      geo.index = base.index;
+      for (const k of ['position', 'normal', 'aV', 'aL']) geo.setAttribute(k, base.attributes[k]!);
+      const iPos = new THREE.InstancedBufferAttribute(new Float32Array(max * 4), 4).setUsage(THREE.DynamicDrawUsage);
+      const iCol = new THREE.InstancedBufferAttribute(new Float32Array(max * 4), 4).setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute('iPos', iPos); geo.setAttribute('iCol', iCol);
+      geo.setAttribute('iScale', new THREE.InstancedBufferAttribute(new Float32Array(max * 3).fill(1), 3));
+      geo.setAttribute('iX', new THREE.InstancedBufferAttribute(new Float32Array(max * 4), 4));
+      geo.instanceCount = 0;
+      const m = new THREE.Mesh(geo, kitM2);
+      m.frustumCulled = false;
+      this.add(m);
+      this.mirrorHide.push(m);
+      this.parkedNear.push({ type, mesh: m, iPos, iCol, max });
+    }
     const make = (kind: string, list: KInst[], origin: THREE.Vector3) => {
       const geo = geos[kind];
       if (!geo) return null;
-      if (detail[kind]) {
-        // parked cars: the detailed body close up, the cheap one further away
-        const l = new THREE.LOD();
-        l.position.copy(origin);
-        const a = kitBatch(detail[kind]!, list, kitM2, origin, 6), b = kitBatch(geo, list, kitM2, origin, 6);
-        for (const m of [a, b]) { m.position.set(0, 0, 0); m.updateMatrix(); }
-        l.addLevel(a, 0); l.addLevel(b, 95 * lod);
-        return l;
-      }
+      // parked cars: the cheap body here (hidden close to the camera, where update() draws the detailed one)
+      if (detail[kind]) return kitBatch(geo, list, kitCull, origin, 6);
       return kitBatch(geo, list, kind === 'awning' || kind === 'shed' || kind.startsWith('tree') || kind.startsWith('prop') || kind.startsWith('car') ? kitM2 : kitM, origin, kind === 'signal' ? 8 : 6);
     };
     near.build(this, 430 * lod, make, this.lods);
@@ -925,6 +949,25 @@ export class CityLife extends THREE.Group {
     }
     this.lightPos.needsUpdate = this.lightL.needsUpdate = true;
     this.lights.geometry.setDrawRange(0, nl);
+    // detailed parked cars round the camera (the cheap ones hide themselves within the same radius)
+    const R = this.parkedNearR.value, cnt: Record<number, number> = { 0: 0, 1: 0, 3: 0 };
+    const pn = Object.fromEntries(this.parkedNear.map((q) => [q.type, q]));
+    for (let gx = Math.floor((cx - R) / 50); gx <= Math.floor((cx + R) / 50); gx++) for (let gz = Math.floor((cz - R) / 50); gz <= Math.floor((cz + R) / 50); gz++) {
+      for (const c of this.parkedGrid.get(`${gx},${gz}`) ?? []) {
+        if ((c.x - cx) ** 2 + (c.z - cz) ** 2 >= R * R) continue;
+        const q = pn[c.type]!, n = cnt[c.type]!;
+        if (n >= q.max) continue;
+        (q.iPos.array as Float32Array).set([c.x, 0, c.z, c.yaw], n * 4);
+        (q.iCol.array as Float32Array).set([c.col[0], c.col[1], c.col[2], 0], n * 4);
+        cnt[c.type] = n + 1;
+      }
+    }
+    for (const q of this.parkedNear) {
+      const n = cnt[q.type]!;
+      (q.mesh.geometry as THREE.InstancedBufferGeometry).instanceCount = n;
+      q.iPos.needsUpdate = q.iCol.needsUpdate = true;
+      q.iPos.addUpdateRange(0, n * 4); q.iCol.addUpdateRange(0, n * 4);
+    }
   }
 }
 
