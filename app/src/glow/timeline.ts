@@ -70,8 +70,9 @@ export function makeTimeline(ly: Lyrics, au: AudioData): TimelineEntry[] {
     E('chorus2', 'run', b.chorus2, b.break2, X('whip', 0.4, { dir: [1, 0] })),
     // the chorus's last light settles: a slow dissolve into the quiet blue hour on the overpass
     E('break2', 'overpass', b.break2, b.bridge, X('crossfade', 0.9)),
-    // up and through, into space
-    E('bridge', 'fall', b.bridge, b.chorus3, X('zoom', 0.9, { centre: [0.5, 0.62], color: lin('blue', 1.2) })),
+    // the bridge goes on from where the break leaves them, on the edge hand in hand: a hard cut on the beat to the
+    // reverse angle, and they jump
+    E('bridge', 'fall', b.bridge, b.chorus3),
     // a golden star opens onto the final chorus: dawn on the rooftop, the whole city takes hands
     E('chorus3', 'dawn', b.chorus3, b.drop3, X('iris', 0.75, { color: lin('gold', 1.6), centre: [0.5, 0.5], seed: 0.3 })),
     E('drop3', 'cosmos', b.drop3, b.outro, { params: { n: 3 }, ...X('shatter', 0.9, { color: lin('gold', 1.4), centre: [0.5, 0.42] }) }),
