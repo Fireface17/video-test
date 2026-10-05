@@ -133,6 +133,8 @@ export default class Fall extends Scene {
   dustP!: Float32Array; // x, z, d, seed
   birds!: Pigeons;
   deck!: DeckDress;
+  /** Steam rising from a manhole on the avenue below them, lit by the street. */
+  steam = new GlowPoints(48, 1.0);
   prints = new Handprints(160);
   drift!: Drifters;
   ribbons!: Ribbons;
@@ -213,6 +215,8 @@ export default class Fall extends Scene {
     }
     this.birds = new Pigeons(birds, col('#9fb4e0', 1));
     this.world.add(this.birds);
+    this.steam.renderOrder = 2;
+    this.world.add(this.steam);
 
     // ---- the fall: distance table (D(start) = 0) ----
     const dt = 1 / 200;
@@ -533,6 +537,19 @@ export default class Fall extends Scene {
       this.birds.update(t);
     }
     this.birds.visible = t < T.dis1 - 0.25;
+    // steam from the manhole on the avenue below: soft, rising, curling, lit warm by the street (gone with the power)
+    {
+      const P0 = V(this.railX - 9.5, 0.1, 124.5), lit = col('#ffc890', 1).lerp(col('#cfd8ff', 1), 0.3);
+      const fr = this.front(t), pw = fr > 0 ? smoothstep(0, 25, Math.hypot(P0.x - (this.O0.x - 1.6), P0.z - this.O0.z) - fr) : 1;
+      for (let i = 0; i < this.steam.n; i++) {
+        const life = 2.6, ph = (i / this.steam.n) * life, age = ((t + ph) % life), u = age / life;
+        const sd = (i * 0.618) % 1;
+        const p = P0.clone().add(V(noise1(t * 0.5 + i, 7) * 0.8 * u + Math.sin(u * 5 + i) * 0.25 * u, u * 5.5, noise1(t * 0.4 + i, 9) * 0.8 * u));
+        this.steam.set(i, p.x, p.y, p.z, lit, 0.045 * Math.sin(Math.PI * u) * pw * (0.6 + 0.4 * sd), 0.6 + 2.2 * u);
+      }
+      this.steam.commit();
+      this.steam.visible = cityOn;
+    }
     this.prints.visible = this.deck.visible = cityOn;
     // the front of the dissolve, a ring of light running out across the streets from under them
     this.ring.visible = cityOn && t > T.dis0;
