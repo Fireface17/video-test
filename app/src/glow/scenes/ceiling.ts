@@ -377,12 +377,14 @@ export default class Ceiling extends Scene {
     this.body.reveal = draw * this.body.total;
     this.join.reveal = prog(t, T9 - 0.12, T9) * this.join.total;
     // (an undrawn trail would still show its glowing tip at the start of the path)
-    this.body.visible = this.body.reveal > 0;
-    this.join.visible = this.join.reveal > 0;
     const joinFlash = pulse(t, T9, 0.3);
-    this.join.gain = 1 + joinFlash * 2;
-    const fillK = ease.inOutCubic(prog(t, T9 + 0.15, T9 + 1.6));
-    this.body.gain = (1 + 0.5 * pulse(t, T9, 0.4)) * (1 - 0.75 * fillK);
+    const fillK = ease.inOutCubic(prog(t, T9 + 0.05, T9 + 1.4));
+    // as the stardust bodies fill in, the pen's lines go (quicker): people, not a stick drawing
+    const lineK = ease.inOutQuad(prog(t, T9 + 0.1, T9 + 0.9));
+    this.body.gain = (1 + 0.5 * pulse(t, T9, 0.4)) * (1 - lineK);
+    this.join.gain = (1 + joinFlash * 2) * (1 - 0.7 * lineK);
+    this.body.visible = this.body.reveal > 0 && lineK < 1;
+    this.join.visible = this.join.reveal > 0;
     let pi = 0;
     if (draw > 0 && draw < 1) {
       const p = this.body.pointAt(this.body.reveal);
@@ -395,7 +397,7 @@ export default class Ceiling extends Scene {
     if (joinFlash > 0.01) { const m = this.join.pointAt(this.join.total / 2); this.pen.set(pi++, m.x, m.y, 0.002, col('gold', 3), joinFlash, 6); }
     this.pen.commit(pi);
     // after the dissolve the stickers live on as stars of the constellation, which recedes into the sky —
-    // and fills in as two people of stardust (him blue, her rose); the pen's lines fade to a faint drawing
+    // and fills in as two people of stardust (him blue, her rose); the pen's lines fade out
     this.setConStars(t, prog(t, T9 + 0.2, T9 + 0.9));
     const fill = fillK;
     if (this.dust) {
