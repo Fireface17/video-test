@@ -107,7 +107,6 @@ export default class Train extends Scene {
   bars: number[] = [];
 
   override async init() {
-    (globalThis as { __train?: Train }).__train = this; // TEMP profiling
     const { lyrics, audio } = this.ctx;
     const S = this.st.scene, U = this.U;
     this.st.bg.copy(col('night'));

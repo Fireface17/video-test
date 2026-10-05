@@ -55,7 +55,7 @@ export function carDetailGeometry(type: number) {
   const cabin = (z: number) => z < s.cowl - 0.02 && z > s.tailTop + 0.02;
   const glassTop = (z: number) => (z < s.cowl - 0.05 && z > s.wsTop + 0.03) || (z < s.roofEnd - 0.03 && z > s.tailTop + 0.05);
   // ---- stations along z, a section of 13 points at each ----
-  const NZ = 30, zs: number[] = [];
+  const NZ = 16, zs: number[] = [];
   for (let i = 0; i <= NZ; i++) { const u = i / NZ; zs.push(-H + s.L * (0.5 - 0.5 * Math.cos(u * Math.PI))); }
   for (const extra of [s.cowl, s.wsTop, s.roofEnd, s.tailTop, s.wheelZ - s.wheelR - 0.1, s.wheelZ + s.wheelR + 0.1, -s.wheelZ - s.wheelR - 0.1, -s.wheelZ + s.wheelR + 0.1]) zs.push(extra);
   zs.sort((a, b) => a - b);
@@ -122,9 +122,15 @@ export function carDetailGeometry(type: number) {
   // wheels: tyres, rims
   for (const wz of [s.wheelZ, -s.wheelZ]) for (const sx of [-1, 1]) {
     const x = sx * (halfW(wz) - 0.13);
-    k.cyl(x, s.wheelR, wz, s.wheelR, s.wheelR, 0.23, 12, dark, false, 0, Math.PI / 2);
-    k.cyl(x + sx * 0.118, s.wheelR, wz, s.wheelR * 0.62, s.wheelR * 0.62, 0.012, 10, [0.32, 0.32, 0.34, M.ALB], false, 0, Math.PI / 2);
-    k.cyl(x + sx * 0.122, s.wheelR, wz, s.wheelR * 0.18, s.wheelR * 0.18, 0.012, 6, [0.1, 0.1, 0.11, M.ALB], false, 0, Math.PI / 2);
+    k.cyl(x, s.wheelR, wz, s.wheelR, s.wheelR, 0.23, 10, dark, true, 0, Math.PI / 2);
+    // the tyre's sidewall and the rim: discs facing out
+    const disc = (r: number, dx: number, v: number[]) => {
+      const m = new THREE.Matrix4().compose(new THREE.Vector3(x + sx * dx, s.wheelR, wz), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, (sx * Math.PI) / 2, 0)), new THREE.Vector3(r, r, 1));
+      k.add(new THREE.CircleGeometry(1, 10), m, v);
+    };
+    disc(s.wheelR, 0.116, dark);
+    disc(s.wheelR * 0.62, 0.12, [0.32, 0.32, 0.34, M.ALB]);
+    disc(s.wheelR * 0.2, 0.124, [0.08, 0.08, 0.09, M.ALB]);
   }
   // bumpers, grille, plates
   const fz = H + 0.02, bz = -H - 0.02;

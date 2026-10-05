@@ -572,7 +572,7 @@ export class CityLife extends THREE.Group {
   carDist = 520;
   private carMeshes: { type: number; list: MovingCar[]; near: CarBuf; far: CarBuf }[] = [];
   /** moving cars closer than this get the detailed body */
-  carDetail = 130;
+  carDetail = 110;
   private lights!: THREE.Points;
   private lightPos!: THREE.BufferAttribute;
   private lightL!: THREE.BufferAttribute;
@@ -656,7 +656,7 @@ export class CityLife extends THREE.Group {
         l.position.copy(origin);
         const a = kitBatch(detail[kind]!, list, kitM2, origin, 6), b = kitBatch(geo, list, kitM2, origin, 6);
         for (const m of [a, b]) { m.position.set(0, 0, 0); m.updateMatrix(); }
-        l.addLevel(a, 0); l.addLevel(b, 140 * lod);
+        l.addLevel(a, 0); l.addLevel(b, 95 * lod);
         return l;
       }
       return kitBatch(geo, list, kind === 'awning' || kind === 'shed' || kind.startsWith('tree') || kind.startsWith('prop') || kind.startsWith('car') ? kitM2 : kitM, origin, kind === 'signal' ? 8 : 6);
