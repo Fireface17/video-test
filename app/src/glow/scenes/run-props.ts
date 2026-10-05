@@ -354,16 +354,17 @@ export class Splashes extends GlowPoints {
   }
 
   update(t: number) {
+    // (only the hits of the last 0.55 s are drawn, packed at the front)
     let j = 0;
     this.hits.forEach((h, hi) => {
       const a = t - h.t;
-      for (let i = 0; i < this.per; i++, j++) {
-        if (a < 0 || a > 0.55) { this.hide(j); continue; }
+      if (a < 0 || a > 0.55) return;
+      for (let i = 0; i < this.per; i++) {
         const r1 = hash(hi, i, 1), r2 = hash(hi, i, 2), r3 = hash(hi, i, 3);
         const ang = r1 * Math.PI * 2, sp = 0.6 + r2 * 1.3, up = 1.2 + r3 * 1.6;
         const x = h.p.x + Math.cos(ang) * sp * a, z = h.p.z + Math.sin(ang) * sp * a, y = h.p.y + 0.02 + up * a - 4.9 * a * a;
-        if (y < h.p.y) { this.hide(j); continue; }
-        this.set(j, x, y, z, h.c, h.k * (1 - a / 0.55), 0.6 + r2);
+        if (y < h.p.y) continue;
+        this.set(j++, x, y, z, h.c, h.k * (1 - a / 0.55), 0.6 + r2);
       }
     });
     this.commit(j);

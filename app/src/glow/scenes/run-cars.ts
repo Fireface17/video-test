@@ -1,6 +1,7 @@
-// Cars (and a trash can) near the camera in the street scenes, rounded and real instead of the city's boxy
-// stand-ins: the city's parked cars in the places our cameras go are hidden and replaced by these (same spot,
-// heading, paint), and the moving traffic near the lens is redrawn with them every frame. A car is a side profile
+// Cars (and a litter basket) near the camera in the street scenes, rounded and real instead of boxy stand-ins:
+// in the places our cameras go the city's instances can be hidden and replaced by these (same spot, heading,
+// paint), the moving traffic near the lens redrawn with them every frame. (The city's own near cars are detailed
+// now, so the scenes replace only the litter baskets, whose bags were faceted; `cars: true` does the cars too.) A car is a side profile
 // extruded across with rounded edges (wheel arches cut as arcs), a narrower glass cabin, roof and pillars, tyres
 // with rims, bumpers, a chrome belt line, door seams, mirrors, head/tail lights (lit by the instance's k).
 import * as THREE from 'three';
@@ -121,21 +122,32 @@ interface MovingBuf { mesh: THREE.Mesh; iPos: THREE.InstancedBufferAttribute; iC
  */
 export class StreetCars extends THREE.Group {
   private moving: { type: number; buf: MovingBuf; cap: number }[] = [];
+  near: number;
 
-  constructor(public city: City, zones: [number, number, number][], public near = 45) {
+  /** `cars`: also replace the city's cars (off now that the city's own near cars are detailed): only the bins. */
+  constructor(public city: City, zones: [number, number, number][], public o: { cars?: boolean; near?: number } = {}) {
     super();
+    this.near = o.near ?? 45;
     const plan = city.plan, mat = cityKitMat(city);
     const lists: Record<number, { x: number; y: number; z: number; yaw: number; sx: number; sy: number; sz: number; col: [number, number, number]; k: number }[]> = { 0: [], 1: [], 2: [], 3: [] };
     const hide: [number, number, number][] = [];
-    for (const p of plan.parked) {
+    for (const p of o.cars ? plan.parked : []) {
       if (!zones.some(([x, z, r]) => (p.x - x) ** 2 + (p.z - z) ** 2 < r * r)) continue;
       const paint = PAINTS[p.color % PAINTS.length]!, yellow = paint[0] > 0.6 && paint[2] < 0.1;
       const type = p.type === 1 ? 1 : p.type === 3 ? 3 : yellow ? 2 : 0;
       lists[type]!.push({ x: p.x, y: 0, z: p.z, yaw: Math.atan2(-p.dz, p.dx), sx: 1, sy: 1, sz: 1, col: yellow ? TAXI_PAINT : paint, k: 0 });
       hide.push([p.x, 0, p.z]);
     }
+    // the litter baskets (and their bags) too
+    const bins: { x: number; y: number; z: number; yaw: number; sx: number; sy: number; sz: number; col: [number, number, number]; k: number }[] = [];
+    for (const p of plan.props) {
+      if (p.kind !== 2 || !zones.some(([x, z, r]) => (p.x - x) ** 2 + (p.z - z) ** 2 < r * r)) continue;
+      hide.push([p.x, 0.15, p.z]);
+      bins.push({ x: p.x, y: 0.15, z: p.z, yaw: p.rot, sx: 1, sy: 1, sz: 1, col: [1, 1, 1], k: 0 });
+    }
     hideCityInstances(city, hide);
-    for (const t of [0, 1, 2, 3] as const) {
+    if (bins.length) { const b = kitBatch(trashKit().geometry(), bins, mat, new THREE.Vector3(0, 0, 0), 3); b.frustumCulled = false; this.add(b); }
+    for (const t of o.cars ? [0, 1, 2, 3] as const : []) {
       const geo = carKit(t).geometry();
       if (lists[t]!.length) {
         const b = kitBatch(geo, lists[t]!, mat, new THREE.Vector3(0, 0, 0), 6);
@@ -158,6 +170,7 @@ export class StreetCars extends THREE.Group {
 
   /** After city.update: take the moving cars near the camera out of the city's buffers and draw them rounded. */
   update(cam: THREE.Vector3) {
+    if (!this.moving.length) return;
     // (lib/city-life.ts keeps the traffic in `carMeshes`: near/far buffers of poses; if that changes, we do nothing)
     const life = this.city.life as unknown as { carMeshes?: { type: number; near: MovingBuf; far: MovingBuf }[] };
     const cms = life.carMeshes;

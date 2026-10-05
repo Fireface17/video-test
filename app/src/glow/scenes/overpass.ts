@@ -21,7 +21,7 @@ import { GlowPoints } from '../lib/points';
 import { loadSpan, type CycleMotion } from './run-motion';
 import { Pigeons, mirrorOnly, placeKit, shiftRender } from './run-props';
 import { Handprints } from './run-prints';
-import { Breath, Tug, walkwayKit } from './overpass-props';
+import { Breath, DawnBand, Tug, walkwayKit } from './overpass-props';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const UP = V(0, 1, 0);
@@ -39,6 +39,7 @@ export default class Overpass extends Scene {
   star = new StarSticker(0.06);
   lantern = new PaperLantern();
   breath = new Breath(260);
+  dawnBand = new DawnBand();
   prints = new Handprints(160);
   tug!: Tug;
   birds!: Pigeons;
@@ -110,8 +111,8 @@ export default class Overpass extends Scene {
     const birds: { p: THREE.Vector3; t0: number; away: THREE.Vector3 }[] = [];
     for (let i = 0; i < 16; i++) birds.push({ p: V(this.railX + 0.05 + r() * 0.2, this.deckY + 1.15 + r() * 0.05, 126 + r() * 10), t0: D[4]! + 0.4 + r() * 0.5, away: V(-1 - r() * 0.5, 0, -0.4 + r() * 0.6) });
     this.birds = new Pigeons(birds, col('#9fb4e0', 1));
-    this.world.add(this.birds, this.siren);
-    mirrorOnly(this.city, [this.breath, this.birds, this.siren, this.prints]);
+    this.world.add(this.birds, this.siren, this.dawnBand);
+    mirrorOnly(this.city, [this.breath, this.birds, this.siren, this.prints, this.dawnBand]);
   }
 
   /** A point in their frame: `side` to his right (toward her), `fwd` toward the railing, `up`. */
@@ -213,6 +214,10 @@ export default class Overpass extends Scene {
     this.lamps.commit(this.lampPos.length);
 
     this.camera(t, mid);
+    // the east starting to lighten behind them; the river's reflection only in the shots that look at it
+    this.dawnBand.position.copy(S.cam.position);
+    this.dawnBand.k = 0.55 + 0.45 * clamp((t - this.ctx.start) / (T.end - this.ctx.start));
+    this.city.mirrorOn = t >= D[3]! && t < D[6]!;
     this.city.setGlows([
       { pos: he.position.clone(), color: heColor().multiplyScalar(0.14), radius: 3 },
       { pos: she.position.clone(), color: sheColor().multiplyScalar(0.14), radius: 3 },

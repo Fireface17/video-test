@@ -21,6 +21,7 @@ import { Crowd, type Person } from '../lib/crowd';
 import { GlowPoints } from '../lib/points';
 import { Beams, Lifts, SpiralGlow, Veins, type LiftSource } from './citydrop-fx';
 import { mirrorOnly, shiftRender } from './run-props';
+import { cullOffscreen } from './run-people';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 /** The street: wide street 6 (z = 520) between avenues −3 (x = −625) and −2 (x = −375). */
@@ -244,6 +245,9 @@ export default class CityDrop extends Scene {
     this.camera(bi, u, t);
     this.lifts.update(t, S.cam.position);
     this.spiral.update(t, smoothstep(this.T.lift + 1.6, this.T.lift + 3.6, t) * 0.3, this.lifts.spin);
+    cullOffscreen(this.crowd.people, S.cam);
+    // (the wet street's reflection only where the street is in the picture)
+    this.city.mirrorOn = bi === 0 || bi === 1 || bi === 5;
     this.crowd.update(t, S.cam);
     // the people light the walls around them (the nearest)
     const gl = this.dancers.map((d) => ({ d: d.chest.distanceToSquared(S.cam.position), pos: d.chest, color: d.p.color.clone().multiplyScalar(0.09), radius: 3 })).sort((a, b) => a.d - b.d).slice(0, 11);

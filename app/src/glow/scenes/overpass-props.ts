@@ -105,3 +105,37 @@ export class Tug extends THREE.Group {
     L.commit(j);
   }
 }
+
+/**
+ * The night ending: a pale band along the eastern horizon (behind the river) and a lift of deep blue above it,
+ * growing with `k` (0..1). A big dome around the camera (keep its centre on the camera), additive over the sky,
+ * hidden by anything in front of it.
+ */
+export class DawnBand extends THREE.Mesh {
+  declare material: THREE.ShaderMaterial;
+  constructor(east = new THREE.Vector3(1, 0, -0.15).normalize(), radius = 3800) {
+    super(new THREE.SphereGeometry(radius, 48, 24), new THREE.ShaderMaterial({
+      side: THREE.BackSide, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+      uniforms: { k: { value: 0 }, east: { value: east } },
+      vertexShader: 'varying vec3 vD; void main(){ vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: /* glsl */ `
+        uniform float k; uniform vec3 east; varying vec3 vD;
+        void main() {
+          vec3 d = normalize(vD);
+          float h = max(d.y, -0.02);
+          vec2 dh = d.xz; float l = length(dh); dh = l > 1e-4 ? dh / l : vec2(0.0);
+          float toE = max(dot(dh, normalize(east.xz)), 0.0);
+          float side = 0.25 + 0.75 * pow(toE, 2.0);
+          // a thin pale band right on the horizon, a soft rose-gold glow toward the sun under it, a lift of blue above
+          float band = exp(-pow(h / 0.035, 2.0)) * side;
+          float glow = exp(-h / 0.12) * pow(toE, 6.0);
+          float lift = exp(-h / 0.5) * (0.3 + 0.7 * toE);
+          vec3 c = vec3(0.55, 0.62, 0.78) * band * 0.22 + vec3(0.6, 0.38, 0.3) * glow * 0.12 + vec3(0.03, 0.05, 0.11) * lift;
+          gl_FragColor = vec4(c * k * step(-0.02, d.y), 1.0);
+        }`,
+    }));
+    this.frustumCulled = false;
+    this.renderOrder = 5;
+  }
+  set k(v: number) { this.material.uniforms.k!.value = v; }
+}

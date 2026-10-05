@@ -278,7 +278,7 @@ export class City extends THREE.Group {
     this.facM = [[0, 1, 2].map((l) => facadeMaterial(U, l, false)), [0, 1, 2].map((l) => facadeMaterial(U, l, true))];
     this.roofM = roofMaterial(U);
     const plantM = plantMaterial(U);
-    const fd: [number, number] = [190 * lod, 380 * lod];
+    const fd: [number, number] = [150 * lod, 380 * lod];
     for (const t of fac.values()) {
       if (t.m.length) this.add(buildingMeshes(t.m, t.o, this.facM[0]!, fd));
       if (t.g.length) this.add(buildingMeshes(t.g, t.o, this.facM[1]!, fd));
@@ -754,9 +754,9 @@ class Mirror {
   update(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     const U = this.city.U;
     if (this.busy) return;
-    if (!camera.isPerspectiveCamera || camera.position.y > 220 || camera.position.y < 0.05) { U.uMirrorOn.value = 0; return; }
+    if (!camera.isPerspectiveCamera || camera.position.y - U.uOrigin.value.y > 120 || camera.position.y < 0.05) { U.uMirrorOn.value = 0; return; }
     const cur = renderer.getRenderTarget();
-    const W = Math.max(64, Math.round((cur ? cur.width : renderer.domElement.width) / 3)), H = Math.max(36, Math.round((cur ? cur.height : renderer.domElement.height) / 3));
+    const W = Math.max(64, Math.round((cur ? cur.width : renderer.domElement.width) / 4)), H = Math.max(36, Math.round((cur ? cur.height : renderer.domElement.height) / 4));
     if (!this.rt || this.rt.width !== W || this.rt.height !== H) {
       this.rt?.dispose();
       this.rt = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, depthBuffer: true });

@@ -31,6 +31,7 @@ import { CycleMotion, Route, holdHands, inOut, loadCycle, loadSpan } from './run
 import { Folk, type Joiner, poseStride, reachTo, type Stride } from './run-people';
 import { Handprints } from './run-prints';
 import { BrokenWindow, Pigeons, Splashes, mirrorOnly, placeKit, shiftRender, stairKit, taxiKit } from './run-props';
+import { StreetCars, hideCityInstances } from './run-cars';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const UP = V(0, 1, 0);
@@ -78,6 +79,7 @@ export default class Run extends Scene {
   hood = V(412.0, 1.0, 123.6);
   tracks: { he: HeroTrack; she: HeroTrack } | null = null;
   freezes: [number, number][] = [];
+  street!: StreetCars;
   heC = heColor();
   sheC = sheColor();
 
@@ -184,6 +186,11 @@ export default class Run extends Scene {
     this.world.add(cab);
     // two cabs stopped at the red light on avenue 2, headlights on the crossing
     this.world.add(placeKit(this.city, taxiKit(), 619.6, 0, 112.5, -Math.PI / 2), placeKit(this.city, taxiKit(), 624.4, 0, 111.4, -Math.PI / 2));
+    // the litter baskets where our cameras go (rounded, real), and the city's cab where the hero cab parks hidden
+    this.street = new StreetCars(this.city, [[388, 70, 45], [400, 112, 30], [415, 122, 35], [440, 127, 35], [620, 118, 35], [700, 122, 70], [1120, 135, 40]]);
+    this.world.add(this.street);
+    // (the city's parked car right behind the hero cab would touch it: gone)
+    hideCityInstances(this.city, this.city.plan.parked.filter((p) => Math.hypot(p.x - this.taxi.x, p.z - this.taxi.z) < 5.5).map((p) => [p.x, 0, p.z] as [number, number, number]));
     // the steel stairs up to the overpass (the el station's stairs are the city's)
     this.world.add(placeKit(this.city, stairKit(V(1133.6, oy, 147.5), V(1133.6, 0.15, 132.5), 1.8), 0, 0, 0));
     // the smashed window (FOR RENT, street 1 south side)
@@ -426,6 +433,8 @@ export default class Run extends Scene {
     const lv = { route: leg.route, sH: leg.s0 + PACE * (tm - leg.t0), v: PACE, index: li, hideKept: leg.id === 'I' || leg.id === 'C', gapExtra: leg.id === 'C' ? 9 : leg.id === 'I' ? 7 : 0 };
     if (leg.id === 'C') lv.sH = Math.max(keys(tm, this.tracks!.he.s), keys(tm, this.tracks!.she.s));
     this.folk.update(tm, lv, S.cam);
+    // (the wet street's reflection only where the street is in the picture)
+    this.city.mirrorOn = !(leg.id === 'K' || leg.id === 'L');
     this.city.setGlows([...glows, ...this.folk.glows(S.cam.position, 9)]);
     this.city.update(t, S.cam.position);
     this.prints.time = t;

@@ -12,6 +12,23 @@ import type { CycleMotion, Route } from './run-motion';
 
 const V = () => new THREE.Vector3();
 
+const _fr = new THREE.Frustum(), _m4 = new THREE.Matrix4(), _sph = new THREE.Sphere();
+/**
+ * People outside the camera's view are not drawn at all this frame (k = 0: no posing, no skinning, no stars):
+ * the crowd's figures are never frustum-culled by three.js (skinned), so this saves most of their cost.
+ */
+export function cullOffscreen(people: Person[], cam: THREE.Camera, margin = 1.6) {
+  cam.updateMatrixWorld();
+  _fr.setFromProjectionMatrix(_m4.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+  for (const p of people) {
+    if (typeof p.k !== 'number' || p.k <= 0.002) continue;
+    const s = p.scale ?? 1;
+    _sph.center.set(p.pos.x, p.pos.y + 0.9 * s, p.pos.z);
+    _sph.radius = margin * s;
+    if (!_fr.intersectsSphere(_sph)) p.k = 0;
+  }
+}
+
 /** How a hero moves at a moment (filled by the scene each frame). */
 export interface Stride {
   /** Feet position (world) and facing. */
@@ -209,6 +226,7 @@ export class Folk {
       p.yaw = R.yaw(s);
       p.k = smoothstep(m.from, m.from + 0.6, t) * (p.look === 'light' ? 0.85 : 0.6 + 0.1 * Math.sin(t * 3 + m.ph));
     }
+    cullOffscreen(this.crowd.people, cam);
     this.crowd.update(t, cam);
     // far people: a soft glow at the chest
     const cp = cam.position, B = this.beacons;
