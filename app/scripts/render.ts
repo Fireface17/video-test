@@ -28,6 +28,8 @@ const OW = 1920 * SCALE, OH = 1080 * SCALE; // output size
 const SAMPLES = opt('samples', '1') === 'auto'
   ? { min: +opt('min-samples', '4')!, max: +opt('max-samples', '324')!, tol: +opt('tol', '3')! }
   : +opt('samples', '1')!;
+/** Seconds as h:mm:ss. */
+const hms = (x: number) => { const s = Math.max(0, Math.round(x)); return `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; };
 const hist = (h: Record<string, number>) => Object.entries(h).sort((a, b) => +a[0] - +b[0]).map(([k, v]) => `${k}:${v}`).join(' ');
 const ROOT = path.resolve(APP, '..');
 
@@ -134,7 +136,7 @@ async function video(page: Page, from: number, to: number, fps: number, out: str
         ws.send(String(frames)); // ack: the page keeps at most a few frames ahead of ffmpeg (bounded memory at 4K)
         if (frames % 60 === 0 || frames === total) {
           const el = (performance.now() - t0) / 1000;
-          process.stdout.write(`\r${frames}/${total} frames  ${(frames / el).toFixed(1)} fps  eta ${((total - frames) / (frames / el)).toFixed(0)}s   `);
+          process.stdout.write(`\r${frames}/${total} frames (${((100 * frames) / total).toFixed(1)}%)  ${(frames / el).toFixed(2)} fps  elapsed ${hms(el)}  eta ${hms((total - frames) / (frames / el))}   `);
         }
       },
     },
@@ -145,7 +147,7 @@ async function video(page: Page, from: number, to: number, fps: number, out: str
   ff.stdin.end();
   await ff.exited;
   server.stop();
-  console.log(`\nwrote ${out} (${frames} frames in ${((performance.now() - t0) / 1000).toFixed(1)}s)`);
+  console.log(`\nwrote ${out} (${frames} frames in ${hms((performance.now() - t0) / 1000)})`);
   console.log(`sub-frames per frame (count:frames): ${hist(used)}`);
 }
 
