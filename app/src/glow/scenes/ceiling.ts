@@ -26,6 +26,12 @@ import { nebulaMap, nebulaSphere } from './fall-sky';
 
 const CEIL = 2.6;
 const EYE = new THREE.Vector3(0, 0.55, -0.1);
+/** The smoke detector on the ceiling (u, v), its green LED blinking on every fourth beat. */
+const DET: [number, number] = [1.62, -0.78];
+/** Cars passing in the street below: their headlights throw the window's panes across the ceiling
+ *  (start, seconds after the entry's start; duration; direction). */
+const SWEEPS_IN: [number, number, number][] = [[3.3, 2.4, 1], [9.6, 1.9, -1]];
+const SWEEPS_OUT: [number, number, number][] = [[2.6, 2.6, 1]];
 
 /** The two figures, in ceiling coordinates (u right, v up the frame; metres). B's outer hand is raised. */
 const J: Record<string, [number, number]> = {
@@ -73,6 +79,9 @@ export default class Ceiling extends Scene {
   B: number[] = [];
   beats: number[] = [];
   room = new THREE.Group();
+  detector = new THREE.Group();
+  ledMat!: THREE.MeshBasicMaterial;
+  ledHalo!: THREE.ShaderMaterial;
   ceilMat!: THREE.ShaderMaterial;
   wallMat!: THREE.MeshStandardMaterial;
   moonLight!: THREE.SpotLight;
@@ -115,10 +124,10 @@ export default class Ceiling extends Scene {
     const map = plaster();
     this.ceilMat = new THREE.ShaderMaterial({
       transparent: true,
-      uniforms: { map: { value: map }, light: { value: col('blue', 0.03) }, dis: { value: -1 }, glow: { value: new THREE.Color(0, 0, 0) }, moonK: { value: 1 }, warm: { value: 0 } },
+      uniforms: { map: { value: map }, light: { value: col('blue', 0.03) }, dis: { value: -1 }, glow: { value: new THREE.Color(0, 0, 0) }, moonK: { value: 1 }, warm: { value: 0 }, time: { value: 0 }, sweep: { value: new THREE.Vector2(-9, 0) } },
       vertexShader: /* glsl */ `varying vec2 vUv; varying vec3 vP; void main(){ vUv = uv; vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: /* glsl */ `
-        uniform sampler2D map; uniform vec3 light, glow; uniform float dis, moonK, warm;
+        uniform sampler2D map; uniform vec3 light, glow; uniform float dis, moonK, warm, time; uniform vec2 sweep;
         varying vec2 vUv; varying vec3 vP;
         float h(vec2 p){ return fract(sin(dot(p, vec2(41.3, 289.1))) * 15731.743); }
         void main() {
@@ -126,10 +135,17 @@ export default class Ceiling extends Scene {
           // moonlight through a window on the left: a soft barred patch near the wall
           vec2 m = (vP.xy - vec2(-1.55, 0.35)) / vec2(0.75, 0.55);
           float mpatch = (1.0 - smoothstep(0.55, 1.0, length(m))) * smoothstep(0.03, 0.08, abs(fract(m.x * 1.0 + 0.5) - 0.5)) * smoothstep(0.03, 0.08, abs(m.y));
+          // the curtain, half drawn, breathes in the draught: its soft shadow edge drifts across the patch
+          float ce = -0.42 + 0.09 * sin(time * 0.55) + 0.035 * sin(time * 1.3 + m.y * 3.0);
+          mpatch *= mix(0.3, 1.0, smoothstep(ce - 0.14, ce + 0.14, m.x));
+          // a car passing below: its headlights throw the window's panes across the ceiling, sheared
+          vec2 sp = vP.xy - vec2(sweep.x, 0.25); sp.x -= 0.5 * sp.y;
+          vec2 sq = sp / vec2(0.62, 0.46);
+          float spatch = (1.0 - smoothstep(0.5, 1.0, max(abs(sq.x), abs(sq.y)))) * smoothstep(0.02, 0.07, abs(fract(sq.x + 0.5) - 0.5)) * smoothstep(0.02, 0.07, abs(sq.y));
           // a warm window light across the street (outro): the same panes, larger and softer, spilling in
           vec2 w = (vP.xy - vec2(-1.55, 0.35)) / vec2(1.35, 0.95);
           float wpatch = (1.0 - smoothstep(0.2, 1.0, length(w))) * (0.55 + 0.45 * smoothstep(0.02, 0.09, abs(fract(w.x * 1.6 + 0.5) - 0.5)) * smoothstep(0.02, 0.07, abs(w.y)));
-          vec3 c = a * (light + col_moon() * mpatch * moonK + glow + vec3(0.95, 0.55, 0.22) * wpatch * warm);
+          vec3 c = a * (light + col_moon() * mpatch * moonK + glow + vec3(0.95, 0.55, 0.22) * wpatch * warm + vec3(1.0, 0.86, 0.62) * spatch * sweep.y);
           // dissolve: burns away from the centre with a glowing edge
           vec2 q = vP.xy * 9.0; vec2 fi = floor(q), fr = fract(q); fr = fr * fr * (3.0 - 2.0 * fr);
           float vn = mix(mix(h(fi), h(fi + vec2(1.0, 0.0)), fr.x), mix(h(fi + vec2(0.0, 1.0)), h(fi + vec2(1.0, 1.0)), fr.x), fr.y);
@@ -154,6 +170,29 @@ export default class Ceiling extends Scene {
     this.moonLight.position.set(-3, 0.8, 0.4);
     this.moonLight.target.position.set(-1.2, CEIL, 0.3);
     this.room.add(ceil, wallN, wallW, this.moonLight, this.moonLight.target);
+    // a smoke detector: a white puck with a vent ring and a green LED
+    const plastic = new THREE.MeshStandardMaterial({ color: new THREE.Color('#d9d7cf'), roughness: 0.55 });
+    const puck = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.068, 0.028, 40), plastic);
+    puck.position.y = -0.014;
+    const vent = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.003, 6, 40), new THREE.MeshStandardMaterial({ color: new THREE.Color('#8d8b84'), roughness: 0.8 }));
+    vent.rotation.x = Math.PI / 2;
+    vent.position.y = -0.0285;
+    const led = new THREE.Mesh(new THREE.SphereGeometry(0.0035, 10, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(0, 0, 0) }));
+    led.position.set(0.022, -0.029, 0.018);
+    this.ledHalo = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      uniforms: { k: { value: 0 }, c: { value: col('#3dff6a', 1) } },
+      vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+      fragmentShader: `uniform float k; uniform vec3 c; varying vec2 vUv;
+        void main(){ float r = length(vUv - 0.5) * 2.0; gl_FragColor = vec4(c * k * (exp(-r * r * 9.0) + 0.6 * exp(-r * r * 80.0)) * (1.0 - smoothstep(0.85, 1.0, r)), 1.0); }`,
+    });
+    const halo = new THREE.Mesh(new THREE.PlaneGeometry(0.07, 0.07), this.ledHalo);
+    halo.rotation.x = Math.PI / 2;
+    halo.position.set(0.022, -0.031, 0.018);
+    this.ledMat = led.material;
+    this.detector.add(puck, vent, led, halo);
+    this.detector.position.set(DET[0], CEIL, DET[1]);
+    this.room.add(this.detector);
     S.add(this.room);
 
     // ---- stickers: the two figures, and scattered stars around them ----
@@ -162,7 +201,7 @@ export default class Ceiling extends Scene {
     for (let tries = 0; pts.length < 50 && tries < 6000; tries++) {
       const r = 0.05 + Math.pow(rnd(), 2) * 0.09;
       const u = (rnd() * 2 - 1) * 2.1, v = (rnd() * 2 - 1) * 1.15;
-      if (pts.every((p) => Math.hypot(p.u - u, p.v - v) > (p.r + r) * 1.6 + 0.08)) pts.push({ key: `s${pts.length}`, u, v, r });
+      if (Math.hypot(u - DET[0], v - DET[1]) > r * 1.6 + 0.16 && pts.every((p) => Math.hypot(p.u - u, p.v - v) > (p.r + r) * 1.6 + 0.08)) pts.push({ key: `s${pts.length}`, u, v, r });
     }
     // ignition: one sticker per beat to begin with, faster as the bars go by; the figures' stars come last
     const scattered = pts.filter((p) => p.key.startsWith('s')).sort((a, b) => Math.hypot(a.u * 0.7, a.v) - Math.hypot(b.u * 0.7, b.v));
@@ -324,6 +363,25 @@ export default class Ceiling extends Scene {
     return a.timeOfBeat(b0 + k);
   }
 
+  /** The room's small life: the curtain, cars' headlights sweeping the ceiling, the detector's LED. */
+  private poseRoom(t: number, sweeps: [number, number, number][]) {
+    const U = this.ceilMat.uniforms;
+    U.time!.value = t;
+    const sw = U.sweep!.value as THREE.Vector2;
+    sw.set(-9, 0);
+    for (const [a, d, dir] of sweeps) {
+      const p = (t - this.ctx.start - a) / d;
+      if (p <= 0 || p >= 1) continue;
+      sw.set(dir * lerp(-3.4, 3.4, ease.inOutQuad(p)), 0.13 * Math.pow(Math.sin(Math.PI * p), 0.6));
+    }
+    let tb = -Infinity;
+    for (let i = 0; i < this.beats.length && this.beats[i]! <= t; i++) if (i % 4 === 0) tb = this.beats[i]!;
+    const blink = Math.exp(-Math.max(0, t - tb) / 0.07);
+    this.ledMat.color.copy(col('#3dff6a', 0.08 + 1.6 * blink));
+    this.ledHalo.uniforms.k!.value = 0.04 + 0.5 * blink;
+    this.detector.visible = Math.hypot(DET[0], DET[1]) > this.dis;
+  }
+
   override render(f: Frame, out: THREE.WebGLRenderTarget) {
     return this.outro ? this.renderOutro(f, out) : this.renderIntro(f, out);
   }
@@ -364,6 +422,7 @@ export default class Ceiling extends Scene {
     this.room.visible = room > 0.001;
     this.ceilMat.uniforms.dis!.value = dis;
     this.dis = dis;
+    this.poseRoom(t, SWEEPS_IN);
     this.ceilMat.uniforms.moonK!.value = smoothstep(0, 1.2, t);
     this.wallMat.opacity = room;
     // the stickers' own light on the plaster
@@ -542,6 +601,8 @@ export default class Ceiling extends Scene {
     this.sky.visible = false;
     this.streaks.visible = false;
     this.ceilMat.uniforms.dis!.value = -1;
+    this.dis = -1;
+    this.poseRoom(t, SWEEPS_OUT);
     this.ceilMat.uniforms.moonK!.value = 1 - prog(t, tEnd - 1, tEnd + 0.5);
     // ...and in the dark, a warm light comes on across the street: her lantern
     this.ceilMat.uniforms.warm!.value = 0.75 * flickerOn(t, tEnd + 0.12, 3) * (1 + 0.06 * noise1(t * 3, 7));
