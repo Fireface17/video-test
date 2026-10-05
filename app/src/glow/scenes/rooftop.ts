@@ -40,7 +40,7 @@ const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 const GOLD = col('gold', 1.0);
 const LANTERN = new THREE.Color(1.0, 0.86, 0.62);
 /** the gold wave's front: angles around his roof, radius samples (m) */
-const WAVE_N = 220, WAVE_R = 30, WAVE_DR = 50;
+const WAVE_N = 360, WAVE_R = 60, WAVE_DR = 25;
 
 interface Near { name: string; p: Person; chest: () => THREE.Vector3; lit: number; color: THREE.Color }
 interface Lantern {
@@ -128,8 +128,8 @@ export default class Rooftop extends Scene {
     const pc = col('white', 1.1).lerp(col('cyan', 1.1), 0.25);
     this.rowA = LightTrail.text(lineText(this.lineA), 'script', 2.1, { width: 0.07, color: pc, tipLen: 1.6, seed: 1 });
     // ... and the second half lands on the city itself: written in light across the bricks of her building
-    this.rowB = LightTrail.text(lineText(this.lineB), 'script', 1.55, { width: 0.06, color: pc, tipLen: 1.4, seed: 4 });
-    this.rowB.position.set(0.0, set.hers.gH + 4.55 * set.hers.fH - 0.35, set.hers.z1 + 0.12);
+    this.rowB = LightTrail.text(lineText(this.lineB), 'script', 2.5, { width: 0.095, color: pc, tipLen: 1.8, seed: 4 });
+    this.rowB.position.set(-2.0, set.hers.gH + 4.15 * set.hers.fH, set.hers.z1 + 0.14);
     this.rowB.rotation.z = -0.05;
     S.add(this.rowB);
     this.textGrp.add(this.rowA);
@@ -185,7 +185,7 @@ export default class Rooftop extends Scene {
     const echo = [fl + 0.05 + (i % 7) * 0.03, lo + 0.12 + (i % 5) * 0.05, lo + 0.45 + (i % 4) * 0.06];
     let k = litK(t, lit, 0.8 * d, echo, 0.9);
     // they give their light away to the lanterns (dimmer), and glow again in gold — each one flaring as the wave reaches them
-    const hit = this.tGold - 0.1 + Math.sqrt(Math.max(0, (this.farD[i] ?? 300) / 1400)) * 2.3;
+    const hit = this.tGold - 0.1 + (1 - Math.pow(Math.max(0, 1 - Math.min(1, (this.farD[i] ?? 300) / 1450)), 1 / 1.7)) * 2.7;
     k *= 1 - 0.45 * smoothstep(33.9, 35.5, t) + 0.6 * smoothstep(hit - 0.05, hit + 0.25, t) + 1.6 * pulse(t, hit, 0.3);
     return k;
   }
@@ -319,7 +319,8 @@ export default class Rooftop extends Scene {
     const hereT = here.words[0]!.start, here2 = here.words[3]!.start;
     const burst = this.ctx.end;
     const goldK = ease.inOutCubic(prog(t, tGold - 0.1, tGold + 1.2));
-    const goldR = goldK > 0 ? lerp(0, 1400, ease.inQuad(prog(t, tGold - 0.1, tGold + 2.2))) : -1;
+    // (a wave bursting out of his roof and rolling out across the blocks, slowing as it spreads)
+    const goldR = goldK > 0 ? 1450 * (1 - Math.pow(1 - prog(t, tGold - 0.1, tGold + 2.6), 1.7)) : -1;
 
     // ---------------- camera (first: everything else is drawn for it) ----------------
     const H = set.heSpot;
@@ -459,7 +460,7 @@ export default class Rooftop extends Scene {
     const textOn = 1 - prog(t, cC - 0.15, cC + 0.1);
     const echoT = pulse(t, put.words[7]!.start + 0.05, 0.2) + pulse(t, put.words[8]!.start + 0.1, 0.2) * 0.8 + pulse(t, put.words[8]!.start + 0.45, 0.25) * 0.6;
     rowA.gain = textOn * (1 + 0.35 * echoT);
-    rowB.gain = textOn * (1 + 0.5 * echoT);
+    rowB.gain = textOn * (1.6 + 0.7 * echoT);
     this.textGrp.visible = textOn > 0.001 && (shot === 'A' || shot === 'B');
     rowB.visible = this.textGrp.visible;
     this.textGrp.updateMatrixWorld(true);
@@ -585,16 +586,18 @@ export default class Rooftop extends Scene {
       const view = Math.atan2(tgt.z - H.z, tgt.x - H.x);
       for (let a = 0; a < WAVE_N; a++) {
         const ang = (a / WAVE_N) * Math.PI * 2;
-        const h0 = this.waveRoof[a * WAVE_R + Math.min(WAVE_R - 1, r0)]!, h1 = this.waveRoof[a * WAVE_R + Math.min(WAVE_R - 1, r0 + 1)]!;
-        const y = lerp(h0, h1, fr) + 1.2;
+        // riding over the roof tops (the highest roof near the front at this angle and its neighbours)
+        const hAt = (aa: number, rr: number) => this.waveRoof[((aa + WAVE_N) % WAVE_N) * WAVE_R + Math.max(0, Math.min(WAVE_R - 1, rr))]!;
+        const h0 = Math.max(hAt(a, r0), hAt(a - 1, r0), hAt(a + 1, r0)), h1 = Math.max(hAt(a, r0 + 1), hAt(a - 1, r0 + 1), hAt(a + 1, r0 + 1));
+        const y = Math.max(8, lerp(h0, h1, fr)) + 1.5;
         for (const [dr, kk] of [[0, 1], [-9, 0.45]] as [number, number][]) {
           const rad = goldR + dr + noise1(a * 0.7 + t * 2, 3) * 3;
           const x = H.x + Math.cos(ang) * rad, z = H.z + Math.sin(ang) * rad;
-          this.wave.set(nwv++, x, y + noise1(a + t * 3, 5) * 1.5, z, GOLD.clone().lerp(col('white', 1), 0.25), kk * fade * (1.4 + 0.6 * noise1(a * 1.3 + t * 6, 7)), 5 + goldR * 0.012);
+          this.wave.set(nwv++, x, y + noise1(a + t * 3, 5) * 1.5, z, GOLD.clone().lerp(col('white', 1), 0.25), kk * fade * (1.1 + 0.5 * noise1(a * 1.3 + t * 6, 7)), 3.5 + goldR * 0.012);
         }
         // the roofs, cornices and water towers the front is passing catch its light (where we look)
         const da = Math.abs(((ang - view + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
-        if (a % 6 === 0 && da < 1.1 && waveGlows.length < 10) waveGlows.push({ pos: V(H.x + Math.cos(ang) * goldR, y + 5, H.z + Math.sin(ang) * goldR), color: GOLD.clone().multiplyScalar(1.4 * fade), radius: 16 + goldR * 0.02 });
+        if (a % 9 === 0 && da < 1.1 && waveGlows.length < 10) waveGlows.push({ pos: V(H.x + Math.cos(ang) * goldR, y + 5, H.z + Math.sin(ang) * goldR), color: GOLD.clone().multiplyScalar(1.4 * fade), radius: 16 + goldR * 0.02 });
       }
     }
     this.wave.commit(nwv);

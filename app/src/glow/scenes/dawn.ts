@@ -315,7 +315,7 @@ export default class Dawn extends Scene {
     D.begin(cam);
     this.threads.begin();
     const crane = shot === 9 ? smoothstep(this.T.beautiful, this.T.beautiful + 2.5, t) : 0;
-    if (false) this.chains.draw(t, cam, D, this.pts, this.threads, {
+    this.chains.draw(t, cam, D, this.pts, this.threads, {
       k: 1, ptK: 2.6 - 1.4 * crane, near: shot === 9 ? lerp(70, 25, crane) : shot === 3 || shot === 6 ? 90 : 60, maxNear: shot === 3 || shot === 6 ? 24 : 14,
       ptSize: lerp(0.7, 1.6, crane), threadK: 1 - 0.75 * crane, far: crane,
     });
@@ -330,7 +330,7 @@ export default class Dawn extends Scene {
     this.threads.begin2();
     if (gv1) this.g1.thread(this.threads, t, 1, g, this.g2.grips[0] ?? null, 3.5);
     if (gv2) this.g2.thread(this.threads, t, 1, null, null);
-    this.threads.end(); this.pts.commit(0);
+    this.threads.end();
     this.stars.visible = t > T.broken - 0.6 && t < T.look + 0.6;
     if (this.stars.visible) this.stars.update(t, g, 600, T.broken - 0.1, 1.5, 0.6, col('white', 1.3), col('gold', 1.5).lerp(col('white', 1.5), 0.2), g.clone().add(V(-4, 0, 0)), 3.5);
     flock(this.birds, t, T.okay - 0.15, V(9, this.roof + 0.5, -16), V(1, 0.15, -0.2).normalize(), 3, 8);
@@ -359,7 +359,7 @@ export default class Dawn extends Scene {
     if (fl > 0.02) glows.push({ pos: g.clone(), color: col('white', 1.2 * fl), radius: 3 });
     w.glows(glows);
     w.cat.visible = false;
-    w.update(t, cam, { wind: 0.45 });
+    w.update(t, cam, { wind: 0.45 }); w.city.life.visible = false;
 
     S.render(this.ctx.renderer, this.grade.scene);
     // (shafts: strong in the wide shots, gentle close up and among the stars; only the sun and the sky make them)
