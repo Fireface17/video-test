@@ -19,6 +19,7 @@ export interface BoardSpec {
   day: string; date: string; month: string;
   lines: BoardWord[][]; // words per painted line
   smile: [number, number]; // when the smile is painted
+  face: number; // 0 a forced grin, 1 a lopsided half-smile, 2 a plain smiley
   seed: number;
 }
 
@@ -193,9 +194,11 @@ function paintCanvases(spec: BoardSpec) {
       brush(cv, tc, pts, size * 0.075, (u) => norm(ww.t0 + ((a + u * L) / Math.max(1, wLen[w]!)) * (ww.t1 - ww.t0)), r);
     });
   });
-  // the smile over the date numeral: a wobbly arc and two eyes
+  // the smile over the date numeral: a loose circle, two eyes, a mouth; each day its own (slightly forced) face
   const sx = PW * 0.19, sy = PH * 0.6, sr = PH * 0.33;
   const [s0, s1] = spec.smile;
+  const at = (f0: number, f1: number) => (u: number) => norm(s0 + (s1 - s0) * (f0 + (f1 - f0) * u));
+  const jit = () => (r() - 0.5) * 2;
   // the face: one loose circle, started at the top-left and overshooting a little
   const face: Pt[] = [];
   for (let i = 0; i <= 64; i++) {
@@ -203,16 +206,38 @@ function paintCanvases(spec: BoardSpec) {
     const rr = sr * (1 + 0.035 * Math.sin(i * 0.7 + spec.seed));
     face.push({ x: sx + Math.cos(a) * rr * 1.08, y: sy + Math.sin(a) * rr });
   }
-  brush(cv, tc, face, sr * 0.14, (u) => norm(s0 + (s1 - s0) * 0.45 * u), r);
-  const eye = (ex: number) => [{ x: ex, y: sy - sr * 0.62 }, { x: ex + 3, y: sy - sr * 0.42 }];
-  brush(cv, tc, eye(sx - sr * 0.4), sr * 0.15, (u) => norm(s0 + (s1 - s0) * (0.45 + 0.08 * u)), r);
-  brush(cv, tc, eye(sx + sr * 0.4), sr * 0.15, (u) => norm(s0 + (s1 - s0) * (0.53 + 0.08 * u)), r);
-  const arc: Pt[] = [];
-  for (let i = 0; i <= 40; i++) {
-    const a = Math.PI * (0.16 + 0.68 * (i / 40));
-    arc.push({ x: sx - Math.cos(a) * sr * 0.66 + (r() - 0.5) * 2, y: sy + sr * 0.32 + Math.sin(a) * sr * 0.38 + (r() - 0.5) * 2 });
+  brush(cv, tc, face, sr * 0.14, at(0, 0.4), r);
+  const curve = (n: number, f: (u: number) => Pt) => Array.from({ length: n + 1 }, (_, i) => { const p = f(i / n); return { x: p.x + jit(), y: p.y + jit() }; });
+  let mouth: Pt[];
+  if (spec.face === 0) {
+    // a forced grin: wide-open dot eyes set too far apart, a wide flat "D" of a mouth, the upper lip ruled straight
+    const dot = (ex: number) => curve(10, (u) => ({ x: ex + Math.cos(u * 6.6) * sr * 0.07, y: sy - sr * 0.5 + Math.sin(u * 6.6) * sr * 0.08 }));
+    brush(cv, tc, dot(sx - sr * 0.48), sr * 0.1, at(0.4, 0.48), r);
+    brush(cv, tc, dot(sx + sr * 0.48), sr * 0.1, at(0.48, 0.56), r);
+    brush(cv, tc, curve(12, (u) => ({ x: sx - sr * 0.7 + u * sr * 1.4, y: sy + sr * 0.18 - Math.sin(u * Math.PI) * sr * 0.02 })), sr * 0.11, at(0.56, 0.7), r);
+    mouth = curve(40, (u) => { const a = Math.PI * (0.04 + 0.92 * u); return { x: sx - Math.cos(a) * sr * 0.72, y: sy + sr * 0.18 + Math.sin(a) * sr * 0.36 }; });
+    brush(cv, tc, mouth, sr * 0.13, at(0.7, 1), r);
+  } else if (spec.face === 1) {
+    // a lopsided half-smile: one eye a dot, one a tired dash, a brow pushed up; the mouth flat, then hitched up on one side
+    brush(cv, tc, curve(10, (u) => ({ x: sx - sr * 0.4 + Math.cos(u * 6.6) * sr * 0.06, y: sy - sr * 0.45 + Math.sin(u * 6.6) * sr * 0.07 })), sr * 0.1, at(0.4, 0.47), r);
+    brush(cv, tc, curve(6, (u) => ({ x: sx + sr * 0.28 + u * sr * 0.28, y: sy - sr * 0.42 - u * sr * 0.05 })), sr * 0.11, at(0.47, 0.54), r);
+    brush(cv, tc, curve(10, (u) => ({ x: sx - sr * 0.58 + u * sr * 0.36, y: sy - sr * 0.66 - Math.sin(u * Math.PI) * sr * 0.12 })), sr * 0.08, at(0.54, 0.62), r);
+    mouth = curve(40, (u) => ({ x: sx - sr * 0.55 + u * sr * 1.15, y: sy + sr * 0.38 - (u > 0.55 ? Math.pow((u - 0.55) / 0.45, 1.6) * sr * 0.42 : 0) + Math.sin(u * 9) * sr * 0.015 }));
+    brush(cv, tc, mouth, sr * 0.14, at(0.62, 1), r);
+  } else {
+    const eye = (ex: number) => [{ x: ex, y: sy - sr * 0.62 }, { x: ex + 3, y: sy - sr * 0.42 }];
+    brush(cv, tc, eye(sx - sr * 0.4), sr * 0.15, at(0.45, 0.53), r);
+    brush(cv, tc, eye(sx + sr * 0.4), sr * 0.15, at(0.53, 0.61), r);
+    mouth = curve(40, (u) => { const a = Math.PI * (0.16 + 0.68 * u); return { x: sx - Math.cos(a) * sr * 0.66, y: sy + sr * 0.32 + Math.sin(a) * sr * 0.38 }; });
+    brush(cv, tc, mouth, sr * 0.15, at(0.62, 1), r);
   }
-  brush(cv, tc, arc, sr * 0.15, (u) => norm(s0 + (s1 - s0) * (0.62 + 0.38 * u)), r);
+  // where the paint will run: from the bottom of the mouth and of the face (px, y up; max length, half-width)
+  const drips: THREE.Vector4[] = [];
+  for (const f of [0.22, 0.47, 0.71, 0.9]) {
+    const p = mouth[Math.round(f * (mouth.length - 1))]!;
+    drips.push(new THREE.Vector4(p.x + jit() * 3, PH - (p.y + sr * 0.04), sr * (0.28 + 0.3 * r()), sr * (0.035 + 0.02 * r())));
+  }
+  for (const a of [Math.PI * 0.42, Math.PI * 0.62]) drips.push(new THREE.Vector4(sx + Math.cos(a) * sr * 1.08, PH - (sy + Math.sin(a) * sr * 1.0 + sr * 0.03), sr * (0.12 + 0.08 * r()), sr * 0.035));
   // merge into one RGBA: R coverage, G time
   const out = document.createElement('canvas');
   out.width = PW; out.height = PH;
@@ -221,7 +246,7 @@ function paintCanvases(spec: BoardSpec) {
   const a = cv.getImageData(0, 0, PW, PH).data, b = tc.getImageData(0, 0, PW, PH).data;
   for (let i = 0; i < PW * PH; i++) { id.data[i * 4] = a[i * 4]!; id.data[i * 4 + 1] = b[i * 4]!; id.data[i * 4 + 2] = 0; id.data[i * 4 + 3] = 255; }
   o.putImageData(id, 0, 0);
-  return { canvas: out, T0, T1 };
+  return { canvas: out, T0, T1, drips };
 }
 
 export class CalendarBoard extends THREE.Group {
@@ -235,15 +260,15 @@ export class CalendarBoard extends THREE.Group {
   constructor(public spec: BoardSpec) {
     super();
     const page = canvasTex(pageCanvas(spec), { aniso: 16 });
-    const { canvas, T0, T1 } = paintCanvases(spec);
+    const { canvas, T0, T1, drips } = paintCanvases(spec);
     this.T0 = T0; this.T1 = T1;
     const paint = canvasTex(canvas, { srgb: false, aniso: 16 });
-    this.u = { ...HU, page: { value: page }, paint: { value: paint }, prog: { value: 0 }, paintCol: { value: C('#b6ff6a', 1) }, flood: { value: 1 } };
+    this.u = { ...HU, page: { value: page }, paint: { value: paint }, prog: { value: 0 }, paintCol: { value: C('#b6ff6a', 1) }, flood: { value: 1 }, wear: { value: 0 }, dr: { value: drips } };
     const face = new THREE.ShaderMaterial({
       uniforms: this.u,
       vertexShader: /* glsl */ `varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
       fragmentShader: HW_GLSL + /* glsl */ `
-        uniform sampler2D page, paint; uniform float prog, flood; uniform vec3 paintCol;
+        uniform sampler2D page, paint; uniform float prog, flood, wear; uniform vec3 paintCol; uniform vec4 dr[6];
         varying vec2 vUv; varying vec3 vW;
         void main() {
           vec3 pg = texture2D(page, vUv).rgb;
@@ -251,6 +276,26 @@ export class CalendarBoard extends THREE.Group {
           float tt = (pt.g * 255.0 - 1.0) / 253.0;
           float vis = pt.r * smoothstep(tt, tt + 0.006, prog) * step(pt.g, 0.996);
           float wet = vis * exp(-max(prog - tt, 0.0) * 45.0);
+          // the fake smile wears off once it is painted: the paint flakes away in patches and runs in drips
+          float smileZone = 1.0 - smoothstep(0.37, 0.4, vUv.x);
+          if (wear > 0.0 && smileZone > 0.0) {
+            vec2 fc = floor(vUv * vec2(150.0, 58.0));
+            float fh = fract(sin(dot(fc, vec2(12.9898, 78.233))) * 43758.5453);
+            vis *= 1.0 - step(fh, wear * 0.38) * smileZone * 0.94;
+            vec2 pp = vUv * vec2(${PW.toFixed(1)}, ${PH.toFixed(1)});
+            float drip = 0.0;
+            for (int i = 0; i < 6; i++) {
+              vec4 d = dr[i];
+              float L = d.z * wear;
+              float top = d.y, bot = d.y - L;
+              float k = clamp((top - pp.y) / max(L, 1.0), 0.0, 1.0);
+              float hw = d.w * mix(0.9, 0.45, k);
+              float trail = step(bot, pp.y) * step(pp.y, top + 6.0) * smoothstep(hw, hw * 0.6, abs(pp.x - d.x));
+              float bead = smoothstep(d.w * 1.2, d.w * 0.8, length(pp - vec2(d.x, bot)));
+              drip = max(drip, max(trail, bead) * step(1.0, L));
+            }
+            vis = max(vis, drip * smileZone);
+          }
           // three floodlights from below: bright fans on the lower half, falling off upward
           float fl = 0.0;
           for (int i = 0; i < 3; i++) { float cx = 0.17 + 0.33 * float(i); fl += exp(-pow((vUv.x - cx) / 0.2, 2.0)) * (0.35 + 0.65 * exp(-vUv.y * 1.3)); }
@@ -308,5 +353,8 @@ export class CalendarBoard extends THREE.Group {
 
   update(t: number) {
     this.u.prog!.value = (t - this.T0) / (this.T1 - this.T0);
+    // runs fast at first, then creeps
+    const w = Math.min(1, Math.max(0, (t - this.spec.smile[1] - 0.06) / 0.9));
+    this.u.wear!.value = 1 - (1 - w) * (1 - w);
   }
 }

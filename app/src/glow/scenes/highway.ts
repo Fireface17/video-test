@@ -160,13 +160,14 @@ export default class Highway extends Scene {
     // calendar billboards
     const w1 = L1.words;
     const specs = [
-      { day: 'MONDAY', date: '13', words: [[0], [1]], smile: w1[1]!, side: 1, focus: [T.l1, nearestBeat(w1[2]!.start)] as [number, number], D: 40 },
-      { day: 'TUESDAY', date: '14', words: [[2, 3], [4, 5]], smile: w1[4]!, side: -1, focus: [nearestBeat(w1[2]!.start), nearestBeat(w1[6]!.start)] as [number, number], D: 33 },
-      { day: 'WEDNESDAY', date: '15', words: [[6, 7]], smile: w1[7]!, side: 1, focus: [nearestBeat(w1[6]!.start), T.l2 + 0.3] as [number, number], D: 44 },
+      // (each smile is painted while its board is in view, and starts to wear off before we leave it)
+      { day: 'MONDAY', date: '13', words: [[0], [1]], smileAt: [w1[0]!.start + 0.12, w1[1]!.start + 0.05] as [number, number], side: 1, focus: [T.l1, nearestBeat(w1[2]!.start)] as [number, number], D: 40 },
+      { day: 'TUESDAY', date: '14', words: [[2, 3], [4, 5]], smileAt: [w1[2]!.start + 0.05, w1[4]!.start + 0.02] as [number, number], side: -1, focus: [nearestBeat(w1[2]!.start), nearestBeat(w1[6]!.start)] as [number, number], D: 33 },
+      { day: 'WEDNESDAY', date: '15', words: [[6, 7]], smileAt: [w1[7]!.start + 0.04, w1[7]!.start + 0.42] as [number, number], side: 1, focus: [nearestBeat(w1[6]!.start), T.l2 + 0.3] as [number, number], D: 44 },
     ];
     specs.forEach((s, i) => {
       const lines = s.words.map((row) => row.map((wi) => ({ text: w1[wi]!.w, t0: w1[wi]!.start, t1: Math.min(w1[wi]!.end, w1[wi]!.start + 0.38) })));
-      const b = new CalendarBoard({ day: s.day, date: s.date, month: 'OCTOBER', lines, smile: [s.smile.start + 0.04, s.smile.start + 0.42], seed: 11 + i * 17 });
+      const b = new CalendarBoard({ day: s.day, date: s.date, month: 'OCTOBER', lines, smile: s.smileAt, face: i, seed: 11 + i * 17 });
       const first = Math.min(...lines.flat().map((w) => w.t0));
       const u = this.sAt(first) + s.D;
       const x = s.side > 0 ? 21 : -18.5;
@@ -425,7 +426,7 @@ export default class Highway extends Scene {
           return [yw, pt] as const;
         };
         // (each pan lands on the board just as its first word is sung)
-        const ws = this.boards.map((b, i) => (i === 0 ? 1 : prog(t, b.focus[0] - 0.36, b.focus[0] + 0.04, ease.inOutCubic)) * (i === this.boards.length - 1 ? 1 : 1 - prog(t, b.focus[1] - 0.36, b.focus[1] + 0.04, ease.inOutCubic)));
+        const ws = this.boards.map((b, i) => (i === 0 ? 1 : prog(t, b.focus[0] - 0.27, b.focus[0] + 0.04, ease.inOutCubic)) * (i === this.boards.length - 1 ? 1 : 1 - prog(t, b.focus[1] - 0.27, b.focus[1] + 0.04, ease.inOutCubic)));
         const sum = ws.reduce((a, b) => a + b, 0) || 1;
         this.boards.forEach((b, i) => { const [yw, pt] = aimAt(b); yaw += yw * ws[i]! / sum; pitch += pt * ws[i]! / sum; });
         const near = this.boards.reduce((a, b, i) => a + ws[i]! / sum * clamp((b.u - s) / 40), 0);
