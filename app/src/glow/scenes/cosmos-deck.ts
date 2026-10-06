@@ -1,76 +1,67 @@
-// DROP 3 (gold, the finale): a deck of cosmic plates, cut on the kicks. Every strong kick lands on a new, still,
-// painted plate (cosmos-plates.ts: black hole, spiral galaxy, pillars, pulsar, binary, ringed planet, cluster, cosmic
-// web, remnant, gas ribbon, eclipse, the "eye", the star nebula), each in a framing of its own (wide / close / off
-// centre, mirrored, rolled), so consecutive shots differ in scale, brightness and colour. A cut slams in (a short
-// overshoot of zoom, a radial streak, an exposure flash) and the shot then drifts (push, pull, roll) until the next.
+// DROP 3 (gold, the finale): one continuous flight through the cosmos. The painted plates of cosmos-plates.ts
+// (black hole, spiral galaxy, pillars, pulsar, binary, ringed planet, cluster, cosmic web, remnant, gas ribbon,
+// eclipse, the "eye", the star nebula) stand in space along our path as huge billboards with soft edges, the dark
+// ones (the black hole's shadow, the planet, the moon of the eclipse, the pillars' dust) blocking what lies behind
+// them; we fly at them, through them (the galaxy's core, the web, the remnant's shell, the eye's ring, the star
+// nebula) and past them (the planet below us, the pulsar's jets beside us), in streaking stars and drifting dust.
+// The beat drives the flight: the camera passes an object every third beat while the chops are sung, every second
+// beat from bar 9, every beat in the roll; each kick surges the speed (a time warp that pushes ahead and settles,
+// never back), lifts the exposure and widens the lens; two downbeats are hyperjumps (a flash, a radial streak, a
+// leap ahead). The flight ends with the Earth ahead of us: the ending (cosmos-ending.ts) takes the fall from there.
 //
-// Build: the chop phrases (bars 1-9) cut on the strong kicks only, with the words pinned to plates ("Glo-" lands on
-// the star nebula, "dark" on the black hole / the eclipse); from bar 9 every beat cuts and the drift speeds up; in the
-// last bar the kicks roll (a cut every 8th) into the final shot: a globular cluster pulling back and dimming, which the
-// outro's ceiling of glow stickers crossfades in over ("stars to stars").
-//
-// The chop lines ("Glo-o-owing in the dark") stay on screen over the switching plates, rock steady: each syllable
-// ignites on its chop onset (a slam: big -> set, white-hot -> gold) and stays; a soft darkness is cut out of the
-// plate behind the letters so they read on any plate.
+// The chop lines stay on screen, rock steady, in the lower third: each syllable lights on its own onset (vertical
+// slam only: syllables touch, they never overlap) with a soft darkness cut out behind the words.
 import * as THREE from 'three';
 import { Scene, type Frame, type PostOverrides } from '../../engine/scene';
-import { FSPass, Layer2D, W, H } from '../../engine/gl';
+import { FSPass, Layer2D, W, H, makeRT } from '../../engine/gl';
 import type { Line } from '../../engine/lyrics';
-import { clamp, ease, hash, lerp, smoothstep, frameIdx } from '../../engine/util';
+import { clamp, ease, hash, lerp, mulberry32, smoothstep, frameIdx } from '../../engine/util';
 import { PlateDeck, PLATE } from './cosmos-plates';
 import { loadPhosphorFont, PHOS_FONT } from '../lib/phosphor';
+import { StarStreaks } from './fall-stars';
+import { GlowPoints } from '../lib/points';
+import { Earth } from '../lib/earth';
+import { aim } from '../lib/stage';
+import { col } from '../lib/palette';
+import { EARTH_END } from './cosmos-ending';
 
 const AS = 16 / 9;
-/** framings per plate: [x, y, zoom] in plate units (x in ±16/9, y in ±1, y up) */
-const FR: Record<number, [number, number, number][]> = {
-  [PLATE.BLACKHOLE]: [[0, 0, 1.05], [-0.32, 0.04, 1.75], [0.05, 0.16, 1.4]],
-  [PLATE.SPIRAL]: [[0, 0, 1.0], [0.08, 0.04, 1.7], [-0.3, -0.12, 1.9]],
-  [PLATE.PILLARS]: [[0, -0.05, 1.0], [-0.72, 0.36, 1.8], [0.9, 0.12, 1.6]],
-  [PLATE.PULSAR]: [[0, 0, 1.0], [0, 0, 1.9], [0.35, 0.2, 1.45]],
-  [PLATE.BINARY]: [[0, 0, 1.0], [0.5, 0.15, 1.9], [-0.45, 0, 1.4]],
-  [PLATE.PLANET]: [[0, 0, 1.0], [-0.12, 0.12, 1.65], [0.3, -0.1, 1.25]],
-  [PLATE.CLUSTER]: [[0.1, 0, 1.0], [0.1, 0.02, 2.0], [0.02, 0, 1.4]],
-  [PLATE.WEB]: [[0, 0, 1.0], [0.5, 0.3, 1.7], [-0.6, -0.2, 1.5]],
-  [PLATE.REMNANT]: [[0, 0, 1.0], [0.3, 0.3, 1.9], [0, 0, 1.35]],
-  [PLATE.AURORA]: [[0, 0, 1.0], [-0.6, 0.0, 1.6], [0.7, 0.2, 1.5]],
-  [PLATE.ECLIPSE]: [[0, 0, 1.0], [0.16, 0.16, 2.1], [0, 0, 1.45]],
-  [PLATE.EYE]: [[0, 0, 1.0], [0, 0, 1.6], [0.22, 0.2, 2.0]],
-  [PLATE.STARNEB]: [[0, 0, 1.0], [0, 0.32, 1.7], [0, -0.05, 1.3]],
-};
-/** plates whose up/down must stay (they have a horizon or rising light) */
-const UPRIGHT = new Set<number>([PLATE.PILLARS, PLATE.AURORA, PLATE.PLANET]);
-/** the order the deck deals in (consecutive cards differ in scale, colour and brightness) */
-const DEAL = [PLATE.PULSAR, PLATE.WEB, PLATE.BINARY, PLATE.CLUSTER, PLATE.PILLARS, PLATE.EYE, PLATE.PLANET, PLATE.REMNANT, PLATE.AURORA, PLATE.SPIRAL, PLATE.ECLIPSE, PLATE.BLACKHOLE, PLATE.STARNEB];
-/** gentle grades, cycled */
-const GRADES: [number, number, number][] = [[1, 1, 1], [1.12, 0.98, 0.82], [0.9, 0.97, 1.12], [1.2, 1.02, 0.74], [1, 1, 1], [1.05, 0.95, 0.9]];
+/** world units between two passes */
+const SP = 60;
 
-interface Shot { t: number; end: number; plate: number; x: number; y: number; z: number; rot: number; fx: number; fy: number; grade: [number, number, number]; drift: number; roll: number; pan: [number, number]; e: number }
-interface Piece { text: string; x: number; t: number }
+type Mode = 'through' | 'left' | 'right' | 'up' | 'down';
+interface Obj { t: number; plate: number; mode: Mode; h: number; crop: [number, number, number]; rot: number; gain: number; L: number; x: number; y: number; mesh?: THREE.Mesh; mat?: THREE.ShaderMaterial }
+interface Piece { text: string; x: number; t: number; tAll: number[] }
 interface TLine { line: Line; rows: { pieces: Piece[]; y: number; size: number }[]; t0: number; t1: number }
+
+const SPRITE_VERT = /* glsl */ `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const SPRITE_FRAG = /* glsl */ `
+uniform sampler2D map; uniform vec3 crop; uniform float k, rot;
+varying vec2 vUv;
+void main() {
+  vec2 q = (vUv - 0.5) * 2.0;                       // -1..1 over the sprite
+  vec2 qr = mat2(cos(rot), -sin(rot), sin(rot), cos(rot)) * vec2(q.x * ${AS.toFixed(4)}, q.y);
+  vec2 uv = crop.xy + vec2(qr.x / ${AS.toFixed(4)}, qr.y) * 0.5 / crop.z;
+  vec4 s = texture2D(map, uv);
+  float m = 1.0 - smoothstep(0.42, 0.97, length(q));
+  m *= smoothstep(0.0, 0.05, min(uv.x, 1.0 - uv.x)) * smoothstep(0.0, 0.08, min(uv.y, 1.0 - uv.y));
+  gl_FragColor = vec4(s.rgb * m * k, s.a * m * min(k, 1.0));
+}`;
 
 const COMP = /* glsl */ `
 uniform sampler2D P, TL, TD;
-uniform vec2 C; uniform float Z, R; uniform vec2 F;
-uniform float expo, blur, textK, darkK, fade, warp, wT;
-uniform vec3 grade;
+uniform float expo, blur, textK, darkK, warp, wT;
 const float ASP = ${AS.toFixed(6)};
-vec3 plateAt(vec2 s) {
-  // s: screen point in plate units relative to the frame centre
-  vec2 q = rot2(R) * s / Z;
-  q *= F;
-  vec2 pp = C + q;
-  return texture(P, vec2(pp.x / (2.0 * ASP) + 0.5, pp.y * 0.5 + 0.5)).rgb;
-}
+vec3 at(vec2 s) { return texture(P, vec2(s.x / (2.0 * ASP) + 0.5, s.y * 0.5 + 0.5)).rgb; }
 void main() {
   vec2 s = (vUv - 0.5) * vec2(2.0 * ASP, 2.0);
   vec3 col = vec3(0.0);
   if (blur > 0.002) {
     float j = hash12(gl_FragCoord.xy);
-    for (int i = 0; i < 10; i++) col += plateAt(s * (1.0 - blur * (float(i) + j) / 10.0));
+    for (int i = 0; i < 10; i++) col += at(s * (1.0 - blur * (float(i) + j) / 10.0));
     col /= 10.0;
-  } else col = plateAt(s);
-  col *= grade * expo;
-  // the warp: thin gold streaks racing out from the centre (the build of the drop's last bars)
+  } else col = at(s);
+  col *= expo;
   if (warp > 0.002) {
     float rr = length(s), aa = atan(s.y, s.x);
     float N = 240.0, u = (aa / 6.2831853 + 0.5) * N, cell = floor(u), fc = fract(u) - 0.5;
@@ -83,114 +74,153 @@ void main() {
       col += vec3(1.0, 0.82, 0.55) * st * warp * 1.6 * smoothstep(0.15, 0.5, rr) * (0.4 + 0.6 * hash11(cell + 5.0));
     }
   }
-  // the darkness cut out behind the words: highlights compressed, then pulled down
   float m = clamp(texture(TD, vUv).r * 1.3, 0.0, 1.0) * darkK;
   col = col / (1.0 + col * 3.0 * m);
   col *= 1.0 - 0.9 * m;
   col += texture(TL, vUv).rgb * textK;
-  fragColor = vec4(col * fade, 1.0);
+  fragColor = vec4(col, 1.0);
 }`;
 
 export default class CosmosDeck extends Scene {
   deck!: PlateDeck;
   comp!: FSPass;
+  rt = makeRT(W, H);
+  scene = new THREE.Scene();
+  cam = new THREE.PerspectiveCamera(62, W / H, 0.1, 4000);
+  streaks = new StarStreaks(2600, 0.05, { maxPx: 3 });
+  dust = new GlowPoints(160, 1);
+  earth = new Earth();
   TL = new Layer2D();
   TD = new Layer2D(W / 2, H / 2, 1);
-  shots: Shot[] = [];
+  objs: Obj[] = [];
   lines: TLine[] = [];
+  keys: [number, number][] = [];   // (time, path length) of the passes
+  jumps: number[] = [];
+  surges: [number, number][] = [];
+  starSeed: number[] = [];
   tEnd = 0;
 
   override async init() {
     const { audio: au, lyrics, start, end, renderer } = this.ctx;
     await loadPhosphorFont();
+    await this.earth.init();
     this.deck = new PlateDeck(renderer);
-    this.comp = new FSPass(COMP, {
-      P: { value: null }, TL: { value: this.TL.texture }, TD: { value: this.TD.texture },
-      C: { value: new THREE.Vector2() }, Z: { value: 1 }, R: { value: 0 }, F: { value: new THREE.Vector2(1, 1) },
-      expo: { value: 1 }, blur: { value: 0 }, warp: { value: 0 }, wT: { value: 0 }, textK: { value: 1 }, darkK: { value: 0.8 }, fade: { value: 1 }, grade: { value: new THREE.Vector3(1, 1, 1) },
-    });
     this.tEnd = end;
+    this.comp = new FSPass(COMP, {
+      P: { value: this.rt.texture }, TL: { value: this.TL.texture }, TD: { value: this.TD.texture },
+      expo: { value: 1 }, blur: { value: 0 }, textK: { value: 1 }, darkK: { value: 0 }, warp: { value: 0 }, wT: { value: 0 },
+    });
+    this.buildText();
 
-    // ---- the chop lines and their syllables
-    const chops = lyrics.linesIn(start - 0.1, end).filter((l) => l.start >= start - 0.2);
-    const onsets = (au.onsets.chop ?? au.onsets.vocal ?? []).map(([t]) => t);
+    // ---- the journey: one pass every third beat while the chops are sung, every second beat from bar 9, every beat
+    // in the roll; two hyperjumps (bar 9, the roll)
+    const beats = au.beats.filter((b) => b > start - 0.01 && b < end + 0.5);
+    const near = (x: number) => beats.reduce((a, b) => (Math.abs(b - x) < Math.abs(a - x) ? b : a), beats[0]!);
+    const tJ1 = near(start + 14.2), tJ2 = near(end - 1.6);
+    this.jumps = [tJ1, tJ2];
+    const passT: number[] = [];
+    for (let i = 3; ; i += 3) { const b = beats[i]; if (!b || b > tJ1 - 0.6) break; passT.push(b); }
+    const i1 = beats.indexOf(tJ1);
+    for (let i = i1 + 2; beats[i]! < tJ2 - 0.5; i += 2) passT.push(beats[i]!);
+    const i2 = beats.indexOf(tJ2);
+    passT.push(beats[i2 + 1]!, beats[i2 + 2]!);
+    // what we pass, how, how big; the black hole on "dark", the star nebula on the "Glo-"s
+    const P = PLATE;
+    const plan: [number, Mode, number, [number, number, number], number][] = [
+      [P.SPIRAL, 'through', 46, [0.5, 0.5, 1.0], 0], [P.CLUSTER, 'right', 20, [0.52, 0.5, 1.0], 0.3], [P.PULSAR, 'left', 18, [0.5, 0.5, 1.2], 0],
+      [P.WEB, 'through', 34, [0.5, 0.5, 1.0], 0.5], [P.PLANET, 'down', 24, [0.5, 0.5, 1.0], 0], [P.STARNEB, 'through', 22, [0.5, 0.5, 1.0], 0],
+      [P.REMNANT, 'through', 24, [0.5, 0.5, 1.0], 0.4], [P.AURORA, 'up', 26, [0.5, 0.5, 1.0], 0], [P.EYE, 'through', 22, [0.5, 0.5, 1.0], 0.6],
+      [P.BLACKHOLE, 'left', 22, [0.5, 0.5, 1.0], 0.1], [P.BINARY, 'right', 22, [0.5, 0.5, 1.0], 0],
+      // from bar 9
+      [P.PILLARS, 'down', 30, [0.5, 0.5, 1.0], 0], [P.ECLIPSE, 'right', 20, [0.5, 0.5, 1.0], 0], [P.SPIRAL, 'left', 26, [0.5, 0.5, 1.2], 2.2],
+      [P.CLUSTER, 'through', 22, [0.52, 0.5, 1.6], 1.0], [P.PULSAR, 'right', 18, [0.5, 0.5, 1.0], 1.5], [P.STARNEB, 'through', 20, [0.5, 0.5, 1.0], 0.3],
+      [P.WEB, 'through', 30, [0.35, 0.6, 1.4], 2.0], [P.REMNANT, 'left', 20, [0.5, 0.5, 1.0], 1.0], [P.EYE, 'through', 20, [0.5, 0.5, 1.3], 2.5],
+      [P.PLANET, 'left', 22, [0.5, 0.5, 1.0], 0.2], [P.BLACKHOLE, 'right', 20, [0.5, 0.5, 1.2], -0.15],
+      // the roll
+      [P.AURORA, 'through', 24, [0.5, 0.5, 1.0], 0], [P.BINARY, 'left', 18, [0.5, 0.5, 1.2], 0.2],
+    ];
+    // pin the star nebula / the black hole to the words: the pass nearest each "Glo-" / "dark" gets that plate
+    const chopL = lyrics.linesIn(start, end).filter((l) => l.kind === 'chop' && l.start < end - 0.5);
+    const want = new Map<number, number>();
+    const nearestPass = (tw: number) => passT.reduce((a, b, i) => (Math.abs(b - tw) < Math.abs(passT[a]! - tw) ? i : a), 0);
+    for (const l of chopL) if (/^glo/i.test(l.words[0]?.w ?? '')) { const j = nearestPass((l.words[0]!.syl?.[1]?.[0] ?? l.start) + 0.1); if (!want.has(j)) want.set(j, P.STARNEB); }
+    const dk = chopL.flatMap((l) => l.words).find((w) => /^dark/i.test(w.w));
+    if (dk) want.set(nearestPass(dk.start), P.BLACKHOLE);
+    for (const [j, plate] of want) {
+      if (j >= plan.length || plan[j]![0] === plate) continue;
+      // take the nearest entry of that plate and swap it in
+      let k = -1;
+      for (let d = 1; d < plan.length && k < 0; d++) for (const c of [j + d, j - d]) if (c >= 0 && c < plan.length && plan[c]![0] === plate && !want.has(c)) { k = c; break; }
+      if (k >= 0) { const tmp = plan[j]!; plan[j] = plan[k]!; plan[k] = tmp; }
+    }
+    let L = SP * 1.4;
+    this.keys = [[start - 0.6, 0]];
+    passT.forEach((t, i) => {
+      if (this.jumps.some((j) => j < t && j > (passT[i - 1] ?? start))) { this.keys.push([this.jumps.find((j) => j < t)! - 0.001, L - SP * 0.4]); L += SP * 3; this.keys.push([this.jumps.find((j) => j < t)! + 0.12, L - SP * 0.7]); }
+      const p = plan[i % plan.length]!;
+      const [plate, mode, h, crop, rot] = p;
+      const off = mode === 'through' ? [0, 0] : mode === 'left' ? [-h * 1.05, 0] : mode === 'right' ? [h * 1.05, 0] : mode === 'up' ? [0, h * 0.75] : [0, -h * 0.75];
+      this.objs.push({ t, plate, mode, h, crop, rot, gain: 1, L, x: off[0]!, y: off[1]!, });
+      this.keys.push([t, L]);
+      L += SP * (t < tJ1 ? 1.0 : 1.15);
+    });
+    this.keys.push([end + 1.5, L + SP * 1.5]);
+    // kicks surge the flight
+    this.surges = au.events('kick', start, end).filter(([, s]) => s >= 0.85).map(([t, s]) => [t, s]);
+
+    // ---- the objects
+    for (const o of this.objs) {
+      const tex = this.deck.get(o.plate);
+      const mat = new THREE.ShaderMaterial({
+        vertexShader: SPRITE_VERT, fragmentShader: SPRITE_FRAG, transparent: true, depthWrite: false, depthTest: false,
+        blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendEquation: THREE.AddEquation,
+        uniforms: { map: { value: tex }, crop: { value: new THREE.Vector3(...o.crop) }, k: { value: 1 }, rot: { value: o.rot } },
+      });
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2 * AS * o.h, 2 * o.h), mat);
+      mesh.frustumCulled = false;
+      o.mesh = mesh; o.mat = mat;
+      this.scene.add(mesh);
+    }
+    const r = mulberry32(5);
+    for (let i = 0; i < this.streaks.n; i++) this.starSeed.push(r(), r(), r(), r());
+    this.streaks.renderOrder = -2;
+    this.dust.renderOrder = -1;
+    this.scene.add(this.streaks, this.dust, this.earth);
+    this.earth.visible = false;
+  }
+
+  private buildText() {
+    const { lyrics, audio, start, end } = this.ctx;
+    const chops = lyrics.linesIn(start - 0.1, end).filter((l) => l.start >= start - 0.2 && l.start < end - 0.5 && l.kind === 'chop');
     const mc = document.createElement('canvas').getContext('2d')!;
     const meas = (s: string, size: number) => { mc.font = `${size}px "${PHOS_FONT}"`; return mc.measureText(s).width; };
+    const onsets = (audio.onsets.chop ?? []).map(([t]) => t);
     chops.forEach((l, li) => {
       const [w0, ...rest] = l.words;
       if (!w0) return;
-      const ons = onsets.filter((o) => o >= w0.start - 0.03 && o < w0.end - 0.02);
-      const SYL = ons.length >= 5 ? ['Glo', '-o', '-o', 'w', 'ing'] : ['Glo', '-o', '-o', 'wing'];
+      // the first word in its syllables (split at the hyphens; each piece lights on its own onset)
+      const parts = w0.w.split(/(?=-)/);
+      const syl = (w0 as { syl?: [number, number][] }).syl?.map((s) => s[0]) ?? onsets.filter((o) => o >= w0.start - 0.03 && o < w0.end - 0.02);
+      const s1 = rest.length ? 196 : 210, s2 = 118;
       const pieces1: Piece[] = [];
-      const s1 = 200, s2 = 118;
-      let x = -meas(SYL.join(''), s1) / 2;
-      SYL.forEach((txt, k) => { pieces1.push({ text: txt, x, t: ons[k] ?? lerp(w0.start, w0.end, k / SYL.length) }); x += meas(txt, s1); });
-      const r2txt = rest.map((w) => w.w.replace(/[.,!]/g, ''));
-      const gap = meas(' ', s2);
-      const tot = r2txt.reduce((a, s) => a + meas(s, s2), 0) + gap * (r2txt.length - 1);
-      let x2 = -tot / 2;
-      const pieces2 = rest.map((w, k) => { const p = { text: r2txt[k]!, x: x2, t: w.start }; x2 += meas(r2txt[k]!, s2) + gap; return p; });
-      const next = chops[li + 1];
-      this.lines.push({ line: l, rows: [{ pieces: pieces1, y: 858, size: s1 }, { pieces: pieces2, y: 1000, size: s2 }], t0: w0.start - 0.04, t1: Math.min(l.end + 1.2, next ? next.start - 0.3 : 1e9) });
-    });
-
-    // ---- the cuts
-    const strong = au.events('kick', start - 0.05, end).filter(([, s]) => s >= 0.85).map(([t]) => t);
-    const beats = au.beats.filter((b) => b > start + 0.1 && b < end);
-    const tBeats = au.downbeats.find((d) => d > start + 13.0) ?? start + 13.5;   // bar 9: every beat from here
-    const tRoll = au.downbeats.filter((d) => d < end - 0.5).pop() ?? end - 1.6;   // the last bar: the roll
-    const tLast = au.beats.filter((b) => b < end - 0.2).pop() ?? end - 0.4;       // the final shot
-    const pins: { t: number; plate: number; f: number }[] = [{ t: start, plate: PLATE.SPIRAL, f: 0 }];
-    for (const tl of this.lines) {
-      const w = tl.line.words;
-      pins.push({ t: w[0]!.start, plate: PLATE.STARNEB, f: this.lines.indexOf(tl) === 0 ? 0 : 2 });
-      const dark = w[w.length - 1]!;
-      pins.push({ t: dark.start, plate: this.lines.indexOf(tl) === 0 ? PLATE.BLACKHOLE : PLATE.ECLIPSE, f: 0 });
-    }
-    pins.push({ t: tLast, plate: PLATE.CLUSTER, f: 0 });
-    let cuts: number[] = [];
-    let prev = -9;
-    for (const k of strong) if (k > start + 0.15 && k < tBeats - 0.1 && k - prev >= 0.3) { cuts.push(k); prev = k; }
-    for (const b of beats) if (b >= tBeats - 0.1 && b < tRoll - 0.1) cuts.push(b);
-    prev = -9;
-    for (const k of au.events('kick', tRoll - 0.05, tLast - 0.1)) if (k[1] >= 0.8 && k[0] - prev >= 0.15) { cuts.push(k[0]); prev = k[0]; }
-    cuts = cuts.filter((c) => pins.every((p) => Math.abs(p.t - c) > 0.22));
-    const all = [...cuts.map((t) => ({ t, plate: -1, f: -1 })), ...pins].sort((a, b) => a.t - b.t);
-    // deal
-    let di = 0, n = 0;
-    const used = new Map<number, number>();
-    all.forEach((c, i) => {
-      let plate = c.plate;
-      if (plate < 0) {
-        const nextPin = all.slice(i + 1).find((x) => x.plate >= 0)?.plate;
-        const prevPlate = this.shots[this.shots.length - 1]?.plate;
-        for (let tries = 0; tries < DEAL.length; tries++) {
-          plate = DEAL[di++ % DEAL.length]!;
-          if (plate !== prevPlate && plate !== nextPin && plate !== PLATE.STARNEB) break;
-        }
-      }
-      const k = used.get(plate) ?? 0;
-      used.set(plate, k + 1);
-      const frs = FR[plate]!;
-      const f = c.f >= 0 ? frs[c.f]! : frs[(k + Math.floor(hash(i, 5) * 2)) % frs.length]!;
-      const h1 = hash(i, 11), h2 = hash(i, 12), h3 = hash(i, 13);
-      const e = c.t < tBeats ? 0.5 : c.t < tRoll ? 0.75 + 0.25 * (c.t - tBeats) / Math.max(1, tRoll - tBeats) : 1;
-      const rot = c.f >= 0 ? 0 : (h1 - 0.5) * 0.12 * (0.5 + e);
-      this.shots.push({
-        t: c.t, end: all[i + 1]?.t ?? end + 1, plate, x: f[0], y: f[1], z: f[2], rot,
-        fx: c.f < 0 && h2 > 0.55 ? -1 : 1, fy: c.f < 0 && h3 > 0.7 && !UPRIGHT.has(plate) ? -1 : 1,
-        grade: GRADES[n++ % GRADES.length]!, drift: (h1 > 0.4 ? 1 : -0.7) * (0.03 + 0.05 * e), roll: (h2 - 0.5) * 0.05 * e,
-        pan: [(h3 - 0.5) * 0.08 * e, (hash(i, 14) - 0.5) * 0.05 * e], e,
+      let x = -meas(parts.join(''), s1) / 2;
+      parts.forEach((txt, k) => {
+        const t = syl[k] ?? lerp(w0.start, w0.end, k / parts.length);
+        // syllables beyond the pieces re-strike the last piece
+        const extra = k === parts.length - 1 ? syl.slice(parts.length) : [];
+        pieces1.push({ text: txt, x, t, tAll: [t, ...extra] });
+        x += meas(txt, s1);
       });
+      const r2 = rest.map((w) => w.w);
+      const gap = meas(' ', s2);
+      const tot = r2.reduce((a, s) => a + meas(s, s2), 0) + gap * Math.max(0, r2.length - 1);
+      let x2 = -tot / 2;
+      const pieces2 = rest.map((w, k) => { const p = { text: r2[k]!, x: x2, t: w.start, tAll: [w.start] }; x2 += meas(r2[k]!, s2) + gap; return p; });
+      const next = chops[li + 1];
+      const rows = [{ pieces: pieces1, y: rest.length ? 858 : 930, size: s1 }];
+      if (pieces2.length) rows.push({ pieces: pieces2, y: 1000, size: s2 });
+      this.lines.push({ line: l, rows, t0: w0.start - 0.04, t1: Math.min(l.end + 1.0, next ? next.start - 0.3 : 1e9) });
     });
-    // paint every plate now (deterministic, and the first frames don't stall)
-    for (const s of new Set(this.shots.map((s) => s.plate))) this.deck.get(s);
-  }
-
-  private shotAt(t: number) {
-    let s = this.shots[0]!;
-    for (const x of this.shots) if (x.t <= t) s = x; else break;
-    return s;
   }
 
   private drawText(t: number) {
@@ -202,46 +232,40 @@ export default class CosmosDeck extends Scene {
       if (t < tl.t0 || t > tl.t1 + 0.35) continue;
       const out = 1 - smoothstep(tl.t1, tl.t1 + 0.35, t);
       any = true;
-      // darkness behind the whole line (only once it has started)
       D.save();
       D.globalAlpha = out * smoothstep(tl.t0, tl.t0 + 0.08, t);
-      D.filter = 'blur(20px)';
       D.fillStyle = '#fff';
-      D.font = `${tl.rows[0]!.size / 2}px "${PHOS_FONT}"`;
-      // a broad soft band under both rows, then the letters themselves (thick)
       D.filter = 'blur(40px)';
-      D.globalAlpha *= 0.55;
-      D.beginPath(); D.ellipse(W / 4, (tl.rows[0]!.y + tl.rows[1]!.y) / 4 - 30, 520, 150, 0, 0, Math.PI * 2); D.fill();
-      D.globalAlpha /= 0.55;
+      D.globalAlpha *= 0.5;
+      const yc = tl.rows.reduce((a, r) => a + r.y, 0) / tl.rows.length / 2 - 30;
+      D.beginPath(); D.ellipse(W / 4, yc, 520, 150, 0, 0, Math.PI * 2); D.fill();
+      D.globalAlpha /= 0.5;
       D.filter = 'blur(14px)';
       D.lineWidth = 16; D.strokeStyle = '#fff'; D.lineJoin = 'round';
       for (const row of tl.rows) {
         D.font = `${row.size / 2}px "${PHOS_FONT}"`;
-        for (const p of row.pieces) if (t >= p.t - 0.02) D.strokeText(p.text, (W / 2 + p.x) / 2, row.y / 2);
-        for (const p of row.pieces) if (t >= p.t - 0.02) D.fillText(p.text, (W / 2 + p.x) / 2, row.y / 2);
+        for (const p of row.pieces) if (t >= p.t - 0.02) { D.strokeText(p.text, (W / 2 + p.x) / 2, row.y / 2); D.fillText(p.text, (W / 2 + p.x) / 2, row.y / 2); }
       }
       D.filter = 'none';
       D.restore();
       for (const row of tl.rows) for (const p of row.pieces) {
-        const age = t - p.t;
-        if (age < -0.02) continue;
-        const a = clamp(age / 0.03 + 1) * out;
+        if (t < p.t - 0.02) continue;
+        const last = p.tAll.filter((x) => x <= t + 0.02).pop() ?? p.t;
+        const age = t - last;
+        const a = clamp((t - p.t) / 0.03 + 1) * out;
         const slam = 1 + 0.3 * Math.pow(1 - clamp(age / 0.14), 3);
         const hot = Math.exp(-Math.max(age, 0) / 0.22);
         L.save();
         L.font = `${row.size}px "${PHOS_FONT}"`;
         L.textBaseline = 'alphabetic';
-        // the syllable scales about its own centre (letters never move once set)
         const wdt = L.measureText(p.text).width;
         const cx = W / 2 + p.x + wdt / 2, cy = row.y - row.size * 0.33;
         L.translate(cx, cy); L.scale(1, slam); L.translate(-cx, -cy);   // (vertical only: pieces touch, they must never overlap)
         L.globalAlpha = a;
-        L.shadowColor = `rgba(255,170,50,${0.9})`;
+        L.shadowColor = 'rgba(255,170,50,0.9)';
         L.shadowBlur = 28 + 30 * hot;
-        const r = 255, g = Math.round(lerp(200, 250, hot)), b = Math.round(lerp(110, 230, hot));
-        L.fillStyle = `rgb(${r},${g},${b})`;
+        L.fillStyle = `rgb(255,${Math.round(lerp(200, 250, hot))},${Math.round(lerp(110, 230, hot))})`;
         L.fillText(p.text, W / 2 + p.x, row.y);
-        L.shadowBlur = 0;
         L.restore();
       }
     }
@@ -249,48 +273,105 @@ export default class CosmosDeck extends Scene {
     return any;
   }
 
+  /** the path length at t: through the passes (monotone cubic), warped ahead by the kicks */
+  private pathL(t: number) {
+    let tw = t;
+    for (const [tk, s] of this.surges) if (t > tk && t - tk < 2) { const x = t - tk; tw += 0.07 * s * (Math.exp(-x / 0.45) - Math.exp(-x / 0.05)); }
+    const K = this.keys;
+    if (tw <= K[0]![0]) return K[0]![1];
+    for (let i = 1; i < K.length; i++) if (tw <= K[i]![0]) {
+      const [t0, l0] = K[i - 1]!, [t1, l1] = K[i]!;
+      const u = (tw - t0) / Math.max(1e-4, t1 - t0);
+      // a gentle ease between passes so we slow a touch by each object and speed up between them
+      const e = u + 0.12 * Math.sin(2 * Math.PI * u) / (2 * Math.PI) * 0;
+      return lerp(l0, l1, e);
+    }
+    return K[K.length - 1]![1];
+  }
+  private sway(L: number): [number, number] { return [3.0 * Math.sin(L * 0.009), 1.8 * Math.sin(L * 0.0063 + 1.0)]; }
+
   render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
-    const t = f.t;
-    const s = this.shotAt(t);
-    const age = t - s.t, dur = Math.max(0.15, s.end - s.t);
-    const U = this.comp.u;
-    // the framing: slam in, then drift
-    const slam = Math.exp(-age / 0.075);
-    const u = clamp(age / dur);
-    let z = s.z * (1 + s.drift * age) * (1 + (0.05 + 0.06 * s.e) * slam);
-    const rot = s.rot + s.roll * age;
-    // never show past the plate's edge: zoom enough for the roll, keep the centre inside
-    z = Math.max(z, Math.cos(Math.abs(rot)) + AS * Math.sin(Math.abs(rot)) + 0.002);
-    const hx = AS - AS / z, hy = 1 - 1 / z;
-    const cx = clamp(s.x + s.pan[0] * age, -hx, hx), cy = clamp(s.y + s.pan[1] * age, -hy, hy);
-    (U.C!.value as THREE.Vector2).set(cx, cy);
-    U.Z!.value = z; U.R!.value = rot;
-    (U.F!.value as THREE.Vector2).set(s.fx, s.fy);
-    U.P!.value = this.deck.get(s.plate);
-    U.blur!.value = (0.05 + 0.07 * s.e) * Math.exp(-age / 0.05);
+    const t = f.t, cam = this.cam;
+    const L = this.pathL(t), L2 = this.pathL(t + 0.02);
+    const v = (L2 - L) / 0.02;
+    const [sx, sy] = this.sway(L);
+    const pos = new THREE.Vector3(sx, sy, -L);
+    const [ax, ay] = this.sway(L + 40);
     const kick = f.a.kick;
-    let expo = 1 + (0.45 + 0.5 * s.e) * Math.exp(-age / 0.06) + 0.08 * kick;
-    // the last shot pulls back and dims into the outro
-    const last = s === this.shots[this.shots.length - 1];
-    if (last) expo *= 1 - 0.45 * smoothstep(s.t + 0.2, this.tEnd + 0.6, t);
-    U.expo!.value = expo;
-    (U.grade!.value as THREE.Vector3).set(...s.grade);
+    const roll = 0.12 * Math.sin(L * 0.004) + 0.05 * Math.sin(t * 0.7);
+    aim(cam, pos, new THREE.Vector3(ax, ay, -L - 40), roll);
+    // jumps: a leap, a flash, a radial streak
+    let jump = 0;
+    for (const j of this.jumps) if (t >= j) jump = Math.max(jump, Math.exp(-(t - j) / 0.12));
+    cam.fov = 62 + 6 * kick + 14 * jump + clamp((v - 50) / 200, 0, 1) * 10;
+    cam.updateProjectionMatrix();
+
+    // the objects: billboards facing us; fade in from far, out as we go through them (or as they pass)
+    for (const o of this.objs) {
+      const d = o.L - L;
+      const m = o.mesh!, mat = o.mat!;
+      const vis = d > -o.h * 0.6 && d < 260;
+      m.visible = vis;
+      if (!vis) continue;
+      const [ox, oy] = this.sway(o.L);
+      m.position.set(ox + o.x, oy + o.y, -o.L);
+      m.quaternion.copy(cam.quaternion);
+      const fin = smoothstep(260, 170, d);
+      const fout = o.mode === 'through' ? smoothstep(o.h * 0.08, o.h * 0.75, d) : smoothstep(-o.h * 0.5, o.h * 0.4, d);
+      mat.uniforms.k!.value = fin * fout * o.gain * (1 + 0.25 * kick);
+    }
+    // stars in a tube round the path, recycled ahead of us
+    const S = this.streaks, span = 520;
+    for (let i = 0; i < S.n; i++) {
+      const a = this.starSeed[i * 4]!, b = this.starSeed[i * 4 + 1]!, c = this.starSeed[i * 4 + 2]!, e = this.starSeed[i * 4 + 3]!;
+      const zr = ((a * span - L) % span + span) % span;   // distance ahead, 0..span
+      const z = -L - (span - zr) + 30;
+      const ang = b * Math.PI * 2, rad = 4 + Math.pow(c, 0.7) * 90;
+      const [px, py] = this.sway(-z);
+      const tint = e < 0.12 ? col('gold', 1) : e < 0.2 ? col('cyan', 1) : col('white', 1);
+      S.set(i, px + Math.cos(ang) * rad, py + Math.sin(ang) * rad * 0.7, z, tint, 0.6 + 1.8 * e * e, 0.8 + 1.4 * e);
+    }
+    S.setMotion(new THREE.Vector3(0, 0, Math.max(v, 1)), 1 / 40);
+    S.commit();
+    // drifting gold dust, close by
+    const D = this.dust;
+    for (let i = 0; i < D.n; i++) {
+      const zr = ((hash(i, 3) * 120 - L) % 120 + 120) % 120;
+      const z = -L - (120 - zr) + 8;
+      const [px, py] = this.sway(-z);
+      D.set(i, px + (hash(i, 4) - 0.5) * 30, py + (hash(i, 5) - 0.5) * 18, z, col(hash(i, 6) < 0.5 ? 'gold' : 'white', 1), 0.06 + 0.1 * hash(i, 7), 0.5 + 1.5 * hash(i, 8));
+    }
+    D.commit();
+    // the Earth ahead at the end of the flight (the ending's fall starts from exactly this view)
+    const tE = this.tEnd;
+    const eon = smoothstep(tE - 1.6, tE - 0.9, t);
+    this.earth.visible = eon > 0.001;
+    if (this.earth.visible) EARTH_END.place(this.earth, cam, t, eon);
+
+    const r = this.ctx.renderer;
+    r.setRenderTarget(this.rt);
+    r.setClearColor(0x000000, 1);
+    r.clear(true, true, true);
+    r.render(this.scene, cam);
+
+    // composite: exposure on the kicks, the jumps' streak, the warp in the roll, the words
+    const U = this.comp.u;
+    U.expo!.value = 1 + 0.18 * kick + 0.35 * jump;
+    U.blur!.value = 0.12 * jump;
+    const e = clamp((t - this.jumps[0]!) / (this.jumps[1]! - this.jumps[0]!));
+    U.warp!.value = (t > this.jumps[0]! ? 0.25 + 0.5 * e : 0) * (1 - eon);
+    U.wT!.value = t;
     const txt = this.drawText(t);
     U.textK!.value = txt ? 1.25 : 0;
     U.darkK!.value = txt ? 1 : 0;
-    U.fade!.value = 1;
-    // the warp builds through the every-beat section and peaks in the roll
-    U.warp!.value = s.e <= 0.5 ? 0 : clamp((s.e - 0.6) / 0.4) * 0.75 + (s.e >= 1 ? 0.25 : 0);
-    U.wT!.value = t;
-    this.comp.render(this.ctx.renderer, out);
-    void u;
-    const fi = frameIdx(t), sh = (2 + 6 * s.e) * slam;
+    this.comp.render(r, out);
+    const fi = frameIdx(t), sh = 3 * kick + 14 * jump;
     return {
-      bloom: 0.75, bloomThreshold: 0.75, bloomRadius: 0.75, vignette: 0.42, grain: 0.035, ca: 0.6 + 1.2 * slam, halation: 0.08,
-      zoom: 1 + 0.02 * kick, shake: [(hash(fi, 1) - 0.5) * 2 * sh, (hash(fi, 2) - 0.5) * 2 * sh], flash: 0.0,
+      bloom: 0.8, bloomThreshold: 0.75, bloomRadius: 0.8, vignette: 0.42, grain: 0.035, ca: 0.6 + 2 * jump + 0.6 * kick, halation: 0.08,
+      zoom: 1 + 0.02 * kick, shake: [(hash(fi, 1) - 0.5) * 2 * sh, (hash(fi, 2) - 0.5) * 2 * sh], flash: 0.05 * jump,
     };
   }
 
-  override dispose() { this.deck.dispose(); this.comp.mat.dispose(); }
+  override dispose() { this.deck.dispose(); this.comp.mat.dispose(); this.rt.dispose(); }
 }
 void ease;

@@ -27,7 +27,8 @@ export const PLATE_W = 2560, PLATE_H = 1440;
 // ------------------------------------------------------------------------------------------- shared GLSL
 const LIB = /* glsl */ `
 uniform vec2 uRes;
-float PX;                          // plate units per texel (the plate is x in [-16/9, 16/9], y in [-1, 1])
+float PX;                          // plate units per texel
+float OCC = 0.0;                   // how much the plate blocks what lies behind it (dark solids: shadows, planets, dust) (the plate is x in [-16/9, 16/9], y in [-1, 1])
 const float AS = 1.7777778;
 
 float vn(vec2 p) {
@@ -163,6 +164,7 @@ vec3 plate(vec2 p) {
   float hz = fbv(src * 1.6 + 3.0, 6);
   bg += vec3(0.004, 0.010, 0.035) * (0.4 + hz) + vec3(0.06, 0.025, 0.005) * pow(hz, 3.0);
   float shadow = smoothstep(rs, rs + PX * 1.5, r);
+  OCC = 1.0 - shadow;
   vec3 col = bg * shadow;
   // the disk, direct image
   vec2 dc = vec2(q.x, q.y / ci);
@@ -275,6 +277,7 @@ vec3 plate(vec2 p) {
   d = min(d, length((p - vec2(0.36, 0.3)) * vec2(1.0, 0.75)) - 0.025);
   d += n1 * 0.21 + n2 * 0.06 + n3 * 0.014;
   float inside = smoothstep(PX * 1.2, -PX * 1.2, d);
+  OCC = inside * 0.9;
   float tx = fbv(p * 12.0 + 3.0, 6);
   float sub = exp(min(d, 0.0) / 0.03);
   float face = smoothstep(-0.3, 0.9, p.y + 0.5);
@@ -380,6 +383,7 @@ vec3 plate(vec2 p) {
   vec2 S = Pc + dS * Rp * 0.99;
   vec2 d = p - Pc; float r = length(d);
   float inP = smoothstep(Rp + PX, Rp - PX, r);
+  OCC = inP;
   vec3 col = mix(vec3(0.001, 0.003, 0.011), vec3(0.005, 0.014, 0.045), smoothstep(-1.0, 1.0, p.y - p.x * 0.3));
   col += starfield(p, 0.6, 61.0, 0.7) * 0.75;
   col += brightStars(p, 0.5, 0.16, 4.0, 0.45, 0.7);
@@ -563,6 +567,7 @@ vec3 plate(vec2 p) {
   }
   // the moon: black, sharp
   col *= smoothstep(Rm - PX, Rm + PX, r);
+  OCC = 1.0 - smoothstep(Rm - PX, Rm + PX, r);
   // the diamond ring: one bead of sunlight on the limb
   vec2 B = C + vec2(cos(0.78), sin(0.78)) * Rm * 1.004;
   col += burst(p, B, 2.6, 8.0, 0.2, vec3(1.0, 0.95, 0.85));
@@ -633,7 +638,7 @@ void main() {
   PX = 2.0 / uRes.y;
   vec2 p = (vUv - 0.5) * vec2(2.0 * AS, 2.0);
   vec3 c = plate(p);
-  fragColor = vec4(max(c, vec3(0.0)), 1.0);
+  fragColor = vec4(max(c, vec3(0.0)), clamp(OCC, 0.0, 1.0));
 }`;
 
 /** The plates, each painted the first time it is asked for. */

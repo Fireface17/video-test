@@ -79,7 +79,8 @@ export function makeTimeline(ly: Lyrics, au: AudioData): TimelineEntry[] {
     E('chorus3', 'phos-final', b.chorus3, b.drop3),
     // the wall of the song's words burns to gold: a flash of light into the deck of cosmic plates, cut on the kicks
     E('drop3', 'cosmos-deck', b.drop3, b.outro),
-    // stars to stars
-    E('outro', 'ceiling', b.outro, b.end, { params: { mode: 'outro' }, ...X('crossfade', 1.2) }),
+    // the flight ends at the Earth: we fall at it, through the clouds, and land at night on the sand where the two
+    // figures of stars lie (the ceiling outro's timing, on the sand)
+    E('outro', 'cosmos-ending', b.outro, b.end, X('crossfade', 0.5)),
   ];
 }
