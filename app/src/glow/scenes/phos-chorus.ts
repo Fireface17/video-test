@@ -178,7 +178,8 @@ export default class PhosChorus extends Scene {
   }
   private fade(li: number, t: number) {
     const nx = this.lines[li + 1];
-    return nx ? 1 - smoothstep(nx.start - 0.05, nx.start + 0.4, t) : 1;
+    // gone by the time the next line's first word lands (they used to overlap for half a second)
+    return nx ? 1 - smoothstep(nx.start - 0.35, nx.start - 0.02, t) : 1;
   }
   private camY(t: number) {
     const li = this.moments.indexOf('rise');

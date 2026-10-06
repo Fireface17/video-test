@@ -4,8 +4,8 @@ The video's plan is `docs/glow/TREATMENT.md` (Russian); the engine, its rules an
 
 ## Files
 
-- `app/src/glow/timeline.ts` — the edit: entries (`intro`, `highway`, `snap1`, `chorus1`, `drop1a`, `drop1`, `train`, `chorus2`, `break2`, `bridge`, `chorus3`, `drop3`, `outro`), anchored to lyric lines and sections.
-- `app/src/glow/scenes/<name>.ts` — one module per scene (`ceiling` intro/outro, `highway`, `rooftop` pre-chorus 1, `rooftops` chorus 1, `citydrop` drop 1a, `cosmos` the galaxy drops, `train` verse 2 + pre-chorus 2, `run` chorus 2, `overpass` break, `fall` bridge, `dawn` final chorus); helpers for one scene go in `scenes/<name>-*.ts`; `lab-*.ts` are test scenes (`render.ts --lab <name>`).
+- `app/src/glow/timeline.ts` — the edit: entries (`intro`, `highway`, `snap1`, `chorus1`, `drop1a`, `drop1`, `verse2`, `pre2`, `chorus2`, `break2`, `bridge`, `chorus3`, `drop3`, `outro`), anchored to lyric lines and sections.
+- `app/src/glow/scenes/<name>.ts` — one module per scene (`ceiling` intro/outro, `highway`, the «phosphor» scenes `phos-pre` (both pre-choruses), `phos-chorus`, `phos-drop`, `phos-verse`, `phos-scope` (chorus 2 on an oscilloscope), `phos-break`, `phos-fall` (bridge through cut paper), `phos-final`, and `cosmos` (the galaxy drops)); shared phosphor look in `lib/phosphor.ts`; `lab-*.ts` are test scenes (`render.ts --lab <name>`).
 - `app/src/glow/lib/` — the shared 3D toolkit (below).
 - Data: `data/glow/lyrics.json` (lines as sung, word times) and `data/glow/audio.json` (beats, which are **not evenly spaced** — the tempo drifts from 150.1 to 152.3 BPM, so always go through `audio.beatAt` / `timeOfBeat` / `downbeats`; sections; envelopes; onsets `kick`, `snare`, `hat`, `vocal`, `chop`).
 
