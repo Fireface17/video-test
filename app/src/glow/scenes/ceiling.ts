@@ -559,6 +559,9 @@ export default class Ceiling extends Scene {
     // camera: in bed, looking up, drifting slowly in toward the hands
     const k = ease.inOutQuad(prog(t, this.ctx.start, tEnd));
     const pos = EYE.clone().add(new THREE.Vector3(mid.x * 0.6 * k, 0.15 + 0.85 * k, mid.y * 0.6 * k));
+    // the dive at the Earth's city lights (drop 3's end) carries on into the ceiling: the camera still rushing up at
+    // it as the stickers cross-fade in over the lights, slowing to the drift
+    pos.y -= 1.1 * Math.pow(1 - ease.outCubic(prog(t, this.ctx.start - 0.75, this.ctx.start + 1.6)), 1.0);
     pos.x += noise1(t * 0.3, 1) * 0.03;
     pos.z += noise1(t * 0.27, 2) * 0.03;
     aim(cam, pos, pos.clone().add(new THREE.Vector3(0, 1, 0)), 0.05 * Math.sin(t * 0.2), new THREE.Vector3(0, 0, 1));
