@@ -10,7 +10,7 @@ import { Scene, type Frame, type PostOverrides } from '../../engine/scene';
 import type { Line, Word } from '../../engine/lyrics';
 import { W, H } from '../../engine/gl';
 import { clamp, ease, hash, lerp, noise1, prog, smoothstep, TAU } from '../../engine/util';
-import { inOutSine, PhosphorStage, StickerWord, glowAt, uvEvents, uvPulse, layoutWords, drawWord, loadPhosphorFont, mixTone, phosphorCss, starPath, PH, PHOS_FONT, type Charge, type Tone, type Glow } from '../lib/phosphor';
+import { inOutSine, PhosphorStage, hitFx, StickerWord, glowAt, uvEvents, uvPulse, layoutWords, drawWord, loadPhosphorFont, mixTone, phosphorCss, starPath, PH, PHOS_FONT, type Charge, type Tone, type Glow } from '../lib/phosphor';
 
 const CX = W / 2, CY = H / 2;
 export const IGNITE = { x: CX, y: CY, r: 140 };
@@ -84,7 +84,7 @@ export default class PhosPre extends Scene {
     const N = this.v.bg;
     for (let i = 0; i < N; i++) this.bg.push({
       x: hash(i, 1, 9) * W, y: hash(i, 2, 9) * H, s: 5 + 15 * Math.pow(hash(i, 3, 9), 2.4), r: hash(i, 4, 9) * TAU, k: 0.35 + 0.65 * hash(i, 5, 9),
-      vx: (hash(i, 6, 9) - 0.5) * 12, vy: (hash(i, 7, 9) - 0.5) * 12,
+      vx: (hash(i, 6, 9) - 0.5) * 30, vy: -10 - 50 * hash(i, 7, 9),
     });
   }
 
@@ -226,7 +226,11 @@ export default class PhosPre extends Scene {
 
     st.stars.commit(idx);
     const pulse = uvPulse(audio, t, { thr: V.uvThr });
-    return st.end(out, { gain: 1.55, uv: pulse * (this.n === 2 ? 0.32 : 0.18), uvColor: this.n === 2 ? [0.4, 0.25, 1] : undefined });
+    const o = st.end(out, { gain: 1.55, uv: pulse * (this.n === 2 ? 0.32 : 0.18), uvColor: this.n === 2 ? [0.4, 0.25, 1] : undefined });
+    // dynamics: kick punch + shake, snare flash, a slow push-in that ramps into the ignition
+    const k = this.n === 2 ? 1.7 : 1.2, fx = hitFx(audio, t, { zoom: 0.025, shake: 3, flash: 0.08, k });
+    const push = 1 + 0.06 * prog(t, this.ctx.start, this.ctx.end, ease.inQuad) + 0.12 * ign * ign;
+    return { ...o, zoom: (fx.zoom as number) * push, shake: fx.shake, flash: Math.max(o.flash ?? 0, fx.flash as number) };
   }
 
   private drawFront(t: number) {

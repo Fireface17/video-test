@@ -34,6 +34,7 @@
 //                           set(i, x, y, size, rot, glow, tone, body?)   (logical px, y down; size = outer radius)
 //                           setRaw(i, x, y, size, rot, rgbLinear, body?)  commit(n)  draw(renderer, rt)
 //                           `body` (0..1, default 0.35): how much of the dead sticker body shows in the dark
+//   hitFx(audio, t, o)         PostOverrides {zoom, shake, flash} punch on kicks / flash on snares (o.zoom 0.03, o.shake 4 px, o.flash 0.1, o.k scales all)
 // Stage (the composite)
 //   class PhosphorStage(ctx, maxStars)   L (Layer2D, draw text/vectors here), stars (StarField)
 //       begin(out)        clear out + L
@@ -339,4 +340,17 @@ export class PhosphorStage {
     return { ...PHOS_POST, flash: uv * 0.12 };
   }
   dispose() { this.stars.dispose(); }
+}
+
+/** Frame punch for dynamics: zoom + shake on kicks, flash on snares. Merge into the PostOverrides a scene returns. */
+export function hitFx(audio: AudioData, t: number, o: { zoom?: number; shake?: number; flash?: number; k?: number; thr?: number } = {}): PostOverrides {
+  const k = o.k ?? 1, thr = o.thr ?? 0.5;
+  let kk = 0;
+  for (const [kt, s] of audio.events('kick', t - 0.5, t + 1e-4)) if (s >= thr) kk = Math.max(kk, s * Math.pow(0.5, (t - kt) / 0.09));
+  const sn = audio.hit('snare', t, 0.07);
+  const ph = Math.round(t * 60);
+  const jx = Math.sin(ph * 12.9898) * 43758.5453, jy = Math.sin(ph * 78.233) * 12543.31;
+  const rx = (jx - Math.floor(jx)) * 2 - 1, ry = (jy - Math.floor(jy)) * 2 - 1;
+  const a = (o.shake ?? 4) * k * kk;
+  return { zoom: 1 + (o.zoom ?? 0.03) * k * kk, shake: [rx * a, ry * a], flash: (o.flash ?? 0.1) * k * sn * sn * 0.5 };
 }

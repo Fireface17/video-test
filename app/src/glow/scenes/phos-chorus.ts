@@ -17,7 +17,7 @@ import { W, H } from '../../engine/gl';
 import { layout, type TextLayout } from '../../engine/type';
 import { strokeText, type StrokeText } from '../../engine/stroke';
 import { clamp, ease, hash, lerp, prog, smoothstep, TAU } from '../../engine/util';
-import { inOutSine, PhosphorStage, glowAt, uvEvents, uvPulse, layoutWords, drawWord, loadPhosphorFont, mixTone, phosphorCss, starPath, wordCharges, PHOS_FONT, type Charge, type Tone, type Glow } from '../lib/phosphor';
+import { hitFx, inOutSine, PhosphorStage, glowAt, uvEvents, uvPulse, layoutWords, drawWord, loadPhosphorFont, mixTone, phosphorCss, starPath, wordCharges, PHOS_FONT, type Charge, type Tone, type Glow } from '../lib/phosphor';
 import { charTimes } from '../lib/lightpaint';
 
 const CX = W / 2, CY = H / 2;
@@ -90,7 +90,7 @@ export default class PhosChorus extends Scene {
 
     for (let i = 0; i < 620; i++) this.bg.push({
       x: hash(i, 1, 4) * W, y: hash(i, 2, 4) * H, s: 5 + 17 * Math.pow(hash(i, 3, 4), 2.4), r: hash(i, 4, 4) * TAU, k: 0.3 + 0.7 * hash(i, 5, 4),
-      vx: (hash(i, 6, 4) - 0.5) * 10, vy: -6 - hash(i, 7, 4) * 10, gold: hash(i, 8, 4) < 0.07,
+      vx: (hash(i, 6, 4) - 0.5) * 40, vy: -25 - hash(i, 7, 4) * 90, gold: hash(i, 8, 4) < 0.07,
     });
   }
 
@@ -229,7 +229,12 @@ export default class PhosChorus extends Scene {
     const uv = Math.max(uvPulse(audio, t, { thr: 0.8 }) * 0.2, bigUV * 0.95);
     const o = st.end(out, { gain: 1.5 * out0, uv: uv * out0 });
     if (out0 < 1) o.fade = 1 - out0;
-    return o;
+    // dynamics: hard kick punch + shake, snare flash, a punch-in at the start of every line, slow drift
+    const fx = hitFx(audio, t, { zoom: 0.05, shake: 8, flash: 0.14 });
+    let slam = 0;
+    for (const l of this.lines) if (t >= l.start && t < l.start + 0.4) slam = Math.max(slam, 0.09 * Math.pow(1 - (t - l.start) / 0.4, 2.5));
+    const drift = 1 + 0.025 * Math.sin((t - start) * 0.5);
+    return { ...o, zoom: (fx.zoom as number) * (1 + slam) * drift, shake: fx.shake, flash: Math.max(o.flash ?? 0, fx.flash as number) };
   }
 
   /** the field of stickers in the dark: charged by the kicks, parallax with the camera */
@@ -275,7 +280,7 @@ export default class PhosChorus extends Scene {
           const id = wi * 41 + gi;
           const rot = (hash(k[2], id, 1) - 0.5) * (0.06 + 0.42 * p) * (isDance ? 1.4 : 1);
           const dy = -(4 + hash(k[2], id, 2) * 30) * p * (isDance ? 1.5 : 1);
-          const sc = 1 + 0.1 * p;
+          const sc = (1 + 0.1 * p) * (1 + 0.7 * Math.exp(-Math.max(0, t - w.start) / 0.09) * (t >= w.start ? 1 : 0));
           const lv = (gl.level * 0.95 + 0.3 * p) * fd * aGh, fl = gl.flash * fd * aGh + p * 0.18 * (gh === 0 ? 1 : 0);
           c.save();
           c.translate(CX + b.x + g.x + g.w / 2, CY + b.y + dy);

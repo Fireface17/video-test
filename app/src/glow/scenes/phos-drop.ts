@@ -9,7 +9,7 @@ import type { Line, Word } from '../../engine/lyrics';
 import { W, H } from '../../engine/gl';
 import { layout, type TextLayout } from '../../engine/type';
 import { clamp, ease, hash, lerp, prog, smoothstep, TAU } from '../../engine/util';
-import { PhosphorStage, StickerWord, glowAt, uvEvents, uvPulse, drawWord, loadPhosphorFont, mixTone, phosphorCss, PHOS_FONT, type Charge, type Tone } from '../lib/phosphor';
+import { hitFx, PhosphorStage, StickerWord, glowAt, uvEvents, uvPulse, drawWord, loadPhosphorFont, mixTone, phosphorCss, PHOS_FONT, type Charge, type Tone } from '../lib/phosphor';
 
 const CX = W / 2, CY = H / 2;
 const SIZE = 196;
@@ -68,7 +68,7 @@ export default class PhosDrop extends Scene {
       const r = bulge ? 15 + 95 * Math.pow(hash(i, 10, 6), 1.4) : 70 + 560 * u;
       this.bg.push({
         x: hash(i, 1, 6) * W, y: hash(i, 2, 6) * H, s: 4 + 16 * Math.pow(hash(i, 4, 6), 2.6), r: hash(i, 5, 6) * TAU, k: 0.3 + 0.7 * hash(i, 5, 7), u,
-        arm, th: bulge ? hash(i, 11, 6) * TAU : arm * Math.PI + 3.3 * Math.log(1 + r / 70) + (hash(i, 12, 6) - 0.5) * (0.5 + 0.5 * u), vx: (hash(i, 6, 6) - 0.5) * 14, vy: (hash(i, 7, 6) - 0.5) * 14,
+        arm, th: bulge ? hash(i, 11, 6) * TAU : arm * Math.PI + 3.3 * Math.log(1 + r / 70) + (hash(i, 12, 6) - 0.5) * (0.5 + 0.5 * u), vx: (hash(i, 6, 6) - 0.5) * 50, vy: -20 - 90 * hash(i, 7, 6),
       });
       this.bg[i]!.u = r; // reuse: radius in the spiral
     }
@@ -76,12 +76,10 @@ export default class PhosDrop extends Scene {
 
   /** fraction of the field visible: sparse around the chops, almost empty in the silence between phrases */
   private dens(t: number) {
-    const [a, b, c2, d] = this.lines.map((l) => l.start);
-    if (!a || !b || !c2) return 0.4;
-    const gapA = this.lines[0]!.end;
-    const base = t < gapA ? 0.4 : t < b ? 0.06 : t < c2 - 0.05 ? 0.55 : 0.5;
-    const prev = t < gapA ? 0.4 : 0.4;
-    return lerp(prev, base, smoothstep(gapA - 0.3, gapA + 0.3, t)) + (t >= c2 - 0.05 ? 0.1 * smoothstep(c2 - 0.5, c2 + 0.3, t) : 0) + 0 * (d ?? 0);
+    const [a, b] = this.lines;
+    if (!a || !b) return 0.4;
+    // the storm fills the gap between the phrases
+    return lerp(lerp(0.4, 1, smoothstep(a.end - 0.2, a.end + 0.4, t)), 0.5, smoothstep(b.start - 0.1, b.start + 0.3, t));
   }
   private spiral(b: (typeof this.bg)[number], t: number): Spiral {
     const th = b.th + 0.5 * (t - this.tSpiral) / Math.sqrt(b.u / 120 + 0.6);
@@ -107,6 +105,8 @@ export default class PhosDrop extends Scene {
     // ---- the field: stickers in the dark, recharged by every strong kick; in bar 8 it forms the spiral
     const burst = (b: { k: number }) => ease.outExpo(prog(t, start + 0.3 + 0.2 * b.k, start + 1.6));
     const rot = 0.5;
+    const A = this.lines[0], B = this.lines[1];
+    const storm = A && B ? smoothstep(A.end - 0.2, A.end + 0.5, t) * (1 - smoothstep(B.start - 0.25, B.start + 0.02, t)) * prog(t, A.end, B.start, ease.inQuad) * 0.7 + (A && B && t > A.end && t < B.start ? 0.25 : 0) : 0;
     for (const b of this.bg) {
       const q = burst(b);
       let x = (b.x + b.vx * t + W * 40) % W, y = (b.y + b.vy * t + H * 40) % H;
@@ -127,13 +127,22 @@ export default class PhosDrop extends Scene {
         level = lerp(level, 0.35 + 0.55 * b.k * (1 - sp.r / 700), e) + 0.25 * e * gl.level;
         tone = mixTone(b.k > 0.9 ? 'gold' : 'green', sp.r < 140 ? 'white' : b.arm ? 'cyan' : mixTone('cyan', 'violet', 0.5), e);
       }
+      if (storm > 0.01) {
+        // warp storm: stickers rush outward from the vanishing point, faster and faster
+        const th = b.r * 7.3, ph = ((b.k * 5.7 + t * (0.5 + 2.2 * storm * storm)) % 1), r = Math.pow(ph, 2.2) * 1150;
+        const wx = CX + Math.cos(th) * r * 1.5, wy = CY + Math.sin(th) * r * 0.9;
+        const m = Math.min(1, storm * 1.6);
+        x = lerp(x, wx, m); y = lerp(y, wy, m);
+        size = lerp(size, (4 + 18 * ph * ph) * (0.6 + b.k), m);
+        level = lerp(level, 0.15 + 0.7 * ph, m); flash = flash * (1 - m);
+      }
       st.stars.set(idx++, x, y, size, b.r + rot * t * 0.1 * (b.k - 0.5), { level, flash }, tone, 0.45);
     }
 
     // ---- the lettering
     this.lines.forEach((l, li) => {
       const next = this.lines[li + 1];
-      const gone = next ? smoothstep(next.start - 0.15, next.start + 0.35, t) : 0;
+      const gone = next ? Math.max(smoothstep(next.start - 0.15, next.start + 0.35, t), smoothstep(l.end - 0.1, l.end + 0.5, t)) : 0;
       if (t < l.start - 0.1 || gone >= 1) return;
       idx = this.line(l, this.groups[li]!, li, t, idx, gone, g);
     });
@@ -145,12 +154,36 @@ export default class PhosDrop extends Scene {
       gr.addColorStop(0, `rgba(255,248,225,${a})`); gr.addColorStop(0.18, `rgba(255,214,140,${a * 0.55})`); gr.addColorStop(1, 'rgba(255,200,120,0)');
       c.save(); c.scale(1, 0.64); c.translate(0, CY / 0.64 - CY); c.fillStyle = gr; c.fillRect(CX - r, CY - r, r * 2, r * 2); c.restore();
     }
+    // chop bursts and the strobe that builds through the gap
+    if (A && B && t > A.end - 0.1 && t < B.start + 0.1) {
+      for (const [ct, cs] of this.chops) {
+        const age = t - ct;
+        if (ct < A.end - 0.1 || ct > B.start || age < 0 || age > 0.7) continue;
+        const R = 40 + 900 * ease.outCubic(age / 0.7);
+        c.save(); c.lineWidth = 8 * (1 - age / 0.7) + 1; c.strokeStyle = phosphorCss({ level: cs * Math.exp(-age / 0.3), flash: 0.5 * Math.exp(-age / 0.1) }, age < 0.1 ? 'white' : 'cyan');
+        c.beginPath(); c.arc(CX, CY, R, 0, TAU); c.stroke(); c.restore();
+        for (let s2 = 0; s2 < 18; s2++) {
+          const a = TAU * hash(ct * 100, s2, 1), d = R * (0.4 + 0.7 * hash(ct * 100, s2, 2)), lv = cs * Math.exp(-age / 0.3);
+          if (lv > 0.03) st.stars.set(idx++, CX + Math.cos(a) * d * 1.2, CY + Math.sin(a) * d * 0.8, 10 + 8 * hash(ct * 100, s2, 3), a + age * 5, { level: lv, flash: 0 }, s2 % 2 ? 'gold' : 'white', 0);
+        }
+      }
+    }
     st.stars.commit(idx);
 
     // the drop's hit (a white UV flash at the first chop), a flash on every strong kick
     const hit = Math.pow(0.5, Math.max(0, t - (start - 0.04)) / 0.16);
-    const uv = Math.max(uvPulse(audio, t, { thr: 0.75 }) * 0.3, hit * 0.9);
-    return st.end(out, { gain: 1.5, uv, uvColor: [0.4, 0.28, 1] });
+    // the strobe: on every beat, then every half beat, then every quarter into the next phrase
+    let strobe = 0;
+    if (A && B && t > A.end && t < B.start) {
+      const u = prog(t, A.end, B.start), rate = u < 0.4 ? 1 : u < 0.75 ? 2 : 4, ph = audio.beatAt(t) * rate;
+      strobe = Math.pow(1 - (ph - Math.floor(ph)), 3) * (0.35 + 0.5 * u);
+    }
+    const uv = Math.max(uvPulse(audio, t, { thr: 0.75 }) * 0.45, hit * 0.9, strobe);
+    const o = st.end(out, { gain: 1.55, uv, uvColor: [0.4, 0.28, 1] });
+    const fx = hitFx(audio, t, { zoom: 0.07, shake: 12, flash: 0.22, k: 1 + 0.6 * storm });
+    const bar = audio.barAt(t), bp = bar - Math.floor(bar);
+    const ramp = 1 + 0.05 * Math.pow(bp, 3) + 0.2 * storm * storm; // speed ramp into every downbeat, into the storm
+    return { ...o, zoom: (fx.zoom as number) * ramp * (1 + 0.1 * hit), shake: fx.shake, flash: Math.max(o.flash ?? 0, fx.flash as number, strobe * 0.2) };
   }
 
   private line(l: Line, gs: Group[], li: number, t: number, idx: number, gone: number, gather: number): number {
@@ -161,15 +194,15 @@ export default class PhosDrop extends Scene {
     const rows: number[][] = [[], []];
     gs.forEach((g, i) => rows[g.row]!.push(i));
     rows.forEach((r, ri) => { rowW[ri] = r.reduce((s, i) => s + gx[i]!.w, 0) + gap * Math.max(0, r.length - 1); });
-    const rowY = li === 1 ? [CY - 170, CY + 190] : [CY - 66, CY + 170];
+    const rowY = [CY - 66, CY + 170];
     const kick = uvPulse(this.ctx.audio, t, { thr: 0.5, hl: 0.1 });
     const spiralLine = li === this.lines.length - 1;
     gs.forEach((g, wi) => {
       const rr = rows[g.row]!;
-      let x0 = CX - rowW[g.row]! / 2 + (li === 1 ? (g.row ? 170 : -170) : li === 2 ? -60 : 0);
+      let x0 = CX - rowW[g.row]! / 2 + (li === 1 ? -50 : 0);
       for (const i of rr) { if (i === wi) break; x0 += gx[i]!.w + gap; }
       const y0 = rowY[g.row]! + SIZE * 0.34, X = gx[wi]!;
-      const k = 1 + 0.05 * kick;
+      const k = 1 + 0.07 * kick;
       // letters + stickers
       g.lay.glyphs.forEach((gl, i) => {
         const tr = g.rev[i]!;
@@ -180,7 +213,8 @@ export default class PhosDrop extends Scene {
         if (fade <= 0.003) return;
         c.save();
         c.translate(x0 + X.xs[i]!, y0);
-        c.scale(X.ss[i]! * k, k);
+        const slam = 1 + 0.8 * Math.exp(-age / 0.08);
+        c.translate(X.ss[i]! * gl.w * 0.5, -SIZE * 0.3); c.scale(X.ss[i]! * k * slam, k * slam); c.translate(-gl.w * 0.5, SIZE * 0.3);
         drawWord(c, gl.ch, 0, 0, SIZE, { level: gg.level * 0.9 * fade, flash: gg.flash * fade }, mixTone('green', 'white', 0.15 * Math.pow(0.5, age / 0.2)));
         c.restore();
       });
