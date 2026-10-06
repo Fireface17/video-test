@@ -59,8 +59,8 @@ export function makeTimeline(ly: Lyrics, au: AudioData): TimelineEntry[] {
     E('highway', 'highway', b.verse1, b.pre1, X('whip', 0.5, { dir: [0, 1] })),
     // the blackout: his hands glowing on the dead car's wheel dissolve into his palms glowing on a dark roof
     E('snap1', 'phos-pre', b.pre1, b.chorus1, { params: { n: 1 }, ...X('crossfade', 0.4) }),
-    // the lanterns' star above his roof bursts: light; it rains down on the street and she is there, across it
-    E('chorus1', 'phos-chorus', b.chorus1, b.drop1, X('crossfade', 0.12)),
+    // a hard cut on the ignition: the pre-chorus's point detonates in the chorus's first frame
+    E('chorus1', 'phos-chorus', b.chorus1, b.drop1),
     // the drop hits: punch through the chorus's flash into the living city (people dance on balconies and roofs)
     E('drop1a', 'phos-drop', b.drop1, b.drop1mid, X('light', 0.2, { color: lin('#ffffff', 1.2) })),
     // the people's lights stream up into the sky: punch up through them into the galaxy they make
