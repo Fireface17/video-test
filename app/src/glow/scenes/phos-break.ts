@@ -1,8 +1,10 @@
-// Break — the quiet. The scope's last screen collapses the way a tube does (to a line, to a dot) and the dot's
-// afterglow opens into one star sticker in the dark. It decays and is recharged on a slow pulse; each recharge sends
-// a ring of light outwards that charges the dust and a few faint ghost phrases of the chorus, which then fade;
-// a heartbeat runs along the bottom, one beat per bar. In the last bar the star shivers, lets go and falls: the
-// bridge's fall takes over from it.
+// Break — the breath. The scope's last screen collapses the way a tube does (to a line, to a dot) and the dot's
+// afterglow is the first glow-in-the-dark sticker stuck on the dark (the bedroom ceiling of the intro). Then, on the
+// beat, more stickers are SLAPPED on around it, one hit at a time (each pops in white-hot and settles to its glow,
+// crooked like real ones), growing outward while the camera pulls back: they are the pieces of one giant star.
+// When the band drops out for a beat the whole ceiling goes dead; on the hit after it every sticker is recharged at
+// once (the giant star blazes), then they draw together into one star sticker, which shivers, lets go and falls:
+// the bridge's fall takes over from it.
 import type * as THREE from 'three';
 import { Scene, type Frame, type PostOverrides } from '../../engine/scene';
 import { clamp, ease, lerp, mulberry32, prog, smoothstep, TAU } from '../../engine/util';
@@ -24,6 +26,9 @@ export default class PhosBreak extends Scene {
   charges: number[] = [];
   beats: number[] = [];
   tFall = 0;
+  kicks: [number, number][] = [];
+  pieces: { x: number; y: number; r: number; rot: number; t: number; col: [number, number, number] }[] = [];
+  tOut = 0; tIn = 0; tIn0 = 0; // the drop-out and the hit after it
 
   override init() {
     const { audio, start, end } = this.ctx;
@@ -39,6 +44,13 @@ export default class PhosBreak extends Scene {
     });
     this.beats = audio.downbeats.filter((d) => d >= start - 0.1 && d < end + 0.1);
     this.tFall = end - 1.6;
+    this.kicks = audio.events('kick', start + 0.5, this.tFall).filter(([, k]) => k >= 0.7);
+    // the band drops out for a beat before the last bars: find the quietest moment, and the hit after it
+    let qt = this.tFall - 1.5, qv = 9;
+    for (let x = start + 6; x < this.tFall - 0.4; x += 0.05) { const v = audio.env('rms', x); if (v < qv) { qv = v; qt = x; } }
+    this.tOut = qt - 0.12;
+    this.tIn0 = 0;
+    this.tIn = (audio.events('kick', qt, this.tFall).filter(([, k]) => k >= 0.8)[0]?.[0]) ?? qt + 0.5;
     // the recharges: the star's own emergence, then every second bar, then the last one before it lets go
     const bars = this.beats.filter((d) => d > start + 3.2 && d < this.tFall - 1.4);
     this.charges = [start + 1.3, ...bars.filter((_, i) => i % 2 === 1), this.tFall - 0.05];
@@ -46,6 +58,7 @@ export default class PhosBreak extends Scene {
 
   private Q(t: number) {
     let q = 0.16;
+    for (const [k, sK] of this.kicks) if (t >= k && t - k < 3) q = Math.max(q, 0.3 + 0.5 * sK * Math.exp(-(t - k) / 0.5));
     for (const tk of this.charges) {
       const rise = smoothstep(tk - 0.55, tk, t);
       const decay = t >= tk ? Math.exp(-(t - tk) / 1.55) : 1;
@@ -53,6 +66,100 @@ export default class PhosBreak extends Scene {
     }
     return q;
   }
+  /** the giant star's pieces: points of a hex grid inside a five-pointed star, slapped on in order of distance */
+  private build() {
+    const { audio } = this.ctx;
+    const Rg = 430, inner = 0.46, pts: { x: number; y: number; d: number }[] = [];
+    const poly: [number, number][] = [];
+    for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + (k * Math.PI) / 5, r = k % 2 ? Rg * inner : Rg; poly.push([Math.cos(a) * r, Math.sin(a) * r]); }
+    const inside = (x: number, y: number) => { let c = false; for (let i = 0, j = 9; i < 10; j = i++) { const [xi, yi] = poly[i]!, [xj, yj] = poly[j]!; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
+    const st = 46, rnd = mulberry32(5);
+    for (let gy = -Rg; gy <= Rg; gy += st * 0.87) for (let gx = -Rg; gx <= Rg; gx += st) {
+      const x = gx + ((Math.round(gy / (st * 0.87)) % 2) ? st / 2 : 0) + (rnd() - 0.5) * 14, y = gy + (rnd() - 0.5) * 14;
+      if (inside(x, y) && Math.hypot(x, y) > 30) pts.push({ x, y, d: Math.hypot(x, y) + rnd() * 60 });
+    }
+    pts.sort((a, b) => a.d - b.d);
+    this.pieces.push({ x: CX, y: CY, r: 30, rot: 0.1, t: this.charges[0]!, col: PHOS });
+    const t0 = this.charges[0]! + 0.9, t1 = this.tOut - 0.15;
+    const hits = [...audio.events('kick', t0, t1).filter(([, k]) => k >= 0.45), ...audio.events('snare', t0, t1).filter(([, k]) => k >= 0.88)].map(([x]) => x).sort((a, b) => a - b).filter((x, i, a) => i === 0 || x - a[i - 1]! > 0.09);
+    const per = Math.ceil(pts.length / Math.max(1, hits.length));
+    const tones: [number, number, number][] = [PHOS, PHOS, PHOS, [210, 255, 170], [255, 222, 150]];
+    pts.forEach((p, i) => {
+      const h = hits[Math.min(hits.length - 1, Math.floor(i / per))] ?? t0;
+      this.pieces.push({ x: CX + p.x, y: CY + p.y, r: 15 + 12 * rnd(), rot: (rnd() - 0.5) * 1.2, t: h + 0.012 * (i % per), col: tones[Math.floor(rnd() * tones.length)]! });
+    });
+  }
+  private ceiling(c: CanvasRenderingContext2D, t: number) {
+    if (!this.pieces.length) this.build();
+    const out = t > this.tOut && t < this.tIn;
+    const gather = ease.inOutCubic(prog(t, this.tIn + 0.35, this.tFall - 0.1));
+    const blaze = t >= this.tIn ? Math.exp(-(t - this.tIn) / 0.6) : 0;
+    const kick = this.kicks.reduce((v, [k, sK]) => Math.max(v, t >= k ? sK * Math.pow(0.5, (t - k) / 0.12) : 0), 0);
+    for (const p of this.pieces) {
+      if (t < p.t) continue;
+      const age = t - p.t;
+      let q = 0.42 + 0.58 * Math.exp(-age / 0.35) + 0.2 * kick;
+      if (out) q = 0.04;
+      q = Math.max(q, blaze * 1.2);
+      const pop = 1 + 0.8 * Math.pow(0.5, age / 0.05);
+      const x = lerp(p.x, CX + (p.x - CX) * 0.42, gather), y = lerp(p.y, CY + (p.y - CY) * 0.42, gather);
+      const fade = 1 - smoothstep(0.75, 1, gather);
+      if (fade < 0.01) continue;
+      drawSticker(c, x, y, p.r * pop * lerp(1, 0.6, gather), Math.min(1, q) * fade, p.rot, p.col);
+    }
+  }
+
+  /** the companion's position at time x (world px), its orbit radius shrinking to nothing as it merges */
+  private comp(x: number): [number, number] {
+    const bar = 1.6, w = TAU / bar, prec = TAU / 9.5;
+    const e = 0.42 + 0.08 * Math.sin(x * 0.21), a = 410;
+    const phi = w * x + 0.35 * Math.sin(w * x), pw = prec * x;
+    const merge = ease.inCubic(prog(x, this.tIn, this.tFall - 0.02));
+    const r = a * (1 - e * e) / (1 + e * Math.cos(phi - pw)) * (1 - merge);
+    const ph = phi + merge * merge * 9;
+    return [CX + r * Math.cos(ph), CY + r * Math.sin(ph) * 0.78];
+  }
+  private orbit(c: CanvasRenderingContext2D, t: number, fall: number) {
+    const t0 = this.charges[0]! + 0.6; // it is caught once the star has emerged
+    if (t < t0 || fall > 0.02) return;
+    const born = smoothstep(t0, t0 + 0.8, t);
+    const out = this.tOut && t > this.tOut && t < this.tIn ? 1 : 0;
+    const kick = this.kicks.reduce((v, [k, sK]) => Math.max(v, t >= k ? sK * Math.pow(0.5, (t - k) / 0.1) : 0), 0);
+    const bar = this.beats.filter((b) => b <= t).length;
+    const tones: [number, number, number][] = [PHOS, CYAN, [200, 170, 255], [255, 210, 120]];
+    const col = tones[bar % tones.length]!;
+    // the trail: the last 2.4 s of the path, decaying (the recharge of a kick lifts all of it)
+    const N = 220, span = 2.4;
+    c.save(); c.lineCap = 'round';
+    for (let i = N - 1; i >= 0; i--) {
+      const a0 = (i / N) * span, a1 = ((i + 1) / N) * span, x0 = t - a0, x1 = t - a1;
+      if (x1 < t0) continue;
+      if (this.tOut && x0 > this.tOut && x0 < this.tIn) continue; // the drop-out wrote nothing
+      let I = Math.exp(-a0 / 0.75) * (1 + 1.2 * kick) * born * (1 - out * 0.9);
+      if (this.tOut && t >= this.tIn && x0 < this.tOut) I *= 0; // the trail from before the drop-out is gone
+      if (I < 0.01) continue;
+      const [ax, ay] = this.comp(x0), [bx, by] = this.comp(x1);
+      c.lineWidth = 2 + 4.5 * Math.exp(-a0 / 0.4);
+      c.strokeStyle = lit(col, Math.min(1, I), 0.6 * Math.exp(-a0 / 0.12));
+      c.beginPath(); c.moveTo(ax, ay); c.lineTo(bx, by); c.stroke();
+    }
+    c.restore();
+    // beads: a sticker stamped where the companion was on each kick, decaying slowly
+    for (const [k, sK] of this.kicks) {
+      if (k < t0 || k > t || (this.tOut && k < this.tOut && t >= this.tIn)) continue;
+      const age = t - k, q = sK * (0.25 + 0.75 * Math.exp(-age / 0.35)) * Math.exp(-age / 4.5);
+      if (q < 0.03) continue;
+      const [x, y] = this.comp(k);
+      drawSticker(c, x, y, 9 + 9 * sK * (1 + 1.2 * Math.pow(0.5, age / 0.08)), Math.min(1, q), k * 3, col);
+    }
+    // the companion itself
+    if (!out) {
+      const [x, y] = this.comp(t);
+      const merge = prog(t, this.tIn, this.tFall - 0.02);
+      drawSticker(c, x, y, (34 + 10 * kick) * (1 - 0.6 * merge) * born, 0.75 + 0.25 * kick, t * 1.3, WHITE);
+    }
+  }
+
   private heart(tau: number) {
     let v = 0;
     const G = (x: number, s: number) => Math.exp(-(x * x) / (2 * s * s));
@@ -70,7 +177,7 @@ export default class PhosBreak extends Scene {
     g.begin();
 
     c.save();
-    { const a = smoothstep(0.8, 1.6, lt), zz = 1 + a * (0.03 + 0.02 * Math.sin(t * 0.4)) + 0.01 * (1 - fallEase(t, this.tFall, this.ctx.end)) * 0;
+    { const a = smoothstep(0.8, 1.6, lt), zz = (1 + a * (0.03 + 0.02 * Math.sin(t * 0.4))) * lerp(1, lerp(2.3, 1.0, ease.inOutQuad(prog(t, this.charges[0]!, this.tOut))), smoothstep(0.7, 1.3, lt)) + 0.01 * (1 - fallEase(t, this.tFall, this.ctx.end)) * 0;
       c.translate(W / 2 + a * 18 * Math.sin(t * 0.3), H / 2 + a * 10 * Math.cos(t * 0.37)); c.rotate(a * 0.012 * Math.sin(t * 0.25)); c.scale(zz, zz); c.translate(-W / 2, -H / 2); }
     // --- the scope's last screen goes out
     if (lt < 0.8) {
@@ -104,7 +211,7 @@ export default class PhosBreak extends Scene {
     // --- the star's charge and the rings of light it sends out
     const Q = this.Q(t);
     const tSt = this.charges[0]!;
-    const emerge = ease.outCubic(prog(t, tSt - 0.45, tSt + 1.1));
+    const emerge = ease.outCubic(prog(t, this.tFall - 0.45, this.tFall - 0.05)); void tSt;
     const beatNear = this.beats.reduce((m, b) => Math.max(m, Math.exp(-Math.pow((t - b - 0.02) / 0.09, 2))), 0);
     const fall = ease.inCubic(prog(t, this.tFall, this.ctx.end + 0.05));
     const shiver = smoothstep(this.tFall - 0.5, this.tFall, t) * (1 - fall);
@@ -118,42 +225,14 @@ export default class PhosBreak extends Scene {
       const y = (((d.y + d.vy * t * speedUp - 40 * fall * (this.ctx.end - t) * 0) % H) + H) % H;
       const dist = Math.hypot(x - CX, y - CY);
       let I = 0.05 + 0.03 * Math.sin(t * 1.3 + d.ph);
-      for (const tk of this.charges) {
-        const arr = tk + Math.max(0, dist - R) / 520;
-        if (t >= arr) I = Math.max(I, 0.8 * Math.exp(-(t - arr) / 1.5) * (1 - fall * 0.4));
-      }
+      void dist;
+      I += 0.25 * this.Q(t) * 0.4;
       if (I < 0.01) continue;
       const sz = d.r * (1 + 0.6 * I);
       c.fillStyle = lit(PHOS, I, 0.25);
       c.beginPath(); c.arc(x, y, sz, 0, TAU); c.fill();
     }
-    // ghost phrases of the chorus, waking when a ring passes
-    for (const gh of this.ghosts) {
-      const dist = Math.hypot(gh.x - CX, gh.y - CY);
-      let I = 0.028;
-      this.charges.forEach((tk, k) => {
-        if (k % 3 !== gh.pk && k !== 0) return;
-        const arr = tk + Math.max(0, dist - R) / 520;
-        if (t >= arr) I = Math.max(I, 0.17 * Math.exp(-(t - arr) / 2.1) * smoothstep(0, 0.35, t - arr));
-      });
-      I *= 1 - fall;
-      if (I < 0.008) continue;
-      c.save();
-      c.translate(gh.x, gh.y); c.rotate(gh.rot);
-      setFont(c, gh.size);
-      c.fillStyle = lit(PHOS, I);
-      c.fillText(gh.text, -measure(gh.text, FAM(), gh.size) / 2, 0);
-      c.restore();
-    }
-    for (const tk of this.charges.slice(1)) {
-      const a = t - tk;
-      if (a < 0 || a > 3) continue;
-      const r = R * 0.9 + a * 520;
-      c.lineWidth = 3 * (1 - a / 3) + 1; c.strokeStyle = lit(a < 0.4 ? WHITE : VIOLET, 0.5 * Math.exp(-a / 1.1), 0.3);
-      c.beginPath(); c.arc(CX, CY, r, 0, TAU); c.stroke();
-      c.lineWidth = 1.5; c.strokeStyle = lit(CYAN, 0.18 * Math.exp(-a / 1.1));
-      c.beginPath(); c.arc(CX, CY, r * 0.985, 0, TAU); c.stroke();
-    }
+    this.ceiling(c, t);
 
     // --- the sticker
     if (emerge > 0.001) {
@@ -172,32 +251,6 @@ export default class PhosBreak extends Scene {
       gr.addColorStop(0, lit(PHOS, 0.16 * Q)); gr.addColorStop(1, lit(PHOS, 0));
       c.fillStyle = gr; c.fillRect(sx - hr, sy - hr, hr * 2, hr * 2);
       drawSticker(c, sx, sy, sz, Math.min(0.8, Q * 0.8 + 0.1 * beatNear), rot);
-    }
-
-    // --- the heartbeat, one beat per bar, with its own persistence
-    {
-      const period = 6, x0 = 640, x1 = 1280, yc = 975, A = 52;
-      const u0 = ((t / period) % 1 + 1) % 1;
-      const vis = smoothstep(tSt + 0.4, tSt + 1.4, t) * (1 - smoothstep(this.tFall - 0.3, this.tFall + 0.2, t));
-      if (vis > 0.01) {
-        const N = 150;
-        c.lineWidth = 2.4;
-        for (let i = 0; i < N; i++) {
-          const u = i / N, u2 = (i + 1) / N;
-          const age = ((u0 - u) % 1 + 1) % 1 * period;
-          if (age < 0.12 && ((u0 - u2) % 1 + 1) % 1 * period > age) continue;
-          const I = (0.08 + 0.8 * Math.exp(-age / 1.7)) * vis;
-          c.strokeStyle = lit(PHOS, I, 0.4 * Math.exp(-age / 0.2));
-          c.beginPath();
-          c.moveTo(lerp(x0, x1, u), yc - A * this.heart(t - age));
-          c.lineTo(lerp(x0, x1, u2), yc - A * this.heart(t - age + period / N));
-          c.stroke();
-        }
-        const hx = lerp(x0, x1, u0), hy = yc - A * this.heart(t);
-        const gr = c.createRadialGradient(hx, hy, 0, hx, hy, 16);
-        gr.addColorStop(0, lit(WHITE, vis, 1)); gr.addColorStop(1, lit(PHOS, 0));
-        c.fillStyle = gr; c.fillRect(hx - 16, hy - 16, 32, 32);
-      }
     }
 
     // a faint UV breath on the bass
