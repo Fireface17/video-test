@@ -210,7 +210,7 @@ export default class PhosFall extends Scene {
     const sPr = smoothstep(tP, tP + 0.7, t), sWa = smoothstep(tW - 0.05, tW + 0.1, t), sGo = sG;
     top = c3(top, [8, 6, 26], sPr); bot = c3(bot, [24, 10, 56], sPr);
     top = c3(top, [14, 86, 190], sWa); bot = c3(bot, [3, 16, 78], sWa);
-    top = c3(top, [255, 190, 64], sGo * 0.0); bot = c3(bot, [120, 52, 4], sGo);
+    top = c3(top, [150, 70, 6], sGo); bot = c3(bot, [120, 52, 4], sGo);
     this.P.clear('#05060f');
     P.save();
     const bg = P.createLinearGradient(0, 0, 0, 1080);

@@ -189,9 +189,9 @@ export default class PhosFinal extends Scene {
     const L4s = Ls[4]!;
     const build = smoothstep(L4s.start, L4s.words[5]!.start, t);
     const bar = Math.floor(f.bar);
-    const FR: [number, number, number, number][] = [[1, 0, 0, 0], [1.1, -50, 24, 0.035], [0.94, 36, -22, -0.03], [1.16, 10, 36, -0.02], [1.04, -30, -30, 0.045]];
+    const FR: [number, number, number, number][] = [[1, 0, 0, 0], [1.05, -40, 20, 0.03], [0.95, 30, -20, -0.025], [1.07, 10, 26, -0.02], [1.02, -26, -24, 0.04]];
     const fr = FR[((bar % FR.length) + FR.length) % FR.length]!;
-    const drift = 1 + 0.07 * f.barPhase + 0.03 * build;
+    const drift = 1 + 0.04 * f.barPhase + 0.02 * build;
     const camS = fr[0] * drift * (1 + (0.05 + 0.05 * build) * kick);
     const shk = (3 + 9 * build) * kick;
     const camX = fr[1] * (1 - f.barPhase * 0.5) + Math.sin(t * 43) * shk, camY = fr[2] + Math.cos(t * 39) * shk, camR = fr[3] * (1 - f.barPhase) + 0.01 * Math.sin(t * 0.9);
