@@ -189,12 +189,14 @@ void main() {
   // ---- stars in layers
   float sd = dens * ab * (1.0 + 10.0 * cl);
   vec3 stars = vec3(0.0);
-  if (sd > 0.002) for (int i = 0; i < 7; i++) {
-    float cell = 0.3 * pow(0.3333, float(i));
+  float i0s = max(0.0, ceil(log(0.3 / (1000.0 * pxw)) / log(3.0)));
+  if (sd > 0.002) for (int k = 0; k < 5; k++) {
+    float i = i0s + float(k);
+    float cell = 0.3 * pow(0.3333333, i);
     float cpx = cell / pxw;
     float w = smoothstep(7.0, 18.0, cpx) * (1.0 - smoothstep(400.0, 1000.0, cpx));
     if (w <= 0.0) continue;
-    vec2 pc = q / cell + vec2(float(i) * 13.7, float(i) * 7.3);
+    vec2 pc = q / cell + vec2(i * 13.7, i * 7.3);
     vec2 id = floor(pc), f = fract(pc);
     vec3 hh = vec3(hash12(id), hash12(id + 17.1), hash12(id + 43.7));
     float kk = cpx > 40.0 ? 1.0 : 0.7;
@@ -241,12 +243,14 @@ void main() {
   }
 
   // ---- star stickers: the motif, scattered through the galaxy
-  for (int i = 0; i < 7; i++) {
-    float cell = 1.2 * pow(0.4, float(i));
+  float i0k = max(0.0, ceil(log(1.2 / (520.0 * pxw)) / log(2.5)));
+  for (int k = 0; k < 3; k++) {
+    float i = i0k + float(k);
+    float cell = 1.2 * pow(0.4, i);
     float cpx = cell / pxw;
     float w = smoothstep(120.0, 190.0, cpx) * (1.0 - smoothstep(360.0, 520.0, cpx));
     if (w <= 0.0) continue;
-    vec2 pc = P / cell + vec2(float(i) * 3.3, float(i) * 9.1);
+    vec2 pc = P / cell + vec2(i * 3.3, i * 9.1);
     vec2 id = floor(pc), f = fract(pc);
     vec3 hh = vec3(hash12(id + 61.0), hash12(id + 12.3), hash12(id + 77.7));
     float gal = clamp(dens * 2.0, 0.0, 1.0);
