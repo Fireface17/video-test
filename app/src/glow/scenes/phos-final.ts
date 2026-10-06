@@ -134,9 +134,9 @@ export default class PhosFinal extends Scene {
     this.tBack = this.hits[0] ?? qt + 0.6;
     this.tLast = kicks(this.tDark + 0.1, end + 0.05, 0.9)[0] ?? end - 0.03;
     sh.push(S(L[4]!.start, this.tGlow, cam(CX, 420, 1.15, 0.02), cam(CX, 425, 1.2, 0.02)));
-    sh.push(S(this.tGlow, this.tBack, cam(CX, 600, 0.98, 0), cam(CX, 600, 1.16, 0), ease.inOutQuad));
+    sh.push(S(this.tGlow, this.tBack, cam(CX, 600, 0.92, 0), cam(CX, 600, 1.03, 0), ease.inOutQuad));
     // (every framing keeps the whole of GLOWING readable: it is being sung)
-    const crops = [cam(CX, 610, 1.12, -0.05), cam(CX, 600, 0.96, 0.05), cam(CX, 620, 1.2, 0), cam(CX, 610, 1.04, -0.03)];
+    const crops = [cam(CX, 610, 1.0, -0.05), cam(CX, 600, 0.9, 0.05), cam(CX, 620, 1.04, 0), cam(CX, 610, 0.94, -0.03)];
     this.hits.forEach((h, i) => { const a = crops[i % crops.length]!; sh.push(S(h, this.tDark, a, { ...a, z: a.z * 1.05 })); });
     const tIn = on(4, /^in$/i);
     sh.push(S(tIn, this.tDark, cam(CX, 640, 0.9, 0), cam(CX, 640, 0.95, 0)));

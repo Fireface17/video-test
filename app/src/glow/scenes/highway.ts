@@ -39,6 +39,11 @@ import { Bridge, Insects, Moths, PowerLine, Rain, RoadSigns, Steam, TruckStop, t
 const C = (hex: string, k = 1) => new THREE.Color(hex).multiplyScalar(k);
 const DEG = Math.PI / 180;
 
+/** the dashboard sticker, in the eye's frame (yaw right, pitch down, distance, outer radius in m) */
+/** vertical fov at the cut: the star's outer radius is then ~350 px at 1080 (phos-pre opens on that star) */
+const DASH_FOV = 8;
+const DASH_STAR = { yaw: 31 * (Math.PI / 180), pitch: -23 * (Math.PI / 180), d: 0.62, r: 0.028 };
+
 type Shot = 'dive' | 'gauge' | 'boards' | 'mirror' | 'sun' | 'station' | 'pylon' | 'dark';
 interface Cam { pos: THREE.Vector3; yaw: number; pitch: number; roll: number; fov: number }
 interface WordRow { words: number[]; u: number; len: number }
@@ -86,6 +91,8 @@ export default class Highway extends Scene {
 
   L: Line[] = [];
   S0 = 0; S1 = 0; W0 = 0; W1 = 0; lab = false;
+  dashStar!: THREE.Mesh;
+  dashHalo!: THREE.Mesh;
   T = { gauge: 0, l1: 0, l2: 0, sun: 0, sank: 0, failBeat: 0, dead: 0, l3: 0, pylon: 0, out: 0, stall: 0 };
   fail: [number, number, number] = [0, 0, 0];
   downs: number[] = [];
@@ -245,6 +252,29 @@ export default class Highway extends Scene {
     this.cabin = new Cabin(this.mirrorRT.texture, this.sky.u);
     await this.cabin.loadFigure();
     this.scene.add(this.cabin);
+    // a glow-in-the-dark star sticker stuck on the dashboard: when the power dies it is the last light in the car,
+    // and the camera pushes into it; pre-chorus 1 (phos-pre) opens on the same star filling the frame
+    {
+      const shape = new THREE.Shape();
+      for (let k = 0; k < 10; k++) { const a = Math.PI / 2 + (k * Math.PI) / 5, r = k % 2 ? DASH_STAR.r * 0.48 : DASH_STAR.r; const x = Math.cos(a) * r, y = Math.sin(a) * r; if (k) shape.lineTo(x, y); else shape.moveTo(x, y); }
+      shape.closePath();
+      const geo = new THREE.ShapeGeometry(shape, 1);
+      this.dashStar = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 1.0, 0.3), depthTest: false, depthWrite: false, toneMapped: false }));
+      const halo = new THREE.Mesh(new THREE.CircleGeometry(DASH_STAR.r * 2.6, 32), new THREE.ShaderMaterial({
+        transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { k: { value: 0 } },
+        vertexShader: 'varying vec2 vU; void main(){ vU = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: `uniform float k; varying vec2 vU; void main(){ float d = length(vU) / ${(DASH_STAR.r * 2.6).toFixed(4)}; gl_FragColor = vec4(vec3(0.35, 0.8, 0.2) * k * exp(-d * 4.5) * (1.0 - d), 1.0); }`,
+      }));
+      halo.position.z = -0.001;
+      this.dashStar.add(halo);
+      this.dashHalo = halo;
+      this.dashStar.renderOrder = 10; halo.renderOrder = 9;
+      const dir = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(DASH_STAR.pitch, -DASH_STAR.yaw, 0, 'YXZ'));
+      this.dashStar.position.copy(dir.multiplyScalar(DASH_STAR.d));
+      this.dashStar.lookAt(0, 0, 0);
+      this.dashStar.rotateZ(0.18);
+      this.cabin.add(this.dashStar);
+    }
     this.backCam.layers.enableAll();
     // dark verticals smear into ghostly figures in the blurred reflection: keep them out of it
     this.noRefl = [this.lamps.poles, this.lamps.halos, this.furn.posts, ...this.gantries.map((g) => g.children[0]!), this.cabin, this.rain, this.power.wires, this.moths, this.steam, this.insects];
@@ -497,7 +527,12 @@ export default class Highway extends Scene {
         // (a smooth bump: the car dips as the engine dies, then settles)
         const tau = t - T.stall;
         const lurch = 0.7 * DEG * smoothstep(0, 0.18, tau) * (1 - smoothstep(0.18, 0.7, tau));
-        return { pos, yaw: (38 + 4 * p) * DEG + 0.004 * sway(0.4, 19), pitch: (-15.5 - 0.5 * p) * DEG - lurch, roll: 0.004 * sway(0.4, 20), fov: 66 };
+        // the push into the dashboard sticker, the last light in the car: it fills the frame on the cut
+        const q = ease.inOutCubic(prog(t, T.stall + 0.06, this.S1 - 0.02));
+        const yaw = lerp((38 + 4 * p) * DEG + 0.004 * sway(0.4, 19), DASH_STAR.yaw, q);
+        const pitch = lerp((-15.5 - 0.5 * p) * DEG - lurch, DASH_STAR.pitch, q);
+        const fov = Math.exp(lerp(Math.log(66), Math.log(DASH_FOV), ease.inQuad(q)));
+        return { pos, yaw, pitch, roll: 0.004 * sway(0.4, 20) * (1 - q), fov };
       }
       default:
         return { pos: new THREE.Vector3(ROAD.laneX(1), 1.2, -s), yaw: 0, pitch: 0, roll: 0, fov: 50 };
@@ -632,6 +667,13 @@ export default class Highway extends Scene {
     if (inside) {
       this.cabin.position.copy(this.eyeAt(t));
       this.cabin.updateMatrixWorld(true);
+      {
+        // a faint sticker all along; when the power dies it is the brightest thing left
+        const dark = shot === 'dark' ? smoothstep(T.stall - 0.02, T.stall + 0.1, t) : 0;
+        const k = 0.35 + 0.75 * dark;
+        (this.dashStar.material as THREE.MeshBasicMaterial).color.setRGB(0.5 * k, 1.0 * k, 0.32 * k);
+        (this.dashHalo.material as THREE.ShaderMaterial).uniforms.k!.value = 0.25 + 1.2 * dark;
+      }
       // light in the car: the sky and the city's glow, the streetlight overhead as we pass, the screen ahead
       const lampAhead = this.lampSweep(s, frontU);
       CU.cAmb.value.copy(C('#22305a', 0.05 * (0.4 + 0.6 * cityK)));
@@ -646,7 +688,7 @@ export default class Highway extends Scene {
         CU.cFrontDir.value.copy(scrDir);
       }
       const wipe = this.wipeAt(t);
-      const handK = shot === 'dark' ? lerp(0.95, 0.7, prog(t, T.stall, this.W1, ease.inOutQuad)) : 0.95;
+      const handK = shot === 'dark' ? lerp(0.95, 0.7, prog(t, T.stall, this.W1, ease.inOutQuad)) * (1 - prog(t, T.stall + 0.06, this.S1 - 0.06, ease.inQuad)) : 0.95;
       const dropLight = C('#ff9a40', 0.05 * lampAhead + 0.006).add(C('#ff9a52', 0.06 * ss.light * (scrVisible ? 1 : 0))).add(C('#5fd8ff', 0.012 * handK)).add(C('#fff4e6', 0.01 * carPower));
       this.cabin.update({
         t, tau: wipe.tau, w0: wipe.w0, w1: wipe.w1, speed: v,

@@ -395,6 +395,9 @@ export default class PhosPre extends Scene {
   }
 
   private render1(c: CanvasRenderingContext2D, t: number, m: Xf, idx: number): number {
+    // the opening: the dashboard sticker the highway pushed into (centred, ~350 px) lets go of the frame
+    { const st0 = this.ctx.start, q = prog(t, st0, st0 + 0.32);
+      if (q < 1) this.st.stars.set(idx++, CX, CY, 350 * (1 - ease.inCubic(q)), 0.18 + q * 0.6, { level: 0.95, flash: 0.25 * q }, 'green', 0.3); }
     if (t < this.ton.start) { idx = this.group(c, this.A!, t, m, idx); idx = this.stickerFall(t, m, idx); }
     else if (t < this.turn.start) { idx = this.group(c, this.B!, t, m, idx); idx = this.stickerRecede(t, m, idx); }
     else if (t < this.here.start) {
