@@ -41,11 +41,13 @@ void main() {
     float decay = exp(-a / 2.4);
     // the shell: thin, limb-brightened, filamentary just behind the edge
     float thick = 0.012 + 0.03 * a;
-    float fil = pow(1.0 - abs(2.0 * vn(p * 11.0 + 7.0) - 1.0), 5.0) + 0.6 * pow(1.0 - abs(2.0 * vn(p * 27.0 + 3.0) - 1.0), 8.0);
-    col += cShell * inside * exp(-d / thick) * (0.6 + 1.8 * fil) * decay * 1.2;
-    // turbulent gas inside
-    float gas = fbm(p * 4.5 + vec2(a * 0.25, -a * 0.2));
-    col += mix(cGas, cGas2, smoothstep(0.35, 0.7, gas)) * inside * exp(-d / 0.22) * (0.04 + 0.7 * pow(gas, 3.0)) * decay;
+    if (inside > 0.0) {
+      float fil = pow(1.0 - abs(2.0 * vn(p * 11.0 + 7.0) - 1.0), 5.0) + 0.6 * pow(1.0 - abs(2.0 * vn(p * 27.0 + 3.0) - 1.0), 8.0);
+      col += cShell * inside * exp(-d / thick) * (0.6 + 1.8 * fil) * decay * 1.2;
+      // turbulent gas inside
+      float gas = fbm(p * 4.5 + vec2(a * 0.25, -a * 0.2));
+      col += mix(cGas, cGas2, smoothstep(0.35, 0.7, gas)) * inside * exp(-d / 0.22) * (0.04 + 0.7 * pow(gas, 3.0)) * decay;
+    }
     // the rim: a sharp bright edge
     col += cHot * exp(-abs(r - Rs) / (1.1 * px + 0.0012)) * decay * 1.1;
     // ejecta fingers poking past the shell, with bright heads
