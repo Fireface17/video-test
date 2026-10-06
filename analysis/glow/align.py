@@ -101,20 +101,37 @@ TEMPLATE = {42: (15, "drop1", "drop3"), 22: (4, "chorus1", "chorus2"), 23: (5, "
 # against the chop/vocal onsets of audio.json and merged into the output with a
 # `kind` field ('chop' | 'echo').  Texts avoid the sheet's wording so that
 # lyrics.get('We\u2019ll be glowing') etc. keep their nth indices.
-# (section, kind, text, [(word, start, end), ...])
+# (section, kind, text, [(word, start, end[, [syllable onsets]]), ...])
+#
+# What the chops sing was worked out from the vocal stem (the lyric sheet's "Glo-o-owing in the dark" for every
+# chop was wrong): the ASR models hear nothing in the filtered chops, so each chop was matched against the singer's
+# own sung words (MFCC templates of the aligned words, 3.8 kHz low-passed like the chops, DTW; plus a vowel-class
+# track and the pyin melody). Drop 1 and drop 3 share their phrases (drop 3 = drop 1 + 117.94 s for phrase 1):
+#   1  "Da-a-ance" (a held ae vowel on B4, retriggered by the chopper), "dance", "oh", "dance"   [dance: DTW 0.21]
+#   2  "Glo-o-o-o" (a held o, G#4-A#4)                                                           [go/glo: 0.37]
+#   3  drop 1: "We'll be glo-o-owing in the dark" (EE, then O, IH, ER, AH)       [we'll be glowing in the dark: 0.30]
+#      drop 3: "Glo-o-o-owing in the dark" (no "We'll be": the O starts at once) [dark: 0.30]
+#   4  drop 3 only: "Glo-o-o" again, quieter
+# The outro: a stutter "da da da ..." (the ASR also hears "duh, da"), the sung "Take my hand", then "Go-o-old"
+# (from the pre-chorus's "into gold"; gold: 0.27 against glowing 0.53), the second one pitched down two octaves.
 DROP1 = [
-    ("drop1", "chop", "Glo-o-owing in the dark",
-     [("Glo-o-owing", 70.74, 72.54), ("in", 72.94, 73.34), ("the", 73.34, 74.01), ("dark", 74.01, 74.6)]),
-    ("drop1", "chop", "Glo-o-owing in the dark",
-     [("Glo-o-owing", 79.16, 80.83), ("in", 80.83, 81.56), ("the", 81.56, 82.14), ("dark", 82.14, 83.2)]),
+    ("drop1", "chop", "Da-a-ance, dance, oh, dance",
+     [("Da-a-ance,", 70.74, 72.5, [70.74, 71.44, 71.74, 72.14]), ("dance,", 72.54, 72.92), ("oh,", 72.94, 73.95, [72.94, 73.34, 73.6]), ("dance", 74.01, 74.6)]),
+    ("drop1", "chop", "Glo-o-o-o",
+     [("Glo-o-o-o", 75.94, 78.4, [75.94, 76.34, 76.78, 77.38])]),
+    ("drop1", "chop", "We\u2019ll be glo-o-owing in the dark",
+     [("We\u2019ll", 79.16, 79.53), ("be", 79.53, 79.92), ("glo-o-owing", 79.92, 82.3, [79.92, 80.34, 80.83, 81.18, 81.56, 81.74]),
+      ("in", 82.32, 82.62), ("the", 82.62, 82.93), ("dark", 82.93, 83.4)]),
 ]
-# drop 3: same pattern from the drop; the second and third chop phrases are two beats later
-# (onsets 194.72 / 197.82 in audio.json, drop 1: 75.94 / 79.16)
 DROP3 = [
-    ("drop3", "chop", "Glo-o-owing in the dark",
-     [("Glo-o-owing", 188.68, 190.48), ("in", 190.87, 191.25), ("the", 191.25, 191.85), ("dark", 191.85, 192.6)]),
-    ("drop3", "chop", "Glo-o-owing in the dark",
-     [("Glo-o-owing", 197.82, 199.4), ("in", 199.4, 200.22), ("the", 200.22, 200.73), ("dark", 200.73, 201.9)]),
+    ("drop3", "chop", "Da-a-ance, dance, oh, dance",
+     [("Da-a-ance,", 188.68, 190.44, [188.68, 189.13, 189.38, 189.64]), ("dance,", 190.46, 190.85), ("oh,", 190.87, 191.8, [190.87, 191.25]), ("dance", 191.85, 192.6)]),
+    ("drop3", "chop", "Glo-o-o-o",
+     [("Glo-o-o-o", 194.72, 197.5, [194.72, 195.39, 196.18, 196.46])]),
+    ("drop3", "chop", "Glo-o-o-owing in the dark",
+     [("Glo-o-o-owing", 197.82, 200.15, [197.82, 198.19, 199.01, 199.38]), ("in", 200.22, 200.48), ("the", 200.48, 200.73), ("dark", 200.73, 201.9)]),
+    ("drop3", "chop", "Glo-o-o",
+     [("Glo-o-o", 207.29, 209.3, [207.29, 207.87, 208.88])]),
 ]
 ECHO1 = [
     ("pre1", "echo", "(felt low)", [("(felt", 34.0, 34.3), ("low)", 34.3, 34.72)]),
@@ -123,12 +140,22 @@ ECHO1 = [
 PRE2_SHIFT = 107.708 - 30.975  # pre-chorus 2 repeats pre-chorus 1 at the same tempo
 ECHO2 = [(("pre2",) + e[1:3] + ([(w, round(a + PRE2_SHIFT, 3), round(b + PRE2_SHIFT, 3)) for w, a, b in e[3]],)) for e in ECHO1]
 OUTRO = [
-    ("outro", "chop", "Glo-o-owing in the dark",
-     [("Glo-o-owing", 222.66, 224.0), ("in", 224.12, 224.4), ("the", 224.4, 224.7), ("dark", 224.7, 225.7)]),
-    ("outro", "chop", "Ta-ake my hand",
-     [("Ta-ake", 226.56, 226.96), ("my", 226.96, 227.16), ("hand", 227.16, 227.73)]),
+    ("outro", "chop", "Da da da da da da da da",
+     [("Da", 213.38, 213.7), ("da", 213.76, 214.1), ("da", 214.16, 214.5), ("da", 214.58, 214.9), ("da", 214.96, 215.3), ("da", 215.34, 215.75), ("da", 215.83, 216.1), ("da", 216.17, 216.45)]),
+    ("outro", "chop", "Go-o-old",
+     [("Go-o-old", 222.66, 225.4, [222.66, 223.01, 224.12])]),
+    ("outro", "chop", "go-o-old",
+     [("go-o-old", 225.5, 227.7, [225.5, 226.56, 226.96, 227.16])]),
 ]
 EXTRA = DROP1 + DROP3 + ECHO1 + ECHO2 + OUTRO
+
+
+def chop_syl(x):
+    """A chop word's syllables ([start, end] pairs) from its onset list, if it has one."""
+    if len(x) < 4:
+        return {}
+    on = list(x[3]) + [x[2]]
+    return dict(syl=[[on[i], on[i + 1]] for i in range(len(on) - 1)])
 
 
 def load_vocab():
@@ -340,7 +367,7 @@ def main(plots=False):
               " ".join(f"{w['w']}[{w['start']:.2f} {w['conf']:.2f}]" for w in ws))
     for sec_, kind, text, ws in EXTRA:
         out_lines.append(dict(section=sec_, kind=kind, text=text, start=ws[0][1], end=ws[-1][2],
-                              words=[dict(w=w, start=a, end=b, conf=0.5) for w, a, b in ws]))
+                              words=[dict(w=x[0], start=x[1], end=x[2], conf=0.5, **chop_syl(x)) for x in ws]))
     out_lines.sort(key=lambda l: (l["start"], l.get("kind") == "echo"))
     for i, l in enumerate(out_lines):
         out_lines[i] = dict(i=i, **{k: v for k, v in l.items() if k != "i"})

@@ -852,30 +852,62 @@
    "i": 18,
    "section": "drop1",
    "kind": "chop",
-   "text": "Glo-o-owing in the dark",
+   "text": "Da-a-ance, dance, oh, dance",
    "start": 70.74,
    "end": 74.6,
    "words": [
     {
-     "w": "Glo-o-owing",
+     "w": "Da-a-ance,",
      "start": 70.74,
-     "end": 72.54,
+     "end": 72.5,
+     "conf": 0.5,
+     "syl": [
+      [
+       70.74,
+       71.44
+      ],
+      [
+       71.44,
+       71.74
+      ],
+      [
+       71.74,
+       72.14
+      ],
+      [
+       72.14,
+       72.5
+      ]
+     ]
+    },
+    {
+     "w": "dance,",
+     "start": 72.54,
+     "end": 72.92,
      "conf": 0.5
     },
     {
-     "w": "in",
+     "w": "oh,",
      "start": 72.94,
-     "end": 73.34,
-     "conf": 0.5
+     "end": 73.95,
+     "conf": 0.5,
+     "syl": [
+      [
+       72.94,
+       73.34
+      ],
+      [
+       73.34,
+       73.6
+      ],
+      [
+       73.6,
+       73.95
+      ]
+     ]
     },
     {
-     "w": "the",
-     "start": 73.34,
-     "end": 74.01,
-     "conf": 0.5
-    },
-    {
-     "w": "dark",
+     "w": "dance",
      "start": 74.01,
      "end": 74.6,
      "conf": 0.5
@@ -886,38 +918,110 @@
    "i": 19,
    "section": "drop1",
    "kind": "chop",
-   "text": "Glo-o-owing in the dark",
-   "start": 79.16,
-   "end": 83.2,
+   "text": "Glo-o-o-o",
+   "start": 75.94,
+   "end": 78.4,
    "words": [
     {
-     "w": "Glo-o-owing",
-     "start": 79.16,
-     "end": 80.83,
-     "conf": 0.5
-    },
-    {
-     "w": "in",
-     "start": 80.83,
-     "end": 81.56,
-     "conf": 0.5
-    },
-    {
-     "w": "the",
-     "start": 81.56,
-     "end": 82.14,
-     "conf": 0.5
-    },
-    {
-     "w": "dark",
-     "start": 82.14,
-     "end": 83.2,
-     "conf": 0.5
+     "w": "Glo-o-o-o",
+     "start": 75.94,
+     "end": 78.4,
+     "conf": 0.5,
+     "syl": [
+      [
+       75.94,
+       76.34
+      ],
+      [
+       76.34,
+       76.78
+      ],
+      [
+       76.78,
+       77.38
+      ],
+      [
+       77.38,
+       78.4
+      ]
+     ]
     }
    ]
   },
   {
    "i": 20,
+   "section": "drop1",
+   "kind": "chop",
+   "text": "We\u2019ll be glo-o-owing in the dark",
+   "start": 79.16,
+   "end": 83.4,
+   "words": [
+    {
+     "w": "We\u2019ll",
+     "start": 79.16,
+     "end": 79.53,
+     "conf": 0.5
+    },
+    {
+     "w": "be",
+     "start": 79.53,
+     "end": 79.92,
+     "conf": 0.5
+    },
+    {
+     "w": "glo-o-owing",
+     "start": 79.92,
+     "end": 82.3,
+     "conf": 0.5,
+     "syl": [
+      [
+       79.92,
+       80.34
+      ],
+      [
+       80.34,
+       80.83
+      ],
+      [
+       80.83,
+       81.18
+      ],
+      [
+       81.18,
+       81.56
+      ],
+      [
+       81.56,
+       81.74
+      ],
+      [
+       81.74,
+       82.3
+      ]
+     ]
+    },
+    {
+     "w": "in",
+     "start": 82.32,
+     "end": 82.62,
+     "conf": 0.5
+    },
+    {
+     "w": "the",
+     "start": 82.62,
+     "end": 82.93,
+     "conf": 0.5
+    },
+    {
+     "w": "dark",
+     "start": 82.93,
+     "end": 83.4,
+     "conf": 0.5
+    }
+   ]
+  },
+  {
+   "i": 21,
    "section": "drop1",
    "text": "Take my hand",
    "start": 88.64,
@@ -944,7 +1048,7 @@
    ]
   },
   {
-   "i": 21,
+   "i": 22,
    "section": "drop1",
    "text": "Take my hand",
    "start": 91.84,
@@ -971,7 +1075,7 @@
    ]
   },
   {
-   "i": 22,
+   "i": 23,
    "section": "verse2",
    "text": "We've been ghosts in a crowded room",
    "start": 95.44,
@@ -1022,7 +1126,7 @@
    ]
   },
   {
-   "i": 23,
+   "i": 24,
    "section": "verse2",
    "text": "Holding on to the friends that we've got",
    "start": 98.54,
@@ -1079,7 +1183,7 @@
    ]
   },
   {
-   "i": 24,
+   "i": 25,
    "section": "verse2",
    "text": "If the night's gonna swallow the moon",
    "start": 101.805,
@@ -1130,7 +1234,7 @@
    ]
   },
   {
-   "i": 25,
+   "i": 26,
    "section": "verse2",
    "text": "Then we'll light up the spot",
    "start": 104.88,
@@ -1175,7 +1279,7 @@
    ]
   },
   {
-   "i": 26,
+   "i": 27,
    "section": "pre2",
    "text": "Put your hands up if you've ever felt low",
    "start": 107.708,
@@ -1238,7 +1342,7 @@
    ]
   },
   {
-   "i": 27,
+   "i": 28,
    "section": "pre2",
    "kind": "echo",
    "text": "(felt low)",
@@ -1260,7 +1364,7 @@
    ]
   },
   {
-   "i": 28,
+   "i": 29,
    "section": "pre2",
    "text": "Tonight we let it all go",
    "start": 111.478,
@@ -1305,7 +1409,7 @@
    ]
   },
   {
-   "i": 29,
+   "i": 30,
    "section": "pre2",
    "kind": "echo",
    "text": "(all go)",
@@ -1327,7 +1431,7 @@
    ]
   },
   {
-   "i": 30,
+   "i": 31,
    "section": "pre2",
    "text": "Turn the pain into gold, oh",
    "start": 114.456,
@@ -1372,7 +1476,7 @@
    ]
   },
   {
-   "i": 31,
+   "i": 32,
    "section": "pre2",
    "text": "Here we go, here we go",
    "start": 117.91,
@@ -1417,7 +1521,7 @@
    ]
   },
   {
-   "i": 32,
+   "i": 33,
    "section": "chorus2",
    "text": "We don't gotta be okay to dance",
    "start": 120.53,
@@ -1468,7 +1572,7 @@
    ]
   },
   {
-   "i": 33,
+   "i": 34,
    "section": "chorus2",
    "text": "We'll be glowing in the dark, take my hand",
    "start": 124.2,
@@ -1531,7 +1635,7 @@
    ]
   },
   {
-   "i": 34,
+   "i": 35,
    "section": "chorus2",
    "text": "Every broken piece becomes a star",
    "start": 127.47,
@@ -1576,7 +1680,7 @@
    ]
   },
   {
-   "i": 35,
+   "i": 36,
    "section": "chorus2",
    "text": "Look how beautiful we are",
    "start": 130.37,
@@ -1615,7 +1719,7 @@
    ]
   },
   {
-   "i": 36,
+   "i": 37,
    "section": "chorus2",
    "text": "So sing it like we're never coming down",
    "start": 133.985,
@@ -1672,7 +1776,7 @@
    ]
   },
   {
-   "i": 37,
+   "i": 38,
    "section": "chorus2",
    "text": "Loud enough to wake the whole town",
    "start": 137.19,
@@ -1723,7 +1827,7 @@
    ]
   },
   {
-   "i": 38,
+   "i": 39,
    "section": "chorus2",
    "text": "We don't gotta be okay to dance",
    "start": 140.205,
@@ -1774,7 +1878,7 @@
    ]
   },
   {
-   "i": 39,
+   "i": 40,
    "section": "chorus2",
    "text": "We'll be glo-glo-glo-glowing in the dark",
    "start": 143.4,
@@ -1819,7 +1923,7 @@
    ]
   },
   {
-   "i": 40,
+   "i": 41,
    "section": "bridge",
    "text": "And if you fall, I'll fall with you",
    "start": 159.12,
@@ -1876,7 +1980,7 @@
    ]
   },
   {
-   "i": 41,
+   "i": 42,
    "section": "bridge",
    "text": "Through the colors and the blue",
    "start": 162.32,
@@ -1921,7 +2025,7 @@
    ]
   },
   {
-   "i": 42,
+   "i": 43,
    "section": "bridge",
    "text": "We'll be golden, me and you",
    "start": 165.695,
@@ -1966,7 +2070,7 @@
    ]
   },
   {
-   "i": 43,
+   "i": 44,
    "section": "bridge",
    "text": "We'll be golden, me and you",
    "start": 168.855,
@@ -2011,7 +2115,7 @@
    ]
   },
   {
-   "i": 44,
+   "i": 45,
    "section": "chorus3",
    "text": "We don't gotta be okay to dance",
    "start": 171.73,
@@ -2062,7 +2166,7 @@
    ]
   },
   {
-   "i": 45,
+   "i": 46,
    "section": "chorus3",
    "text": "We'll be glowing in the dark, take my hand",
    "start": 175.28,
@@ -2125,7 +2229,7 @@
    ]
   },
   {
-   "i": 46,
+   "i": 47,
    "section": "chorus3",
    "text": "Every broken piece becomes a star",
    "start": 178.47,
@@ -2170,7 +2274,7 @@
    ]
   },
   {
-   "i": 47,
+   "i": 48,
    "section": "chorus3",
    "text": "Look how beautiful we are",
    "start": 181.425,
@@ -2209,7 +2313,7 @@
    ]
   },
   {
-   "i": 48,
+   "i": 49,
    "section": "chorus3",
    "text": "We'll be glowing in the dark!",
    "start": 184.631,
@@ -2254,33 +2358,61 @@
    ]
   },
   {
-   "i": 49,
+   "i": 50,
    "section": "drop3",
    "kind": "chop",
-   "text": "Glo-o-owing in the dark",
+   "text": "Da-a-ance, dance, oh, dance",
    "start": 188.68,
    "end": 192.6,
    "words": [
     {
-     "w": "Glo-o-owing",
+     "w": "Da-a-ance,",
      "start": 188.68,
-     "end": 190.48,
+     "end": 190.44,
+     "conf": 0.5,
+     "syl": [
+      [
+       188.68,
+       189.13
+      ],
+      [
+       189.13,
+       189.38
+      ],
+      [
+       189.38,
+       189.64
+      ],
+      [
+       189.64,
+       190.44
+      ]
+     ]
+    },
+    {
+     "w": "dance,",
+     "start": 190.46,
+     "end": 190.85,
      "conf": 0.5
     },
     {
-     "w": "in",
+     "w": "oh,",
      "start": 190.87,
-     "end": 191.25,
-     "conf": 0.5
+     "end": 191.8,
+     "conf": 0.5,
+     "syl": [
+      [
+       190.87,
+       191.25
+      ],
+      [
+       191.25,
+       191.8
+      ]
+     ]
     },
     {
-     "w": "the",
-     "start": 191.25,
-     "end": 191.85,
-     "conf": 0.5
-    },
-    {
-     "w": "dark",
+     "w": "dance",
      "start": 191.85,
      "end": 192.6,
      "conf": 0.5
@@ -2288,28 +2420,80 @@
    ]
   },
   {
-   "i": 50,
+   "i": 51,
    "section": "drop3",
    "kind": "chop",
-   "text": "Glo-o-owing in the dark",
+   "text": "Glo-o-o-o",
+   "start": 194.72,
+   "end": 197.5,
+   "words": [
+    {
+     "w": "Glo-o-o-o",
+     "start": 194.72,
+     "end": 197.5,
+     "conf": 0.5,
+     "syl": [
+      [
+       194.72,
+       195.39
+      ],
+      [
+       195.39,
+       196.18
+      ],
+      [
+       196.18,
+       196.46
+      ],
+      [
+       196.46,
+       197.5
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "i": 52,
+   "section": "drop3",
+   "kind": "chop",
+   "text": "Glo-o-o-owing in the dark",
    "start": 197.82,
    "end": 201.9,
    "words": [
     {
-     "w": "Glo-o-owing",
+     "w": "Glo-o-o-owing",
      "start": 197.82,
-     "end": 199.4,
-     "conf": 0.5
+     "end": 200.15,
+     "conf": 0.5,
+     "syl": [
+      [
+       197.82,
+       198.19
+      ],
+      [
+       198.19,
+       199.01
+      ],
+      [
+       199.01,
+       199.38
+      ],
+      [
+       199.38,
+       200.15
+      ]
+     ]
     },
     {
      "w": "in",
-     "start": 199.4,
-     "end": 200.22,
+     "start": 200.22,
+     "end": 200.48,
      "conf": 0.5
     },
     {
      "w": "the",
-     "start": 200.22,
+     "start": 200.48,
      "end": 200.73,
      "conf": 0.5
     },
@@ -2322,7 +2506,95 @@
    ]
   },
   {
-   "i": 51,
+   "i": 53,
+   "section": "drop3",
+   "kind": "chop",
+   "text": "Glo-o-o",
+   "start": 207.29,
+   "end": 209.3,
+   "words": [
+    {
+     "w": "Glo-o-o",
+     "start": 207.29,
+     "end": 209.3,
+     "conf": 0.5,
+     "syl": [
+      [
+       207.29,
+       207.87
+      ],
+      [
+       207.87,
+       208.88
+      ],
+      [
+       208.88,
+       209.3
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "i": 54,
+   "section": "outro",
+   "kind": "chop",
+   "text": "Da da da da da da da da",
+   "start": 213.38,
+   "end": 216.45,
+   "words": [
+    {
+     "w": "Da",
+     "start": 213.38,
+     "end": 213.7,
+     "conf": 0.5
+    },
+    {
+     "w": "da",
+     "start": 213.76,
+     "end": 214.1,
+     "conf": 0.5
+    },
+    {
+     "w": "da",
+     "start": 214.16,
+     "end": 214.5,
+     "conf": 0.5
+    },
+    {
+     "w": "da",
+     "start": 214.58,
+     "end": 214.9,
+     "conf": 0.5
+    },
+    {
+     "w": "da",
+     "start": 214.96,
+     "end": 215.3,
+     "conf": 0.5
+    },
+    {
+     "w": "da",
+     "start": 215.34,
+     "end": 215.75,
+     "conf": 0.5
+    },
+    {
+     "w": "da",
+     "start": 215.83,
+     "end": 216.1,
+     "conf": 0.5
+    },
+    {
+     "w": "da",
+     "start": 216.17,
+     "end": 216.45,
+     "conf": 0.5
+    }
+   ]
+  },
+  {
+   "i": 55,
    "section": "outro",
    "text": "Take my hand",
    "start": 218.87,
@@ -2349,64 +2621,66 @@
    ]
   },
   {
-   "i": 52,
+   "i": 56,
    "section": "outro",
    "kind": "chop",
-   "text": "Glo-o-owing in the dark",
+   "text": "Go-o-old",
    "start": 222.66,
-   "end": 225.7,
+   "end": 225.4,
    "words": [
     {
-     "w": "Glo-o-owing",
+     "w": "Go-o-old",
      "start": 222.66,
-     "end": 224.0,
-     "conf": 0.5
-    },
-    {
-     "w": "in",
-     "start": 224.12,
-     "end": 224.4,
-     "conf": 0.5
-    },
-    {
-     "w": "the",
-     "start": 224.4,
-     "end": 224.7,
-     "conf": 0.5
-    },
-    {
-     "w": "dark",
-     "start": 224.7,
-     "end": 225.7,
-     "conf": 0.5
+     "end": 225.4,
+     "conf": 0.5,
+     "syl": [
+      [
+       222.66,
+       223.01
+      ],
+      [
+       223.01,
+       224.12
+      ],
+      [
+       224.12,
+       225.4
+      ]
+     ]
     }
    ]
   },
   {
-   "i": 53,
+   "i": 57,
    "section": "outro",
    "kind": "chop",
-   "text": "Ta-ake my hand",
-   "start": 226.56,
-   "end": 227.73,
+   "text": "go-o-old",
+   "start": 225.5,
+   "end": 227.7,
    "words": [
     {
-     "w": "Ta-ake",
-     "start": 226.56,
-     "end": 226.96,
-     "conf": 0.5
-    },
-    {
-     "w": "my",
-     "start": 226.96,
-     "end": 227.16,
-     "conf": 0.5
-    },
-    {
-     "w": "hand",
-     "start": 227.16,
-     "end": 227.73,
-     "conf": 0.5
+     "w": "go-o-old",
+     "start": 225.5,
+     "end": 227.7,
+     "conf": 0.5,
+     "syl": [
+      [
+       225.5,
+       226.56
+      ],
+      [
+       226.56,
+       226.96
+      ],
+      [
+       226.96,
+       227.16
+      ],
+      [
+       227.16,
+       227.7
+      ]
+     ]
     }
    ]
   }
