@@ -41,9 +41,9 @@ export default class PhosFinal extends Scene {
     const L = this.lines;
     // rows: [first word, past-last word, size, baseline]
     const spec: [number, number, number, number, number?][][] = [
-      [[0, 5, 150, 470], [5, 7, 230, 720]],
-      [[0, 6, 96, 400], [6, 9, 190, 700, 80]],
-      [[0, 3, 170, 440], [3, 6, 170, 680]],
+      [[0, 5, 170, 450], [5, 7, 270, 740]],
+      [[0, 6, 112, 380], [6, 9, 215, 700, 80]],
+      [[0, 3, 190, 440], [3, 6, 190, 690]],
       [[0, 2, 100, 250], [2, 3, 20, 0], [3, 5, 100, 880]],
       [[0, 3, 215, 480], [3, 6, 215, 740]],
     ];
@@ -167,7 +167,7 @@ export default class PhosFinal extends Scene {
     const { renderer, comp, audio: au } = this.ctx;
     const t = f.t, lt = t - this.ctx.start;
     const P = this.P.ctx, Lc = this.L.ctx;
-    this.P.clear('#05060f'); 
+    this.P.clear('#1c0c03'); 
     // a faint moving speck: a canvas that is one flat colour is not re-uploaded reliably
     P.fillStyle = 'rgb(6,7,17)'; P.fillRect(Math.floor(t * 60) % 97, 0, 2, 2);
     this.L.clear('#000');
@@ -188,11 +188,14 @@ export default class PhosFinal extends Scene {
     for (const s of this.bg) {
       const tw = 0.5 + 0.5 * Math.sin(t * (1 + s.k * 2) + s.ph);
       const y = (s.y - lt * (6 + s.k * 14) + 1080 * 4) % 1080;
-      Lc.fillStyle = rgba(s.col, 0.12 + 0.4 * tw * s.k);
-      Lc.beginPath(); Lc.arc(s.x, y, s.r, 0, TAU); Lc.fill();
+      Lc.fillStyle = rgba(s.col, 0.25 + 0.6 * tw * s.k);
+      Lc.beginPath(); Lc.arc(s.x, y, s.r * 1.8, 0, TAU); Lc.fill();
     }
-    Lc.fillStyle = rgba(VIOLET, 0.07 * kick); Lc.fillRect(0, 0, 1920, 1080);
-    radial(Lc, CX, CY, 1300, [60, 40, 110], 0.22 + 0.2 * kick);
+    Lc.fillStyle = rgba(GOLD, 0.06 * kick); Lc.fillRect(0, 0, 1920, 1080);
+    const warm = 0.5 + 0.35 * smoothstep(0, 16, lt) + 0.2 * kick;
+    radial(Lc, CX, CY, 1700, [255, 150, 40], warm * 0.55);
+    radial(Lc, CX, 1080, 1300, GOLD, warm * 0.5);
+    radial(Lc, CX, CY, 700, [255, 220, 150], 0.12 + 0.1 * kick);
     Lc.restore();
 
     // --- 1: "okay to dance": letters that dance, their afterglow trailing
@@ -254,18 +257,8 @@ export default class PhosFinal extends Scene {
           return p;
         };
         const gl = smoothstep(L1.start - 0.35, L1.start + 0.1, t) * a;
-        P.save();
-        P.globalAlpha = gl * (1 - flare);
-        for (const side of [-1, 1]) {
-          const path = seam(side * g, side);
-          const gr = P.createLinearGradient(0, y0, 0, y1);
-          gr.addColorStop(0, 'rgb(34,26,70)'); gr.addColorStop(1, 'rgb(14,12,40)');
-          P.fillStyle = gr; P.fill(path);
-          P.lineWidth = 3; P.strokeStyle = rgba(PHOS, 0.5); P.stroke(path);
-        }
-        P.restore();
         Lc.save(); Lc.globalCompositeOperation = 'lighter'; Lc.globalAlpha = G * gl;
-        for (const side of [-1, 1]) { Lc.lineWidth = 10; Lc.strokeStyle = rgba(PHOS, 0.1); Lc.stroke(seam(side * g, side)); }
+        
         // gold seam where they lock
         const lock = t >= tHit ? 1 : 0, hit = t < tHit ? 0 : Math.exp(-(t - tHit) / 0.5);
         if (lock) {
@@ -395,21 +388,24 @@ export default class PhosFinal extends Scene {
         const lastGi = this.ctx.lyrics.words.length;
         for (const w of this.wall) {
           const wave = clamp(charge * 1.5 - 0.5 * (w.gi / lastGi) * 0 - Math.abs(w.x - CX) / 2400);
-          const al = (0.1 + 0.45 * wave * wave) * (1 - lit) + lit;
-          const col = mix3(PHOS, GOLD, lit);
-          P.fillStyle = rgba(mix3(col, [20, 30, 20], 0.3 * (1 - lit)), al * a * 0.9);
+          const al = (0.3 + 0.65 * wave) * (1 - lit) + lit;
+          const col = mix3([255, 214, 120], GOLD, lit);
+          P.fillStyle = rgba(col, al * a);
           P.fillText(w.w, w.x, w.y);
         }
         P.restore();
         // dark backing so the title reads over the wall
         P.save();
         const bk = P.createRadialGradient(CX, 610, 60, CX, 610, 900);
-        bk.addColorStop(0, `rgba(5,6,15,${0.94 * a * (1 - 0.55 * lit)})`); bk.addColorStop(0.55, `rgba(5,6,15,${0.82 * a * (1 - 0.55 * lit)})`); bk.addColorStop(1, 'rgba(5,6,15,0)');
+        bk.addColorStop(0, `rgba(28,12,3,${0.8 * a * (1 - 0.5 * lit)})`); bk.addColorStop(0.55, `rgba(28,12,3,${0.6 * a * (1 - 0.5 * lit)})`); bk.addColorStop(1, 'rgba(28,12,3,0)');
         P.fillStyle = bk; P.save(); P.translate(0, 610); P.scale(1, 0.46); P.translate(0, -610); P.fillRect(0, 0, 1920, 1500); P.restore();
         P.restore();
         Lc.save(); Lc.globalCompositeOperation = 'lighter'; Lc.globalAlpha = G;
+        if (charge > 0) {
+          Lc.font = this.wallFont; Lc.textBaseline = 'alphabetic';
+          for (const w of this.wall) { Lc.fillStyle = rgba(GOLD, 0.3 * charge * a * (1 - lit)); Lc.fillText(w.w, w.x, w.y); }
+        }
         if (lit > 0) {
-          P.save(); P.globalAlpha = 0; P.restore();
           Lc.font = this.wallFont; Lc.textBaseline = 'alphabetic';
           for (const w of this.wall) { Lc.fillStyle = rgba(GOLD, 0.42 * lit * a * (0.6 + 0.4 * Math.exp(-(t - tD) / 0.6))); Lc.fillText(w.w, w.x, w.y); }
           const rr2 = (t - tD) * 3600;
