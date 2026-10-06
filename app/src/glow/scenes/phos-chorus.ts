@@ -217,7 +217,7 @@ export default class PhosChorus extends Scene {
       this.glow = new StickerWord('GLOWING', 380, 380 / 13, 97);
       this.glowX = CX - this.glow.width / 2; this.glowY = 700;
       sh.push(S(L[7]!.start, this.tHeld, cam(CX, 400, 1.35, 0.02), cam(CX, 405, 1.45, 0.02), ease.linear, 'L8'));
-      sh.push(S(this.tHeld, this.tDark, cam(CX, 600, 0.95, 0), cam(CX, 590, 1.22, 0), ease.inOutQuad));
+      sh.push(S(this.tHeld, this.tDark, cam(CX, 600, 0.92, 0), cam(CX, 590, 1.1, 0), ease.inOutQuad));
       sh.push(S(this.tDark, end, cam(CX, 700, 0.95, 0), cam(CX, 700, 1.02, 0), ease.linear));
     }
     this.shots = sh.sort((a, b) => a.t - b.t);
@@ -312,7 +312,7 @@ export default class PhosChorus extends Scene {
     const hard = Math.max(pulses(t, [this.l6[0]!.on], 0.09), pulses(t, [this.tShatter], 0.08) * 0.8);
     if (hard > 0.01) { const ph = Math.round(t * 60); shake = [shake[0] + 26 * hard * Math.sin(ph * 2.1), shake[1] + 20 * hard * Math.cos(ph * 1.7)]; }
     const flash = Math.max(o.flash ?? 0, fx.flash as number, 0, bigUV * 0.25);
-    const post: PostOverrides = { ...o, zoom: 1, shake, flash };
+    const post: PostOverrides = { ...o, zoom: 1, shake, flash, bloom: 0.6, bloomThreshold: 0.68, halation: 0.07 }; // keep blacks black under big type
     if (inverted) { post.bloom = 0.25; post.halation = 0.04; post.flash = 0; }
     // the collapse into drop 1's point
     void end;

@@ -346,7 +346,7 @@ export default class PhosPre extends Scene {
     const crushing = this.n === 1 && t >= this.here.words[5]!.start;
     const o = st.end(out, { gain: 1.5, uv: inv || crushing ? 0 : pulse * (this.n === 2 ? 0.16 : 0.1), uvColor: this.n === 2 ? [0.4, 0.25, 1] : undefined });
     const fx = hitFx(audio, t, { zoom: 0, shake: this.n === 2 ? 5 : 3, flash: 0.06, k: inHere ? 1.6 : 1 });
-    const post: PostOverrides = { ...o, zoom: 1, shake: fx.shake, flash: Math.max(o.flash ?? 0, fx.flash as number) };
+    const post: PostOverrides = { ...o, zoom: 1, shake: fx.shake, flash: Math.max(o.flash ?? 0, fx.flash as number), bloom: 0.6, bloomThreshold: 0.68, halation: 0.07 };
     if (inv || this.pressInv) { post.bloom = 0.22; post.halation = 0.04; post.flash = 0; }
     // the crush: the point is the only light (no wash, no flash)
     if (this.n === 1 && t >= this.here.words[5]!.start) { post.flash = 0; this.st.stars; }
