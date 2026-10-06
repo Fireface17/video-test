@@ -1,623 +1,486 @@
-// Final chorus, the climax, in gold light on true black. Each line has its own idea; lines cut hard on their first
-// word; nothing dances or shakes: motion is light, the camera and the cuts.
+// CHORUS 3, the climax, in the language of the whole middle of the clip (phosphor stickers in the dark, type that slams
+// in on its sung onset, a camera that is never at rest and cuts on the hits), escalated to gold. Each line is its own
+// idea and none repeats chorus 1 (phos-chorus) move for move.
 //
-//  1 "We don't gotta be okay to dance": it opens on the very gold the bridge ended in, a full frame of it, and the
-//    words are punched out of the gold as black stamps (ink on gold). On "be" (the first big kick) it inverts: black,
-//    the words in gold. "to DANCE": the word fills the frame in front of a sunburst whose rays jump half a step on
-//    every beat (the light dances, the letters stand still) while the camera steps in on the downbeats.
-//  2 "We'll be glowing in the dark, take my hand": the dark; a searchlight from below finds each word as it is sung,
-//    and each word it touches stays charged: white-hot, then the clip's phosphor green afterglow (glow in the dark).
-//    "take" is caught by a beam from the left corner, "my" from the right, and on "hand" the two beams cross on it.
-//  3 "Every broken piece becomes a star": kintsugi. The words are set in a black glass slab; on "broken" it cracks
-//    from one point (a radial fracture, five main cracks at the angles of a star's points) and the shards jump apart;
-//    on "piece" further; on "becomes" molten gold runs out along the cracks from the impact and pulls the shards
-//    back together; on "star" the seams flare and a gold star sticker ignites at the impact point.
-//  4 "Look how beautiful we are": sunrise. BEAUTIFUL stands on a hard horizon in black silhouette while a huge gold
-//    sun rises behind it, its reflection broken into stripes below, god rays turning slowly.
-//  5 "We'll be glowing in the dark!": the wall. Every word of the song, set as one wall of type; we start tight on
-//    this very line inside it and on the beats of the held "glowing" the camera jumps back step by step while the
-//    wall lights up around the line in waves; the line itself stays big in front. On "dark!" every word of the song
-//    flashes and the frame burns to gold (the drop's way in).
+//  1 "We don't gotta be okay to dance": it opens on the gold the bridge ends in; WE / DON'T / GOTTA are punched out
+//    of it as black full-frame stamps. On BE the drums come in and the gold SHATTERS: it was a carpet of gold
+//    stickers, and they blow out from the centre and leave the dark. OKAY. TO DANCE: the survivors of the blast fly
+//    back in, one batch per snare, and assemble DANCE left to right; the camera rolls in.
+//  2 "We'll be glowing in the dark, take my hand": a flight THROUGH the line. The words stand one behind the other in
+//    depth; the camera rushes forward and lands on each one as it is sung (the one before flies past us); GLOWING
+//    burns white then green, IN THE DARK cools; on HAND the flight stops and the field takes the gold.
+//  3 "Every broken piece becomes a star": BROKEN is made of stickers and is blown apart on the kick; the pieces
+//    scatter (PIECE), swirl (BECOMES) and slam together into one GIANT STAR on STAR, the word punched through it.
+//  4 "Look how beautiful we are": the camera pulls back from the giant star in steps on the hits, and the star is the
+//    dot of the i of a huge "beautiful" in gold; WE ARE lands under it.
+//  5 "We'll be glowing in the dark!": GLOWING slams in, made of stickers; when the band drops out it glows on alone
+//    and fades to its green afterglow (glow in the dark, literally); the rebuild's hits each cut hard and recharge it
+//    white-hot, throwing sparks; IN THE DARK! slams, and the last kick blows the frame to gold-white into drop 3.
 import type * as THREE from 'three';
 import { Scene, type Frame, type PostOverrides } from '../../engine/scene';
-import { Layer2D, clearRT, W, H } from '../../engine/gl';
-import { F, font } from '../../engine/type';
 import type { Line, Word } from '../../engine/lyrics';
-import { clamp, ease, hash, lerp, mulberry32, prog, smoothstep, TAU, frameIdx } from '../../engine/util';
-import { loadPhosphorFont, PHOS_FONT } from '../lib/phosphor';
-import { FLARE_OPACITY, starPath } from './phos-fall';
+import { W, H } from '../../engine/gl';
+import { layout, measure } from '../../engine/type';
+import { clamp, ease, hash, lerp, prog, smoothstep, TAU } from '../../engine/util';
+import { hitFx, PhosphorStage, StickerWord, glowAt, uvPulse, loadPhosphorFont, mixTone, PHOS_FONT, type Glow, type Tone } from '../lib/phosphor';
+import { cam, camXf, CX, CY, Field, flood, mixCam, pulses, shotAt, slamK, starW, txt, useXf, type Cam, type Shot, type Xf } from '../lib/phos-cut';
 
-type RGB = [number, number, number];
-const GOLD: RGB = [255, 194, 71], HOT: RGB = [255, 246, 222], AMBER: RGB = [255, 138, 28], PHOS: RGB = [182, 255, 106];
-const css = (c: RGB, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
-const mix = (a: RGB, b: RGB, k: number): RGB => [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)];
-const STAMP = () => F.archivo(100, 900);
-const WIDE = () => F.archivo(125, 900);
-const CX = W / 2;
+const UP = (s: string) => s.toUpperCase().replace(/[,.?]/g, '');
+const S = (t0: number, t1: number, a: Cam, b: Cam, fn: (x: number) => number = ease.linear): Shot => ({ t: t0, cam: (t: number) => mixCam(a, b, prog(t, t0, t1, fn)) });
+const GOLD_SOFT = mixTone('gold', 'white', 0.18);
+const RG = 420; // the giant star's outer radius (world px)
 
-interface Box { w: Word; text: string; x: number; y: number; size: number; fam: string; width: number }
-interface Shard { poly: [number, number][]; c: [number, number]; ring: number; rot: number }
-interface WallWord { text: string; x: number; y: number; gi: number }
+interface P2 { x: number; y: number }
 
 export default class PhosFinal extends Scene {
-  L = new Layer2D();
-  G = new Layer2D(W / 2, H / 2, 1);
-  lines: Line[] = [];
-  mc = document.createElement('canvas').getContext('2d')!;
-  // line layouts
-  l1a: Box[] = []; l1dance: Box[] = [];
-  l2: Box[] = [];
-  l3a: Box[] = []; l3b: Box[] = [];
-  l4: Box[] = [];
-  l5: Box[] = [];
-  // kintsugi
-  imp: [number, number] = [CX, 470];
-  rays: [number, number][][] = [];
-  rings = [0, 130, 310, 560, 2400];
-  shards: Shard[] = [];
-  // the wall
-  wall: WallWord[] = [];
-  wallSize = 40;
-  wallBox = { x0: 0, y0: 0, x1: W, y1: H };
-  phrase = { x: CX, y: 540, w: 400 };
-
-  private meas(text: string, fam: string, size: number) { this.mc.font = font(fam, size); return this.mc.measureText(text).width; }
-  /** words in one row, centred on x = CX, baseline y; `up` uppercases */
-  private row(ws: Word[], fam: string, size: number, y: number, up = true, gap = 0.28): Box[] {
-    const texts = ws.map((w) => (up ? w.w.toUpperCase() : w.w));
-    const widths = texts.map((s) => this.meas(s, fam, size));
-    const g = gap * size;
-    const tot = widths.reduce((a, b) => a + b, 0) + g * (ws.length - 1);
-    let x = CX - tot / 2;
-    return ws.map((w, i) => { const b = { w, text: texts[i]!, x, y, size, fam, width: widths[i]! }; x += widths[i]! + g; return b; });
-  }
-  /** largest size (<= max) at which the row fits `maxW` */
-  private fit(ws: Word[], fam: string, maxW: number, max: number, up = true, gap = 0.28) {
-    const texts = ws.map((w) => (up ? w.w.toUpperCase() : w.w));
-    const at100 = texts.reduce((a, s) => a + this.meas(s, fam, 100), 0) + gap * 100 * (ws.length - 1);
-    return Math.min(max, (maxW / at100) * 100);
-  }
+  st!: PhosphorStage;
+  field!: Field;
+  L: Line[] = [];
+  shots: Shot[] = [];
+  onsets: number[] = [];
+  lineT: number[] = [];
+  curZ = 1;
+  // 1
+  tBe = 0; tOk = 0; tTo = 0; carpet: { x: number; y: number; k: number; s: number; r: number }[] = []; surv: number[] = [];
+  dance!: StickerWord; danceX = 0; danceY = 0; batches: number[] = []; danceB: number[] = [];
+  // 2
+  depth: { w: Word; text: string; z: number; ox: number; oy: number; size: number; tone: Tone }[] = []; deep: { x: number; y: number; z: number; s: number; r: number }[] = [];
+  // 3
+  broken!: StickerWord; brX = 0; brY = 0; tBreak = 0; tBecome = 0; tStar = 0; giant: P2[] = [];
+  // 4
+  beau = { size: 300, K: 14, x0: 0, y0: 0, dot: { x: 0, y: -200, r: 20 }, w: 0, steps: [] as number[], zEnd: 0.09 };
+  // 5
+  glow!: StickerWord; glX = 0; glY = 0; tGlow = 0; tOut = 0; tBack = 0; hits: number[] = []; tDark = 0; tLast = 0;
 
   override async init() {
-    const { lyrics, start, end } = this.ctx;
     await loadPhosphorFont();
-    this.lines = lyrics.linesIn(start - 0.05, end + 0.01).filter((l) => l.start >= start - 0.1).slice(0, 5);
-    const [A, B, C, D, E] = this.lines as [Line, Line, Line, Line, Line];
-    if (!E) return;
-    // 1
-    const s1 = this.fit(A.words.slice(0, 3), STAMP(), 1640, 190);
-    this.l1a = [...this.row(A.words.slice(0, 3), STAMP(), s1, 480), ...this.row(A.words.slice(3, 5), STAMP(), s1, 480 + s1 * 1.08)];
-    const sd = this.fit([A.words[6]!], WIDE(), 1480, 400);
-    this.l1dance = [...this.row([A.words[5]!], STAMP(), 92, 330), ...this.row([A.words[6]!], WIDE(), sd, 640 + sd * 0.32)];
-    // 2
-    const s2 = this.fit(B.words.slice(0, 6), PHOS_FONT, 1700, 130, false, 0.3);
-    this.l2 = [...this.row(B.words.slice(0, 6), PHOS_FONT, s2, 420, false, 0.3), ...this.row(B.words.slice(6), PHOS_FONT, 190, 760, false, 0.3)];
-    // 3
-    const s3 = this.fit(C.words.slice(0, 3), STAMP(), 1380, 150);
-    this.l3a = this.row(C.words.slice(0, 3), STAMP(), s3, 470 + s3 * 0.36);
-    this.l3b = this.row(C.words.slice(3), STAMP(), 112, 830);
-    this.buildCracks();
-    // 4
-    const sb = this.fit([D.words[2]!], WIDE(), 1660, 300);
-    this.l4 = [...this.row(D.words.slice(0, 2), F.archivo(110, 700), 70, 205, true, 0.5), ...this.row([D.words[2]!], WIDE(), sb, 735), ...this.row(D.words.slice(3), STAMP(), 120, 950)];
-    // 5
-    this.buildWall(E);
-    // the line in front: exactly where the wall's own copy of it is at the start (so it can stay when the wall goes)
-    const z0 = 1500 / Math.max(200, this.phrase.w);
-    this.l5 = this.wall.filter((w) => w.gi >= E.words[0]!.gi && w.gi <= E.words[E.words.length - 1]!.gi).map((w) => {
-      const word = lyrics.words[w.gi]!;
-      const size = this.wallSize * z0;
-      return { w: word, text: w.text, x: CX + (w.x - CX) * z0, y: 540 + (w.y - this.phrase.y) * z0, size, fam: PHOS_FONT, width: this.meas(w.text, PHOS_FONT, size) };
-    });
-  }
+    const { lyrics, audio, start, end } = this.ctx;
+    this.st = new PhosphorStage(this.ctx, 7000);
+    this.field = new Field(520, 31);
+    this.L = lyrics.linesIn(start - 0.3, end + 0.2).filter((l) => !l.kind && l.start >= start - 0.4 && l.start < end - 0.2);
+    const L = this.L;
+    const on = (li: number, re: RegExp) => L[li]!.words.find((w) => re.test(w.w))!.start;
+    const kicks = (a: number, b: number, thr: number) => audio.events('kick', a, b).filter(([, s]) => s >= thr).map(([t]) => t);
+    const snares = (a: number, b: number, thr: number) => audio.events('snare', a, b).filter(([, s]) => s >= thr).map(([t]) => t);
+    const dedupe = (ts: number[], gap: number) => ts.sort((a, b) => a - b).filter((x, i, a) => i === 0 || x - a[i - 1]! > gap);
+    const sh: Shot[] = [];
+    this.onsets = L.flatMap((l) => l.words.map((w) => w.start));
+    this.lineT = L.map((l, i) => (i === 0 ? start : l.start));
 
-  private buildCracks() {
-    const r = mulberry32(31);
-    const [ix, iy] = this.imp;
-    const n = 9;
-    const angs: number[] = [];
-    // five main cracks at the angles of a star's points, four lesser ones between some of them
-    for (let k = 0; k < 5; k++) angs.push(-Math.PI / 2 + (k * TAU) / 5);
-    for (const k of [0, 1, 3, 4]) angs.push(-Math.PI / 2 + ((k + 0.5) * TAU) / 5 + (r() - 0.5) * 0.25);
-    angs.sort((a, b) => a - b);
-    this.rays = angs.map((a) => {
-      const pts: [number, number][] = [[ix, iy]];
-      let rr = 0, ang = a;
-      while (rr < 2400) {
-        rr += 40 + r() * 70;
-        ang = a + (r() - 0.5) * 0.12;
-        pts.push([ix + Math.cos(ang) * rr, iy + Math.sin(ang) * rr]);
-      }
-      return pts;
-    });
-    void n;
-    const at = (k: number, rad: number): [number, number] => {
-      const pts = this.rays[k % this.rays.length]!;
-      for (let i = 1; i < pts.length; i++) {
-        const r0 = Math.hypot(pts[i - 1]![0] - ix, pts[i - 1]![1] - iy), r1 = Math.hypot(pts[i]![0] - ix, pts[i]![1] - iy);
-        if (r1 >= rad) { const u = (rad - r0) / Math.max(1e-3, r1 - r0); return [lerp(pts[i - 1]![0], pts[i]![0], u), lerp(pts[i - 1]![1], pts[i]![1], u)]; }
-      }
-      return pts[pts.length - 1]!;
-    };
-    const along = (k: number, a: number, b: number) => {
-      const pts = this.rays[k]!, out: [number, number][] = [at(k, a)];
-      for (const p of pts) { const d = Math.hypot(p[0] - ix, p[1] - iy); if (d > a && d < b) out.push(p); }
-      out.push(at(k, b));
-      return out;
-    };
-    const N = this.rays.length;
-    for (let j = 0; j < this.rings.length - 1; j++) for (let k = 0; k < N; k++) {
-      const k2 = (k + 1) % N, a = this.rings[j]!, b = this.rings[j + 1]!;
-      const poly: [number, number][] = [...along(k, a, b), ...along(k2, a, b).reverse()];
-      let cx = 0, cy = 0;
-      for (const p of poly) { cx += p[0]; cy += p[1]; }
-      this.shards.push({ poly, c: [cx / poly.length, cy / poly.length], ring: j, rot: (r() - 0.5) * 0.05 });
+    // ------------------------------------------------------------------ 1
+    this.tBe = on(0, /^be$/i); this.tOk = on(0, /^okay/i); this.tTo = on(0, /^to$/i);
+    for (let gy = -1; gy < 34; gy++) for (let gx = -1; gx < 58; gx++) {
+      const i = (gy + 1) * 60 + gx + 1;
+      this.carpet.push({ x: gx * 34 + 17 + (gy % 2) * 17 + (hash(i, 1, 9) - 0.5) * 10, y: gy * 32 + 16 + (hash(i, 2, 9) - 0.5) * 10, k: hash(i, 3, 9), s: 19 + 6 * hash(i, 4, 9), r: hash(i, 5, 9) * TAU });
     }
-  }
+    this.carpet.forEach((c, i) => { if (c.k < 0.17 && c.x > 0 && c.x < W && c.y > 0 && c.y < H) this.surv.push(i); });
+    this.dance = new StickerWord('DANCE', 440, 440 / 12, 5);
+    this.danceX = CX - this.dance.width / 2; this.danceY = 790;
+    const tDance = on(0, /^dance/i);
+    this.batches = dedupe(snares(tDance + 0.1, L[1]!.start - 0.12, 0.6), 0.15);
+    if (!this.batches.length) this.batches = [tDance + 0.3];
+    const lay = layout('DANCE', PHOS_FONT, 440);
+    this.danceB = this.dance.pts.map((p) => Math.min(this.batches.length - 1, Math.floor(clamp(p.x / lay.width) * this.batches.length)));
+    sh.push(S(start, this.tOk, cam(), cam(CX, CY, 1.05, 0)));
+    sh.push(S(this.tOk, this.tTo, cam(CX, CY, 1.08, -0.04), cam(CX, CY, 1.15, -0.04)));
+    sh.push(S(this.tTo, L[1]!.start, cam(CX, 600, 0.84, 0), cam(CX, 640, 1.06, 0.04), ease.inQuad));
 
-  private buildWall(E: Line) {
-    const all = this.ctx.lyrics.words;
-    const first = E.words[0]!.gi, last = E.words[E.words.length - 1]!.gi;
-    const lay = (size: number) => {
-      const sp = this.meas(' ', PHOS_FONT, size) * 1.25;
-      const rows: { w: string; x: number; gi: number }[][] = [[]];
-      let x = 0;
-      for (const wd0 of all) {
-        const wd = { w: wd0.w.replace(/[()]/g, ''), gi: wd0.gi };
-        const wi = this.meas(wd.w, PHOS_FONT, size);
-        const brk = wd.gi === first || wd.gi === last + 1;
-        if ((x + wi > 1840 || brk) && rows[rows.length - 1]!.length) { rows.push([]); x = 0; }
-        rows[rows.length - 1]!.push({ w: wd.w, x, gi: wd.gi }); x += wi + sp;
-      }
-      return rows;
-    };
-    let size = 52, rows = lay(size);
-    while (rows.length * size * 1.3 > 1020 && size > 20) { size -= 1; rows = lay(size); }
-    this.wallSize = size;
-    const lh = size * 1.3, top = (H - rows.length * lh) / 2;
-    rows.forEach((row, ri) => {
-      const last = row[row.length - 1]!;
-      const rw = last ? last.x + this.meas(last.w, PHOS_FONT, size) : 0;
-      for (const o of row) this.wall.push({ text: o.w, x: CX - rw / 2 + o.x, y: top + (ri + 0.78) * lh, gi: o.gi });
-      if (row[0] && row[0].gi === first) this.phrase = { x: CX, y: top + (ri + 0.5) * lh, w: rw };
+    // ------------------------------------------------------------------ 2: the corridor of words
+    const sizes: Record<string, number> = { GLOWING: 430, 'DARK,': 470, DARK: 470, HAND: 540, TAKE: 280, MY: 280 };
+    const offs: [number, number][] = [[-360, -170], [380, 150], [0, 30], [-420, -190], [420, -160], [0, 40], [-340, -60], [360, 60], [0, 40]];
+    L[1]!.words.forEach((w, i) => {
+      const text = UP(w.w), big = /^(GLOWING|DARK|HAND)/.test(text);
+      const tone: Tone = /^GLOW/.test(text) ? mixTone('green', 'white', 0.25) : /^(IN|THE|DARK)/.test(text) ? mixTone('green', 'cyan', 0.45) : /^(TAKE|MY)/.test(text) ? mixTone('gold', 'green', 0.35) : /^HAND/.test(text) ? 'gold' : 'green';
+      this.depth.push({ w, text, z: i * 1000, ox: offs[i % offs.length]![0] * (big ? 0 : 1), oy: big ? 40 : offs[i % offs.length]![1], size: sizes[text] ?? 210, tone });
     });
-    this.wallBox = { x0: 0, y0: top, x1: W, y1: top + rows.length * lh };
+    for (let i = 0; i < 260; i++) this.deep.push({ x: (hash(i, 1, 44) - 0.5) * 4200, y: (hash(i, 2, 44) - 0.5) * 2600, z: hash(i, 3, 44) * 10000 - 500, s: 9 + 12 * hash(i, 4, 44), r: hash(i, 5, 44) * TAU });
+    sh.push(S(L[1]!.start, L[2]!.start, cam(), cam()));
+
+    // ------------------------------------------------------------------ 3: the giant star
+    this.broken = new StickerWord('BROKEN', 360, 360 / 13, 23);
+    this.brX = CX - this.broken.width / 2; this.brY = 690;
+    const tb = on(2, /^broken/i);
+    this.tBreak = kicks(tb + 0.05, tb + 0.45, 0.85)[0] ?? tb + 0.15;
+    this.tBecome = on(2, /^becomes/i); this.tStar = on(2, /^star/i);
+    const poly: [number, number][] = [];
+    for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + (k * Math.PI) / 5, r = k % 2 ? RG * 0.46 : RG; poly.push([Math.cos(a) * r, Math.sin(a) * r]); }
+    const inside = (x: number, y: number) => { let c = false; for (let i = 0, j = 9; i < 10; j = i++) { const [xi, yi] = poly[i]!, [xj, yj] = poly[j]!; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
+    for (let i = 0, n = 0; n < this.broken.pts.length && i < 40000; i++) {
+      const x = (hash(i, 1, 71) - 0.5) * 2 * RG, y = (hash(i, 2, 71) - 0.5) * 2 * RG;
+      if (inside(x, y)) { this.giant.push({ x: CX + x, y: CY + y }); n++; }
+    }
+    sh.push(S(L[2]!.start, this.tBreak, cam(CX, 520, 1.12, 0), cam(CX, 525, 1.2, 0)));
+    sh.push(S(this.tBreak, this.tBecome, cam(CX, 560, 0.86, -0.05), cam(CX, 560, 0.8, -0.05), ease.outCubic));
+    sh.push(S(this.tBecome, this.tStar, cam(CX, 540, 0.9, 0.03), cam(CX, 540, 0.96, 0.03)));
+    sh.push(S(this.tStar, L[3]!.start, cam(CX, CY, 1.02, 0), cam(CX, CY, 1.14, 0), ease.outQuad));
+
+    // ------------------------------------------------------------------ 4: the star is the dot of the i
+    this.initBeau();
+    const bw = L[3]!.words.find((w) => /^beaut/i.test(w.w))!, tWe = on(3, /^we$/i);
+    this.beau.steps = dedupe([...kicks(bw.start - 0.05, tWe - 0.1, 0.85), ...snares(bw.start - 0.05, tWe - 0.1, 0.95)], 0.17).slice(0, 7);
+    if (!this.beau.steps.length) this.beau.steps = [bw.start];
+    sh.push(S(L[3]!.start, bw.start, cam(CX, CY, 1.14, 0), cam(CX, CY, 1.2, 0)));
+    sh.push({ t: bw.start, cam: (t) => this.beauCam(t) });
+
+    // ------------------------------------------------------------------ 5
+    this.glow = new StickerWord('GLOWING', 420, 420 / 12.5, 61);
+    this.glX = CX - this.glow.width / 2; this.glY = 700;
+    this.tGlow = on(4, /^glow/i); this.tDark = on(4, /^dark/i);
+    // the drop-out: the quietest stretch after GLOWING lands; the rebuild: the hits after it
+    let qt = this.tGlow + 0.6, qv = 9;
+    for (let x = this.tGlow + 0.3; x < this.tDark - 1; x += 0.05) { const v = audio.env('bass', x); if (v < qv) { qv = v; qt = x; } }
+    this.tOut = audio.events('kick', this.tGlow, qt).length ? Math.max(this.tGlow + 0.35, qt - 0.5) : qt - 0.5;
+    this.hits = dedupe(kicks(qt + 0.1, this.tDark - 0.05, 0.95), 0.12);
+    this.tBack = this.hits[0] ?? qt + 0.6;
+    this.tLast = kicks(this.tDark + 0.1, end + 0.05, 0.9)[0] ?? end - 0.03;
+    sh.push(S(L[4]!.start, this.tGlow, cam(CX, 420, 1.15, 0.02), cam(CX, 425, 1.2, 0.02)));
+    sh.push(S(this.tGlow, this.tBack, cam(CX, 600, 0.98, 0), cam(CX, 600, 1.16, 0), ease.inOutQuad));
+    const crops = [cam(this.glX + this.glow.width * 0.22, 590, 1.9, -0.06), cam(this.glX + this.glow.width * 0.8, 590, 1.9, 0.06), cam(CX, 600, 1.35, 0), cam(CX, 610, 0.95, -0.02)];
+    this.hits.forEach((h, i) => { const a = crops[i % crops.length]!; sh.push(S(h, this.tDark, a, { ...a, z: a.z * 1.05 })); });
+    const tIn = on(4, /^in$/i);
+    sh.push(S(tIn, this.tDark, cam(CX, 640, 0.9, 0), cam(CX, 640, 0.95, 0)));
+    sh.push(S(this.tDark, end, cam(CX, CY, 1.0, 0), cam(CX, CY, 1.1, 0), ease.inQuad));
+    this.shots = sh.sort((a, b) => a.t - b.t);
   }
 
-  // ------------------------------------------------------------------------------------------ drawing helpers
-  private heat(w: Word, t: number, tau = 0.35) { return t < w.start ? 0 : Math.exp(-(t - w.start) / tau); }
-  private slam(w: Word, t: number, k = 0.16, d = 0.12) { const a = t - w.start; return a < 0 ? 1 : 1 + k * Math.pow(1 - clamp(a / d), 3); }
-  /** fill a word (scaled about its centre by s) */
-  private word(c: CanvasRenderingContext2D, b: Box, fill: string | CanvasGradient, s = 1, mode: 'fill' | 'cut' = 'fill', stroke = 0) {
-    c.save();
-    c.font = font(b.fam, b.size);
-    c.textBaseline = 'alphabetic';
-    const cx = b.x + b.width / 2, cy = b.y - b.size * 0.36;
-    c.translate(cx, cy); c.scale(s, s); c.translate(-cx, -cy);
-    if (mode === 'cut') c.globalCompositeOperation = 'destination-out';
-    if (stroke > 0) { c.lineWidth = stroke; c.lineJoin = 'round'; c.strokeStyle = fill; c.strokeText(b.text, b.x, b.y); }
-    c.fillStyle = fill;
-    c.fillText(b.text, b.x, b.y);
+  /** lowercase "beautiful": find the i's dot, and scale the word so that the dot is the giant star (at the centre) */
+  private initBeau() {
+    const B = this.beau, size = B.size;
+    const lay = layout('beautiful', PHOS_FONT, size);
+    const gi = lay.glyphs.findIndex((g) => g.ch === 'i');
+    const g = lay.glyphs[gi]!;
+    const cw = Math.ceil(g.w + 20), ch = Math.ceil(size * 1.2);
+    const cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+    const c = cv.getContext('2d', { willReadFrequently: true })!;
+    c.font = `${size}px "${PHOS_FONT}"`; c.fillStyle = '#fff'; c.textBaseline = 'alphabetic';
+    const base = Math.round(size * 1.0);
+    c.fillText('i', 10, base);
+    const d = c.getImageData(0, 0, cw, ch).data, col = Math.round(10 + g.w / 2);
+    let top = -1, bot = -1;
+    for (let y = 0; y < ch; y++) { const a = d[(y * cw + col) * 4 + 3]! > 128; if (a && top < 0) top = y; if (top >= 0 && !a) { bot = y; break; } }
+    if (top < 0) { top = base - size * 0.8; bot = top + size * 0.12; }
+    B.dot = { x: g.x + g.w / 2, y: (top + bot) / 2 - base, r: (bot - top) / 2 };
+    B.K = (RG * 0.62) / Math.max(4, B.dot.r);
+    B.w = lay.width;
+    // text origin (left, baseline) in world so that the dot lands on the frame centre
+    B.x0 = CX - B.K * B.dot.x; B.y0 = CY - B.K * B.dot.y;
+    // the whole word framed at the end (width ~84 % of the frame)
+    B.zEnd = (W * 0.84) / (B.w * B.K);
+  }
+  private beauCam(t: number): Cam {
+    const B = this.beau, n = B.steps.length;
+    let k = 0;
+    for (let i = 0; i < n; i++) k += ease.outExpo(prog(t, B.steps[i]!, B.steps[i]! + 0.12));
+    const u = k / n;
+    const z = Math.exp(lerp(Math.log(1.2), Math.log(B.zEnd), u));
+    const wx = B.x0 + (B.w * B.K) / 2, wy = B.y0 - B.size * B.K * 0.12;
+    // the frame centre moves off the star only as fast as the zoom reveals the word (the star stays in shot)
+    const pu = (1 / z - 1 / 1.2) / (1 / B.zEnd - 1 / 1.2);
+    return { x: lerp(CX, wx, pu), y: lerp(CY, wy, pu), z: z * (1 + 0.03 * prog(t, B.steps[n - 1]!, this.L[4]!.start)), r: 0 };
+  }
+
+  // ----------------------------------------------------------------------------------------- helpers
+  private wg(t: number, on: number, sus = 0.62): Glow {
+    if (t < on) return { level: 0, flash: 0 };
+    const dt = t - on, k = uvPulse(this.ctx.audio, t, { thr: 0.8, hl: 0.1 });
+    return { level: sus + (1.15 - sus) * Math.exp(-dt / 0.3) + 0.2 * k, flash: 0.9 * Math.pow(0.5, dt / 0.05) };
+  }
+  private say(c: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, on: number, t: number, tone: Tone, o: { from?: number; sus?: number; ink?: boolean; level?: number } = {}) {
+    const k = slamK(t, on, { from: o.from ?? 1.55, tau: 0.04 });
+    if (!k) return;
+    c.save(); c.translate(x, y - size * 0.36); c.scale(k, k);
+    if (o.ink) { c.font = `${size}px "${PHOS_FONT}"`; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillStyle = '#000'; c.fillText(text, 0, size * 0.36); }
+    else { const g = this.wg(t, on, o.sus); const l = o.level ?? 1; txt(c, text, 0, size * 0.36, size, { level: g.level * l, flash: g.flash * l }, tone); }
     c.restore();
   }
-  private glowDot(c: CanvasRenderingContext2D, x: number, y: number, r: number, col: RGB, a: number) {
-    const g = c.createRadialGradient(x, y, 0, x, y, r);
-    g.addColorStop(0, css(col, a)); g.addColorStop(0.3, css(col, a * 0.35)); g.addColorStop(1, css(col, 0));
-    c.fillStyle = g; c.fillRect(x - r, y - r, r * 2, r * 2);
-  }
-  /** a beam of light from o toward angle a, half-width hw (rad) */
-  private beam(c: CanvasRenderingContext2D, o: [number, number], a: number, hw: number, len: number, col: RGB, k: number) {
-    if (k <= 0.003) return;
-    c.save();
-    c.translate(o[0], o[1]); c.rotate(a);
-    const g = c.createLinearGradient(0, 0, len, 0);
-    g.addColorStop(0, css(col, 0.55 * k)); g.addColorStop(0.45, css(col, 0.22 * k)); g.addColorStop(1, css(col, 0));
-    c.fillStyle = g;
-    c.beginPath(); c.moveTo(0, 0); c.lineTo(len, -Math.tan(hw) * len); c.lineTo(len, Math.tan(hw) * len); c.closePath(); c.fill();
-    // the hard core of the beam
-    const g2 = c.createLinearGradient(0, 0, len, 0);
-    g2.addColorStop(0, css(mix(col, HOT, 0.6), 0.6 * k)); g2.addColorStop(0.6, css(col, 0.12 * k)); g2.addColorStop(1, css(col, 0));
-    c.fillStyle = g2;
-    c.beginPath(); c.moveTo(0, 0); c.lineTo(len, -Math.tan(hw * 0.3) * len); c.lineTo(len, Math.tan(hw * 0.3) * len); c.closePath(); c.fill();
-    c.restore();
-  }
-  private goldOf(h: number): RGB { return mix(GOLD, HOT, clamp(h)); }
-  /** gold with a polished sheen: a bright diagonal band that crosses the frame after every downbeat */
-  private sheen(c: CanvasRenderingContext2D, t: number, h: number, a = 1): string | CanvasGradient {
-    const au = this.ctx.audio;
-    const bi = Math.floor(au.barAt(t) + 0.01);
-    const db = au.downbeats[bi] ?? t;
-    const u = (t - db) / 0.42;
-    const base = css(this.goldOf(h), a);
-    if (u < 0 || u > 1) return base;
-    const x = lerp(-500, W + 500, ease.inOutQuad(u));
-    const g = c.createLinearGradient(x - 260, 0, x + 260, 180);
-    const band = css(mix(this.goldOf(h), HOT, 0.85), a);
-    g.addColorStop(0, base); g.addColorStop(0.42, base); g.addColorStop(0.5, band); g.addColorStop(0.58, base); g.addColorStop(1, base);
-    return g;
+  private fit(text: string, w: number, max: number) { return Math.min(max, (100 * w) / measure(text, PHOS_FONT, 100)); }
+  private lineAt(t: number) { let li = 0; this.lineT.forEach((s, i) => { if (t >= s) li = i; }); return li; }
+
+  // ------------------------------------------------------------------------------------------ render
+  render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
+    const { audio, end } = this.ctx, st = this.st, t = f.t, c = st.L.ctx;
+    st.begin(out);
+    const li = this.lineAt(t);
+    const k0 = shotAt(this.shots, t).cam(t);
+    const punch = li === 1 ? 0 : pulses(t, this.onsets, 0.07, 0.035) + 0.025 * uvPulse(audio, t, { thr: 0.8, hl: 0.08 });
+    const k: Cam = { ...k0, z: k0.z * (1 + punch) };
+    const m = camXf(k);
+    this.curZ = k.z;
+    let idx = 0, inv = false, goldOpen = false;
+    if (li !== 1 && !(li === 0 && t < this.tBe)) idx = this.drawField(t, k, li, idx);
+    useXf(c, m);
+    switch (li) {
+      case 0: { const r = this.line1(c, t, m, idx); idx = r.idx; goldOpen = r.gold; break; }
+      case 1: c.setTransform(1, 0, 0, 1, 0, 0); idx = this.line2(c, t, idx); break;
+      case 2: idx = this.line3(c, t, m, idx); break;
+      case 3: idx = this.line4(c, t, m, idx); break;
+      case 4: { const r = this.line5(c, t, m, idx); idx = r.idx; inv = r.inv; break; }
+    }
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    st.stars.commit(inv || goldOpen ? (goldOpen ? idx : 0) : idx);
+    const uv = inv || goldOpen ? 0 : uvPulse(audio, t, { thr: 0.85 }) * 0.1;
+    const o = st.end(out, { gain: goldOpen ? 1.15 : 1.5, uv });
+    const fx = hitFx(audio, t, { zoom: 0, shake: 4, flash: 0.05 });
+    let shake = fx.shake as [number, number];
+    const hard = Math.max(pulses(t, [this.tBe], 0.09), pulses(t, [this.tBreak], 0.08) * 0.9, pulses(t, this.hits, 0.07) * 0.8);
+    if (hard > 0.01) { const ph = Math.round(t * 60); shake = [shake[0] + 24 * hard * Math.sin(ph * 2.1), shake[1] + 18 * hard * Math.cos(ph * 1.7)]; }
+    // the last kick blows the frame to gold-white: the hard way into drop 3
+    const blow = t >= this.tLast ? smoothstep(this.tLast, Math.min(end, this.tLast + 0.05), t) : 0;
+    const post: PostOverrides = { ...o, zoom: 1 + 0.25 * ease.inQuad(blow), shake, flash: Math.max(fx.flash as number, 1.6 * blow), bloom: 0.6, bloomThreshold: 0.68, halation: 0.07 };
+    if (inv || goldOpen) { post.bloom = 0.25; post.halation = 0.04; if (!blow) post.flash = 0; }
+    return post;
   }
 
-  // ------------------------------------------------------------------------------------------ the lines
-  private line1(c: CanvasRenderingContext2D, t: number, A: Line) {
-    const ws = A.words;
-    const tInv = ws[3]!.start, tTo = ws[5]!.start;
-    if (t < tInv) {
-      // the bridge's gold, a full field; the words punched out of it in black
-      const k = 1 - 0.18 * prog(t, A.start, tInv);
-      const g = c.createRadialGradient(CX, 520, 100, CX, 520, 1200);
-      g.addColorStop(0, css(GOLD, 1)); g.addColorStop(1, css(mix(GOLD, AMBER, 0.45), k));
-      c.fillStyle = A.start + 0.06 > t ? css(GOLD, 1) : g;
-      c.fillRect(0, 0, W, H);
-      for (const b of this.l1a) if (t >= b.w.start - 0.01) this.word(c, b, '#000', this.slam(b.w, t, 0.12), 'cut');
-      return;
+  // -------------------------------------------------------------------------------------------- field
+  private drawField(t: number, k: Cam, li: number, idx: number): number {
+    const st = this.st, start = this.ctx.start;
+    const D = [0.55, 0, 0.5, 0.6, 0.65][li]!;
+    const gold = li >= 2 ? 0.6 : 0.25;
+    for (const s of this.field.stars) {
+      if (s.k > D) continue;
+      const [x, y, z] = this.field.place(s, k, -20 * (t - start), -36 * (t - start));
+      if (!z) continue;
+      const g = glowAt(t, this.uvList(), { tau: 1.0 });
+      let level = 0.05 + 0.4 * g.level * (0.4 + 0.6 * s.d), flash = g.flash * 0.1;
+      if (li === 4 && t >= this.tOut && t < this.tBack) level *= 0.3;
+      st.stars.set(idx++, x, y, s.s * z * 0.85, s.r + k.r, { level, flash }, s.k < gold * D ? 'gold' : 'green', 0.4);
     }
-    if (t < tTo) {
-      // inverted: black, the words in gold (the flash of the inversion is the post flash)
-      for (const b of this.l1a) if (t >= b.w.start - 0.01) {
-        const h = Math.max(this.heat(b.w, t), t - tInv < 0.12 ? 0.7 : 0);
-        this.word(c, b, this.sheen(c, t, h), this.slam(b.w, t, 0.12));
+    return idx;
+  }
+  private _uv: { t: number; s: number }[] | null = null;
+  private uvList() {
+    this._uv ??= this.ctx.audio.events('kick', this.ctx.start - 1, this.ctx.end + 0.5).filter(([, s]) => s >= 0.85).map(([t, s]) => ({ t, s: 0.5 + 0.5 * s }));
+    return this._uv;
+  }
+
+  // ------------------------------------------------------------------------------------------- line 1
+  private line1(c: CanvasRenderingContext2D, t: number, m: Xf, idx: number): { idx: number; gold: boolean } {
+    const st = this.st, L = this.L[0]!, ws = L.words;
+    if (t < this.tBe) {
+      // the bridge's gold, and the words punched out of it as black stamps (one full frame each)
+      c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.fillStyle = 'rgb(236,168,48)'; c.fillRect(-4, -4, W + 8, H + 8); c.restore();
+      let i = -1;
+      ws.forEach((w, j) => { if (j < 3 && t >= w.start) i = j; });
+      if (i >= 0) {
+        const text = UP(ws[i]!.w), size = this.fit(text, 1400, 640);
+        this.say(c, text, CX, CY + size * 0.36, size, ws[i]!.start, t, 'gold', { ink: true, from: 1.35 });
       }
-      return;
+      return { idx, gold: true };
     }
-    // "to DANCE": a sunburst whose rays jump half a step on every beat
-    const au = this.ctx.audio;
-    const beat = Math.floor(au.beatAt(t) + 0.02);
-    const N = 18, o: [number, number] = [CX, 520];
-    const rot = (t - tTo) * 0.22 + (beat % 2) * (Math.PI / N);
-    const kick = this.ctx.audio.hit('kick', t, 0.1);
-    const on = smoothstep(tTo - 0.02, tTo + 0.06, t);
-    c.save();
-    c.translate(o[0], o[1]);
-    for (let i = 0; i < N; i++) {
-      const a = rot + (i * TAU) / N, hw = 0.055;
-      const len = 1500;
-      const g = c.createLinearGradient(0, 0, Math.cos(a) * len, Math.sin(a) * len);
-      g.addColorStop(0, css(HOT, 0.75 * on)); g.addColorStop(0.18, css(GOLD, (0.42 + 0.25 * kick) * on)); g.addColorStop(1, css(AMBER, 0));
-      c.fillStyle = g;
-      c.beginPath(); c.moveTo(0, 0); c.lineTo(Math.cos(a - hw) * len, Math.sin(a - hw) * len); c.lineTo(Math.cos(a + hw) * len, Math.sin(a + hw) * len); c.closePath(); c.fill();
+    // the shatter: the gold was a carpet of stickers; it blows out from the centre
+    const tt = t - this.tBe;
+    const tDance = this.batches[0]! - 0.3;
+    for (let i = 0; i < this.carpet.length; i++) {
+      const p = this.carpet[i]!, dx = p.x - CX, dy = p.y - CY, d = Math.hypot(dx, dy) || 1;
+      const v = (d * 2.4 + 500) * (0.7 + 0.6 * p.k), D = v * 0.32 * (1 - Math.exp(-tt / 0.32));
+      const x = p.x + (dx / d) * D, y = p.y + (dy / d) * D;
+      const survivor = p.k < 0.17;
+      let level = 0.85 * Math.exp(-tt / 0.16);
+      if (survivor) level = Math.max(level, 0.3);
+      if (level < 0.02) continue;
+      if (survivor && t >= tDance) continue; // these are flying into DANCE
+      idx = starW(st.stars, idx, m, x, y, p.s * lerp(1, 0.55, clamp(tt / 0.5)), p.r + tt * (p.k - 0.5) * 6, { level, flash: 0.35 * Math.pow(0.5, tt / 0.04) }, 'gold', 0);
     }
-    c.restore();
-    this.glowDot(c, o[0], o[1], 520, GOLD, 0.35 * on);
-    for (const b of this.l1dance) {
-      if (t < b.w.start - 0.01) continue;
-      // a black margin cut round the letters, then the gold
-      this.word(c, b, '#000', this.slam(b.w, t, 0.1), 'cut', b.size * 0.09);
-      this.word(c, b, this.sheen(c, t, this.heat(b.w, t, 0.25) + 0.25 * kick), this.slam(b.w, t, 0.1));
-    }
-  }
-
-  private line2(c: CanvasRenderingContext2D, t: number, B: Line) {
-    const row1 = this.l2.slice(0, 6), row2 = this.l2.slice(6);
-    const O: [number, number] = [CX, 1290];
-    const tgt = (b: Box): [number, number] => [b.x + b.width / 2, b.y - b.size * 0.35];
-    const ang = (o: [number, number], p: [number, number]) => Math.atan2(p[1] - o[1], p[0] - o[0]);
-    // the searchlight finds each word of the first row as it is sung
-    const aOf = (tt: number) => {
-      const ts = row1.map((b) => b.w.start), as = row1.map((b) => ang(O, tgt(b)));
-      if (tt <= ts[0]!) return as[0]! - 0.5 * (1 - prog(tt, ts[0]! - 0.35, ts[0]!, ease.outCubic));
-      for (let i = 0; i < ts.length - 1; i++) if (tt < ts[i + 1]!) return lerp(as[i]!, as[i + 1]!, prog(tt, lerp(ts[i]!, ts[i + 1]!, 0.45), ts[i + 1]!, ease.inOutCubic));
-      return as[as.length - 1]!;
-    };
-    const t1End = row2[0]!.w.start;
-    const k1 = smoothstep(B.start - 0.4, B.start - 0.1, t) * (1 - smoothstep(t1End - 0.05, t1End + 0.2, t));
-    this.beam(c, O, aOf(t), 0.05, 1900, GOLD, k1);
-    // two beams from the corners for "take my hand", crossing on "hand"
-    const [take, my, hand] = row2 as [Box, Box, Box];
-    const OL: [number, number] = [-160, 1220], OR: [number, number] = [W + 160, 1220];
-    const aL = lerp(ang(OL, tgt(take)), ang(OL, tgt(hand)), prog(t, hand.w.start - 0.22, hand.w.start, ease.inOutCubic));
-    const aR = lerp(ang(OR, tgt(my)), ang(OR, tgt(hand)), prog(t, hand.w.start - 0.18, hand.w.start, ease.inOutCubic));
-    const kL = smoothstep(take.w.start - 0.25, take.w.start - 0.02, t), kR = smoothstep(my.w.start - 0.22, my.w.start - 0.02, t);
-    this.beam(c, OL, aL - 0.25 * (1 - kL), 0.04, 2300, GOLD, kL);
-    this.beam(c, OR, aR + 0.25 * (1 - kR), 0.04, 2300, GOLD, kR);
-    // the words: charged by the light, the first row then glows on in the clip's phosphor green
-    for (const b of row1) {
-      if (t < b.w.start - 0.01) continue;
-      const age = t - b.w.start;
-      const h = Math.exp(-age / 0.18);
-      const col = mix(mix(GOLD, PHOS, smoothstep(0.05, 0.6, age)), HOT, h);
-      const lvl = 0.75 + 0.25 * Math.exp(-age / 2.5);
-      this.word(c, b, css(col, lvl), this.slam(b.w, t, 0.08));
-      if (age < 0.4) this.glowDot(c, ...tgt(b), b.size * 1.6, HOT, 0.5 * h);
-    }
-    for (const b of row2) {
-      if (t < b.w.start - 0.01) continue;
-      const h = this.heat(b.w, t, 0.3);
-      this.word(c, b, css(this.goldOf(h)), this.slam(b.w, t, b === hand ? 0.18 : 0.1));
-    }
-    // where the beams cross: a flare
-    const fl = t < hand.w.start ? 0 : Math.exp(-(t - hand.w.start) / 0.35);
-    if (fl > 0.01) {
-      const [hx, hy] = tgt(hand);
-      this.glowDot(c, hx, hy, 700, GOLD, 0.6 * fl);
-      c.save(); c.translate(hx, hy);
-      for (let i = 0; i < 4; i++) {
-        c.rotate(Math.PI / 4);
-        const g = c.createLinearGradient(-900, 0, 900, 0);
-        g.addColorStop(0, css(GOLD, 0)); g.addColorStop(0.5, css(HOT, 0.8 * fl)); g.addColorStop(1, css(GOLD, 0));
-        c.fillStyle = g; c.fillRect(-900, -2, 1800, 4);
-      }
-      c.restore();
-    }
-  }
-
-  private line3(c: CanvasRenderingContext2D, t: number, C: Line) {
-    const ws = C.words;
-    const tBr = ws[1]!.start, tPc = ws[2]!.start, tBe = ws[3]!.start, tSt = ws[5]!.start;
-    const [ix, iy] = this.imp;
-    const slab = { x0: CX - 790, y0: iy - 175, x1: CX + 790, y1: iy + 175 };
-    // how far the shards are apart: a jump on "broken", further on "piece", the gold pulls them back on "becomes"
-    const apart = t < tBr ? 0 : (ease.outCubic(prog(t, tBr, tBr + 0.07)) + 0.7 * ease.outCubic(prog(t, tPc, tPc + 0.07))) * (1 - ease.inOutCubic(prog(t, tBe + 0.05, tBe + 0.55)));
-    const broken = t >= tBr;
-    const gold = prog(t, tBe, tBe + 0.5, ease.outCubic);
-    const star = t < tSt ? 0 : 1;
-    const drawSlab = (cc: CanvasRenderingContext2D) => {
-      const g = cc.createLinearGradient(0, slab.y0, 0, slab.y1);
-      g.addColorStop(0, 'rgba(16,10,5,1)'); g.addColorStop(0.5, 'rgba(7,4,2,1)'); g.addColorStop(1, 'rgba(3,2,1,1)');
-      cc.fillStyle = g; cc.fillRect(slab.x0, slab.y0, slab.x1 - slab.x0, slab.y1 - slab.y0);
-      cc.strokeStyle = css(GOLD, 0.6); cc.lineWidth = 1.5; cc.strokeRect(slab.x0 + 1, slab.y0 + 1, slab.x1 - slab.x0 - 2, slab.y1 - slab.y0 - 2);
-      for (const b of this.l3a) if (t >= b.w.start - 0.01) this.word(cc, b, css(this.goldOf(this.heat(b.w, t, 0.3) * 0.9)), this.slam(b.w, t, 0.1));
-    };
-    if (!broken) drawSlab(c);
+    const ok = t >= this.tOk, to = t >= this.tTo;
+    if (!ok) { const s = this.fit('BE', 1000, 640); this.say(c, 'BE', CX, CY + s * 0.36, s, this.tBe, t, GOLD_SOFT, { from: 1.9, sus: 0.8 }); }
+    else if (!to) { const s = this.fit('OKAY', 1400, 560); this.say(c, 'OKAY', CX, CY + s * 0.36, s, this.tOk, t, 'gold', { from: 1.6, sus: 0.75 }); }
     else {
-      for (const s of this.shards) {
-        const dx = s.c[0] - ix, dy = s.c[1] - iy, dl = Math.hypot(dx, dy) || 1;
-        const d = (10 + 16 * s.ring) * apart;
-        c.save();
-        c.translate(dx / dl * d, dy / dl * d);
-        c.translate(s.c[0], s.c[1]); c.rotate(s.rot * apart); c.translate(-s.c[0], -s.c[1]);
-        c.beginPath(); s.poly.forEach((p, i) => (i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]))); c.closePath();
-        c.clip();
-        drawSlab(c);
-        c.restore();
+      this.say(c, 'TO', CX, 380, 170, this.tTo, t, 'green');
+      // DANCE assembles from the survivors, one batch per snare, left to right
+      const pts = this.dance.pts, ns = this.surv.length, rad = (440 / 12) * 0.62;
+      const srcAt = (i: number, tq: number) => { const p = this.carpet[i]!, dx = p.x - CX, dy = p.y - CY, d = Math.hypot(dx, dy) || 1, q = tq - this.tBe; const D = (d * 2.4 + 500) * (0.7 + 0.6 * p.k) * 0.32 * (1 - Math.exp(-q / 0.32)); return [p.x + (dx / d) * D, p.y + (dy / d) * D] as const; };
+      for (let j = 0; j < pts.length; j++) {
+        const p = pts[j]!, b = this.danceB[j]!, tb = this.batches[b]!, tf = tb - 0.24 - 0.04 * p.b;
+        const [sx, sy] = srcAt(this.surv[j % ns]!, Math.min(t, tf));
+        if (t < tf) { if (j < ns) idx = starW(st.stars, idx, m, sx, sy, 12, p.a * 6, { level: 0.3, flash: 0 }, 'gold', 0); continue; }
+        const u = ease.inOutCubic(prog(t, tf, tb));
+        const tx = this.danceX + p.x, ty = this.danceY + p.y;
+        const landed = t >= tb, age = t - tb;
+        const g = landed ? glowAt(t, [{ t: tb, s: 1.15 }, ...this.uvList().filter((e) => e.t > tb)], { tau: 1.4 }) : { level: 0.7, flash: 0 };
+        idx = starW(st.stars, idx, m, lerp(sx, tx, u), lerp(sy, ty, u), rad * (0.85 + 0.3 * p.a) * (landed ? 1 + 0.9 * Math.pow(0.5, age / 0.05) : lerp(0.6, 1, u)), p.a * TAU + (1 - u) * 4, { level: Math.max(0.6, g.level), flash: g.flash }, mixTone('gold', 'white', 0.2 * p.b), 0);
       }
-      // the crack flash, then gold running out along the cracks from the impact
-      const fl = Math.exp(-(t - tBr) / 0.06) + 0.6 * (t >= tPc ? Math.exp(-(t - tPc) / 0.05) : 0);
-      const reach = 1800 * gold;
+      // the neon of each letter once its batch has landed
+      const lay = layout('DANCE', PHOS_FONT, 440);
+      lay.glyphs.forEach((gl, i) => {
+        const b = Math.min(this.batches.length - 1, Math.floor(clamp((gl.x + gl.w / 2) / lay.width) * this.batches.length)), tb = this.batches[b]!;
+        if (t < tb) return;
+        const g = this.wg(t, tb, 0.4);
+        txt(c, gl.ch, this.danceX + gl.x + gl.w / 2, this.danceY, 440, { level: g.level * 0.5, flash: g.flash * 0.4 }, 'gold');
+      });
+    }
+    return { idx, gold: false };
+  }
+
+  // ------------------------------------------------------------------------------------------- line 2
+  /** the camera's depth: rests on each word, rushes to the next one just before it is sung */
+  private camZ(t: number): number {
+    const D = this.depth;
+    let z = D[0]!.z - 1000 - 300 * (1 - prog(t, this.L[1]!.start - 0.05, D[0]!.w.start, ease.outCubic));
+    for (let i = 1; i < D.length; i++) {
+      const tn = D[i]!.w.start, tp = D[i - 1]!.w.start;
+      const ta = Math.max(tp + 0.05, tn - 0.2);
+      z += (D[i]!.z - D[i - 1]!.z) * ease.inOutCubic(prog(t, ta, tn));
+    }
+    const tH = D[D.length - 1]!.w.start;
+    return z + 60 * prog(t, tH, this.L[2]!.start);
+  }
+  private line2(c: CanvasRenderingContext2D, t: number, idx: number): number {
+    const st = this.st, zc = this.camZ(t), D = this.depth, F = 1000;
+    const tH = D[D.length - 1]!.w.start;
+    // the deep field streaming past
+    const hand = t >= tH ? glowAt(t, [{ t: tH, s: 1 }], { tau: 1.2 }) : null;
+    for (const s of this.deep) {
+      let dz = s.z - zc;
+      dz = ((dz % 10000) + 10000) % 10000;
+      if (dz < 60) continue;
+      const sc = F / dz, x = CX + s.x * sc, y = CY + s.y * sc;
+      if (x < -50 || x > W + 50 || y < -50 || y > H + 50) continue;
+      const near = smoothstep(9000, 6000, dz);
+      let level = (0.08 + 0.5 * smoothstep(3000, 300, dz)) * near, tone: Tone = 'green';
+      if (hand && hand.level > level) { level = hand.level * near; tone = 'gold'; }
+      st.stars.set(idx++, x, y, s.s * Math.min(3, sc), s.r, { level, flash: 0 }, tone, 0);
+    }
+    // the words, far to near (the nearer ones drawn last)
+    for (let i = D.length - 1; i >= 0; i--) {
+      const d = D[i]!, dz = d.z - zc;
+      if (t < d.w.start - 0.12 || dz < 140) continue;
+      const sc = F / dz;
+      const passing = 1 - smoothstep(1.35, 2.6, sc);
+      if (passing <= 0.01) continue;
+      const g = t >= d.w.start ? this.wg(t, d.w.start, 0.66) : { level: 0.18, flash: 0 };
+      const x = CX + d.ox * sc, y = CY + d.oy * sc, size = d.size * sc;
+      txt(c, d.text, x, y + size * 0.36, size, { level: g.level * passing, flash: g.flash * passing }, d.tone);
+    }
+    return idx;
+  }
+
+  // ------------------------------------------------------------------------------------------- line 3
+  private line3(c: CanvasRenderingContext2D, t: number, m: Xf, idx: number): number {
+    const st = this.st, L = this.L[2]!, ws = L.words, tb = this.tBreak, tB = this.tBecome, tS = this.tStar;
+    const tPiece = ws.find((w) => /^piece/i.test(w.w))!.start, tA = ws.find((w) => /^a$/i.test(w.w))?.start ?? tS - 0.1;
+    if (t < tPiece) this.say(c, 'EVERY', CX, 330, 200, ws[0]!.start, t, 'gold');
+    if (t >= tPiece && t < tB) this.say(c, 'PIECE', CX, 560, 190, tPiece, t, 'green');
+    if (t >= tB && t < tS) { this.say(c, 'BECOMES', CX - 60, 230, 170, tB, t, mixTone('green', 'gold', 0.4)); this.say(c, 'A', CX + 420, 230, 170, tA, t, mixTone('green', 'gold', 0.4)); }
+    const pts = this.broken.pts, rad = (360 / 13) * 0.62, bw = ws.find((w) => /^broken/i.test(w.w))!.start;
+    const bc = { x: CX, y: this.brY - 130 };
+    for (let j = 0; j < pts.length; j++) {
+      const p = pts[j]!, hx = this.brX + p.x, hy = this.brY + p.y;
+      if (t < bw - 0.02) continue;
+      // the blast: decelerating flight, spin
+      const tt = Math.max(0, Math.min(t, tB + 0.2) - tb);
+      const dx = hx - bc.x + (p.a - 0.5) * 120, dy = hy - bc.y + (p.b - 0.5) * 120, dl = Math.hypot(dx, dy) || 1;
+      const v = 1500 + 1700 * p.b, Dd = t >= tb ? v * 0.38 * (1 - Math.exp(-tt / 0.38)) : 0;
+      let x = hx + (dx / dl) * Dd, y = hy + (dy / dl) * Dd * 0.8;
+      let level = t < tb ? Math.max(0.6, this.wg(t, bw, 0.6).level) : 0.55 + 0.6 * Math.exp(-tt / 0.2);
+      let flash = t < tb ? this.wg(t, bw).flash : Math.pow(0.5, tt / 0.05) * 0.8;
+      let size = rad * (0.85 + 0.3 * p.a), rot = p.a * TAU + (t >= tb ? tt * (p.b - 0.5) * 10 : 0);
+      // BECOMES: they swirl into the giant star and slam together on STAR
+      if (t >= tB) {
+        const gq = this.giant[j % this.giant.length]!;
+        const u = ease.inOutCubic(prog(t, tB, tS));
+        const a0 = Math.atan2(y - CY, x - CX), r0 = Math.hypot(x - CX, y - CY), a1 = Math.atan2(gq.y - CY, gq.x - CX), r1 = Math.hypot(gq.x - CX, gq.y - CY);
+        let da = a1 - a0; da = ((da + Math.PI) % TAU + TAU) % TAU - Math.PI;
+        const aa = a0 + (da + 1.2 * (1 - u)) * u, rr = lerp(r0, r1, u);
+        x = CX + Math.cos(aa) * rr; y = CY + Math.sin(aa) * rr;
+        if (t >= tS) {
+          const g = glowAt(t, [{ t: tS, s: 1.3 }, ...this.uvList().filter((e) => e.t > tS)], { tau: 1.4 });
+          level = Math.max(0.7, g.level); flash = g.flash; size *= 1 + 0.9 * Math.pow(0.5, (t - tS) / 0.05);
+        } else { level = 0.6 + 0.3 * u; flash = 0; }
+        rot += (1 - u) * 3;
+      }
+      const tone = t >= tS ? mixTone('gold', 'white', 0.15 + 0.2 * p.b) : t >= tb ? mixTone('green', 'gold', 0.5 + 0.5 * prog(t, tB, tS)) : mixTone('green', 'gold', 0.3);
+      idx = starW(st.stars, idx, m, x, y, size, rot, { level, flash }, tone, 0);
+    }
+    if (t >= bw && t < tb) txt(c, 'BROKEN', CX, this.brY, 360, { level: this.wg(t, bw, 0.4).level * 0.45, flash: 0 }, mixTone('green', 'gold', 0.3));
+    if (t >= tS) {
+      // the word punched through the giant star
+      const k = slamK(t, tS, { from: 1.5 });
+      c.save(); c.translate(CX, CY + 20); c.scale(k, k); c.font = `200px "${PHOS_FONT}"`; c.textAlign = 'center'; c.fillStyle = '#000'; c.fillText('STAR', 0, 72); c.restore();
+    }
+    return idx;
+  }
+  /** a short white-gold flare at the centre (screen space) */
+  private flare(t: number, t0: number, idx: number) {
+    const q = prog(t, t0, t0 + 0.14);
+    if (q < 1) this.st.stars.set(idx++, CX, CY, lerp(120, 700, ease.outExpo(q)), 0, { level: 0.9 * (1 - q) * (1 - q), flash: (1 - q) * (1 - q) * 0.8 }, mixTone('gold', 'white', 0.6), 0);
+    return idx;
+  }
+
+  // ------------------------------------------------------------------------------------------- line 4
+  private line4(c: CanvasRenderingContext2D, t: number, m: Xf, idx: number): number {
+    const st = this.st, L = this.L[3]!, B = this.beau, ws = L.words;
+    const bw = ws.find((w) => /^beaut/i.test(w.w))!.start, tWe = ws.find((w) => /^we$/i.test(w.w))!.start, tAre = ws.find((w) => /^are/i.test(w.w))!.start;
+    // LOOK HOW around the star (before the pull)
+    this.say(c, 'LOOK', CX, 200, 170, ws[0]!.start, t, 'gold');
+    this.say(c, 'HOW', CX, 1000, 170, ws[1]!.start, t, 'gold');
+    // the giant star: stickers while we are close, one solid sticker once we are far
+    const solid = smoothstep(0.55, 0.3, this.curZ);
+    const g = glowAt(t, [{ t: L.start - 1.3, s: 1 }, ...this.uvList().filter((e) => e.t > L.start - 1.3)], { tau: 1.6 });
+    if (solid < 1) for (let j = 0; j < this.giant.length; j++) {
+      const p = this.giant[j]!, pp = this.broken.pts[j]!;
+      idx = starW(st.stars, idx, m, p.x, p.y, (360 / 13) * 0.62 * (0.85 + 0.3 * pp.a), pp.a * TAU, { level: Math.max(0.7, g.level) * (1 - solid), flash: g.flash * (1 - solid) }, mixTone('gold', 'white', 0.15 + 0.2 * pp.b), 0);
+    }
+    if (solid > 0) idx = starW(st.stars, idx, m, CX, CY, RG * 0.98, 0, { level: 1.0 * solid, flash: 0.2 * solid }, mixTone('gold', 'white', 0.2), 0);
+    // "beautiful": the dot of the i is the star (the dot is clipped out of the type)
+    if (t >= bw) {
+      const gw = this.wg(t, bw, 0.7);
       c.save();
-      c.beginPath(); c.rect(slab.x0 - 4, slab.y0 - 4, slab.x1 - slab.x0 + 8, slab.y1 - slab.y0 + 8); c.clip();
-      c.lineJoin = 'round'; c.lineCap = 'round';
-      const path = (lim: number) => {
-        const p = new Path2D();
-        for (const ray of this.rays) {
-          p.moveTo(ray[0]![0], ray[0]![1]);
-          for (let i = 1; i < ray.length; i++) {
-            const r0 = Math.hypot(ray[i - 1]![0] - ix, ray[i - 1]![1] - iy), r1 = Math.hypot(ray[i]![0] - ix, ray[i]![1] - iy);
-            if (r1 <= lim) p.lineTo(ray[i]![0], ray[i]![1]);
-            else { const u = clamp((lim - r0) / (r1 - r0)); p.lineTo(lerp(ray[i - 1]![0], ray[i]![0], u), lerp(ray[i - 1]![1], ray[i]![1], u)); break; }
-          }
+      c.beginPath(); c.rect(-1e5, -1e5, 2e5, 2e5); c.arc(CX, CY, B.dot.r * B.K * 1.25, 0, TAU, true); c.clip();
+      c.translate(B.x0, B.y0); c.scale(B.K, B.K);
+      txt(c, 'beautiful', 0, 0, B.size, gw, 'gold', { align: 'left' });
+      c.restore();
+    }
+    // WE ARE under it, at the final scale
+    const s = 200 / B.zEnd, y = B.y0 + B.size * B.K * 0.2 + s * 0.95, cxw = B.x0 + (B.w * B.K) / 2;
+    const wW = measure('WE', PHOS_FONT, s), aW = measure('ARE', PHOS_FONT, s), gap = s * 0.3, x0 = cxw - (wW + aW + gap) / 2;
+    this.say(c, 'WE', x0 + wW / 2, y, s, tWe, t, mixTone('green', 'gold', 0.5));
+    this.say(c, 'ARE', x0 + wW + gap + aW / 2, y, s, tAre, t, mixTone('green', 'gold', 0.5));
+    return idx;
+  }
+
+  // ------------------------------------------------------------------------------------------- line 5
+  private line5(c: CanvasRenderingContext2D, t: number, m: Xf, idx: number): { idx: number; inv: boolean } {
+    const st = this.st, L = this.L[4]!, ws = L.words, tg = this.tGlow;
+    const tIn = ws.find((w) => /^in$/i.test(w.w))!.start, tThe = ws.find((w) => /^the$/i.test(w.w))!.start;
+    if (t >= this.tDark) {
+      // DARK! full frame, ink on gold for a beat, then gold on black
+      const inv = t < this.tDark + 0.14;
+      if (inv) flood(c, { level: 0.85, flash: 0.3 * Math.pow(0.5, (t - this.tDark) / 0.04) }, 'gold');
+      useXf(c, m);
+      const s = this.fit('DARK!', 1500, 640);
+      this.say(c, 'DARK!', CX, CY + s * 0.36, s, this.tDark, t, 'gold', { ink: inv, from: 1.6, sus: 0.85 });
+      if (inv) return { idx, inv: true };
+      return { idx, inv: false };
+    }
+    if (t < tg) { this.say(c, "WE'LL", CX - 190, 420, 200, ws[0]!.start, t, 'green'); this.say(c, 'BE', CX + 250, 420, 200, ws[1]!.start, t, 'green'); return { idx, inv: false }; }
+    // GLOWING: lands; dies to its green afterglow when the band drops out; every hit of the rebuild recharges it
+    const ev = [{ t: tg, s: 1.3 }, ...this.hits.map((h) => ({ t: h, s: 1.3 }))];
+    const g0 = glowAt(t, ev, { tau: 0.9 });
+    const out = t >= this.tOut && t < this.tBack;
+    const after = out ? Math.exp(-(t - this.tOut) / 0.5) : 1;
+    const lvl = (x: number) => out ? lerp(0.18, x, after) : Math.max(0.55, x);
+    const pts = this.glow.pts, rad = (420 / 12.5) * 0.62;
+    const lastHit = this.hits.filter((h) => h <= t).pop();
+    for (let j = 0; j < pts.length; j++) {
+      const p = pts[j]!, x = this.glX + p.x, y = this.glY + p.y, age = t - tg;
+      const pop = 1 + 0.9 * Math.pow(0.5, age / 0.05) + (lastHit !== undefined ? 0.6 * Math.pow(0.5, (t - lastHit) / 0.05) : 0);
+      const tone = out ? mixTone('green', 'cyan', 0.3 * (1 - after)) : mixTone('gold', 'white', 0.15 * p.b + 0.4 * g0.flash);
+      idx = starW(st.stars, idx, m, x, y, rad * (0.85 + 0.3 * p.a) * pop, p.a * TAU, { level: lvl(g0.level), flash: g0.flash }, tone, 0);
+      // sparks thrown off on every hit
+      if (lastHit !== undefined && j % 3 === 0) {
+        const a = t - lastHit;
+        if (a < 0.6) {
+          const ang = TAU * hash(j, Math.round(lastHit * 10), 3), d = 520 * (1 - Math.exp(-a / 0.15)) * (0.4 + p.b);
+          idx = starW(st.stars, idx, m, x + Math.cos(ang) * d, y + Math.sin(ang) * d, rad * 0.8, ang + a * 6, { level: 1.1 * Math.exp(-a / 0.18), flash: 0 }, 'gold', 0);
         }
-        // ring cracks between neighbouring rays, once the gold has passed them
-        for (let j = 1; j < this.rings.length - 1; j++) {
-          if (this.rings[j]! > lim) break;
-          for (let k = 0; k < this.rays.length; k++) {
-            const a = this.shards[j * this.rays.length + k]?.poly;
-            if (!a) continue;
-            const s = this.shards[(j - 1) * this.rays.length + k]!.poly;
-            const n = s.length;
-            p.moveTo(s[Math.floor(n / 2) - 1]![0], s[Math.floor(n / 2) - 1]![1]); p.lineTo(s[Math.floor(n / 2)]![0], s[Math.floor(n / 2)]![1]);
-          }
-        }
-        return p;
-      };
-      if (fl > 0.02) { c.strokeStyle = css(HOT, fl); c.lineWidth = 3; c.stroke(path(2400)); }
-      if (gold > 0) {
-        const p = path(reach);
-        const hot = Math.exp(-Math.max(0, t - tBe - 0.5) / 0.6) + 1.2 * star * Math.exp(-(t - tSt) / 0.4);
-        c.strokeStyle = css(AMBER, 0.9); c.lineWidth = 12; c.stroke(p);
-        c.strokeStyle = css(GOLD, 1); c.lineWidth = 6.5; c.stroke(p);
-        c.strokeStyle = css(HOT, clamp(0.4 + 0.6 * hot)); c.lineWidth = 2; c.stroke(p);
       }
-      c.restore();
     }
-    // "becomes a star" and the star sticker
-    for (const b of this.l3b) if (t >= b.w.start - 0.01) this.word(c, b, this.sheen(c, t, this.heat(b.w, t, 0.3)), this.slam(b.w, t, 0.12));
-    if (star) {
-      const a = t - tSt;
-      const R = 140 * ease.outCubic(clamp(a / 0.16));
-      const sy = lerp(iy, 150, ease.outCubic(clamp(a / 0.32)));
-      // a burst of rays from the new star
-      c.save(); c.translate(ix, sy);
-      for (let i = 0; i < 10; i++) {
-        const ra = (i * TAU) / 10 - Math.PI / 2 + a * 0.15, rl = 900 * (0.6 + 0.4 * ((i % 2) ? 0.6 : 1));
-        const rg = c.createLinearGradient(0, 0, Math.cos(ra) * rl, Math.sin(ra) * rl);
-        rg.addColorStop(0, css(HOT, 0.5 * Math.exp(-a / 0.8) + 0.12)); rg.addColorStop(1, css(GOLD, 0));
-        c.fillStyle = rg; c.beginPath(); c.moveTo(0, 0); c.lineTo(Math.cos(ra - 0.02) * rl, Math.sin(ra - 0.02) * rl); c.lineTo(Math.cos(ra + 0.02) * rl, Math.sin(ra + 0.02) * rl); c.closePath(); c.fill();
-      }
-      c.restore();
-      this.glowDot(c, ix, sy, 650, GOLD, 0.55 * Math.exp(-a / 0.5) + 0.2);
-      // the seam it rose along
-      c.fillStyle = css(HOT, 0.8 * Math.exp(-a / 0.4)); c.fillRect(ix - 1.5, sy, 3, Math.max(0, iy - sy - R * 0.4));
-      c.save();
-      c.beginPath(); starPath(c, ix, sy, R, 0, 0.46);
-      c.fillStyle = css(this.goldOf(Math.exp(-a / 0.3))); c.fill();
-      c.lineJoin = 'round'; c.lineWidth = 6; c.strokeStyle = css(HOT, 0.9); c.stroke();
-      c.restore();
-    }
-  }
-
-  private line4(c: CanvasRenderingContext2D, t: number, D: Line) {
-    const hz = 742;
-    const tB = D.words[2]!.start;
-    const sy = lerp(1160, 640, prog(t, D.start - 0.1, tB + 0.6, ease.outCubic)) - 40 * prog(t, tB + 0.6, D.end + 0.4);
-    const R = 360;
-    // god rays
-    c.save();
-    c.beginPath(); c.rect(0, 0, W, hz); c.clip();
-    c.translate(CX, sy);
-    const rot = t * 0.05;
-    for (let i = 0; i < 14; i++) {
-      const a = rot + (i * TAU) / 14, hw = 0.035 + 0.02 * hash(i, 3), len = 1600;
-      const g = c.createLinearGradient(0, 0, Math.cos(a) * len, Math.sin(a) * len);
-      g.addColorStop(0, css(GOLD, 0)); g.addColorStop(0.22, css(GOLD, 0.2)); g.addColorStop(1, css(AMBER, 0));
-      c.fillStyle = g;
-      c.beginPath(); c.moveTo(0, 0); c.lineTo(Math.cos(a - hw) * len, Math.sin(a - hw) * len); c.lineTo(Math.cos(a + hw) * len, Math.sin(a + hw) * len); c.closePath(); c.fill();
-    }
-    c.restore();
-    // the sun above the horizon
-    c.save();
-    c.beginPath(); c.rect(0, 0, W, hz); c.clip();
-    this.glowDot(c, CX, sy, R * 2.6, AMBER, 0.5);
-    const g = c.createRadialGradient(CX, sy, 0, CX, sy, R);
-    g.addColorStop(0, css(HOT, 1)); g.addColorStop(0.55, css(mix(GOLD, HOT, 0.4), 1)); g.addColorStop(0.92, css(GOLD, 1)); g.addColorStop(1, css(AMBER, 1));
-    c.fillStyle = g; c.beginPath(); c.arc(CX, sy, R, 0, TAU); c.fill();
-    c.restore();
-    // its reflection: stripes on the water below the horizon
-    for (let y = hz + 6, i = 0; y < H; y += 10 + i * 0.6, i++) {
-      const my = hz - (y - hz) * 1.1;   // mirrored height on the sun
-      const dy = my - sy;
-      const half = Math.abs(dy) < R ? Math.sqrt(R * R - dy * dy) : 0;
-      const wob = 0.75 + 0.5 * hash(i, 7);
-      const hw = half * wob + 30 * (1 - Math.abs(dy) / (R * 3));
-      if (hw <= 2) continue;
-      const a = 0.85 * Math.exp(-(y - hz) / 260);
-      const lg = c.createLinearGradient(CX - hw, 0, CX + hw, 0);
-      lg.addColorStop(0, css(GOLD, 0)); lg.addColorStop(0.5, css(mix(GOLD, HOT, 0.5), a)); lg.addColorStop(1, css(GOLD, 0));
-      c.fillStyle = lg; c.fillRect(CX - hw + (hash(i, 9) - 0.5) * 40, y, hw * 2, 3 + 2 * hash(i, 8));
-    }
-    // the horizon
-    c.fillStyle = css(HOT, 0.9); c.fillRect(0, hz - 1, W, 2);
-    this.glowDot(c, CX, hz, 900, GOLD, 0.25);
-    // the words
-    const [look, how, beau, we, are] = this.l4 as [Box, Box, Box, Box, Box];
-    for (const b of [look, how]) if (t >= b.w.start - 0.01) this.word(c, b, css(this.goldOf(this.heat(b.w, t, 0.3))), this.slam(b.w, t, 0.1));
-    if (t >= beau.w.start - 0.01) {
-      const s = this.slam(beau.w, t, 0.06, 0.1);
-      this.word(c, beau, '#000', s, 'cut', 10);
-      // a thin gold rim so the silhouette holds outside the sun too
-      c.save();
-      c.font = font(beau.fam, beau.size);
-      const cx = beau.x + beau.width / 2, cy = beau.y - beau.size * 0.36;
-      c.translate(cx, cy); c.scale(s, s); c.translate(-cx, -cy);
-      c.lineWidth = 2.2; c.strokeStyle = css(mix(GOLD, HOT, this.heat(beau.w, t, 0.4)), 0.85); c.lineJoin = 'round';
-      c.strokeText(beau.text, beau.x, beau.y);
-      c.restore();
-    }
-    for (const b of [we, are]) if (t >= b.w.start - 0.01) {
-      this.word(c, b, '#000', this.slam(b.w, t, 0.1), 'cut', 16);
-      this.word(c, b, this.sheen(c, t, this.heat(b.w, t, 0.3)), this.slam(b.w, t, 0.1));
-    }
-  }
-
-  /** the wall camera: zoom about the phrase, stepping back on beats during the held "glowing" */
-  private wallCam(t: number, E: Line) {
-    const au = this.ctx.audio;
-    const tg = E.words[2]!.start;
-    const z0 = 1500 / Math.max(200, this.phrase.w);
-    const bs = au.beats.filter((b) => b > tg + 0.25 && b < E.words[3]!.start - 0.1);
-    const steps = [z0, z0 * 0.55, z0 * 0.3, Math.max(1.6, z0 * 0.17), 1.0];
-    const times = [bs[0], bs[2], bs[3], bs[5]].filter((x): x is number => x !== undefined);
-    let z = steps[0]!;
-    times.forEach((tb, i) => { const u = prog(t, tb, tb + 0.13, (x) => ease.outBack(x, 1.2)); z = Math.exp(lerp(Math.log(z), Math.log(steps[i + 1]!), u)); });
-    if (t > E.words[5]!.start) z *= 1 - 0.04 * prog(t, E.words[5]!.start, E.end, ease.inCubic);
-    const k = clamp((Math.log(z0) - Math.log(z)) / Math.max(1e-3, Math.log(z0)));
-    const cy = lerp(this.phrase.y, (this.wallBox.y0 + this.wallBox.y1) / 2, k);
-    return { z, cy, k, times };
-  }
-
-  private line5(c: CanvasRenderingContext2D, t: number, E: Line) {
-    const { z, cy, times } = this.wallCam(t, E);
-    const tDark = E.words[5]!.start;
-    const all = this.ctx.lyrics.words;
-    const first = E.words[0]!.gi;
-    // wave fronts of charge from the line outward, one per camera step
-    const fronts = times.map((tb) => (t > tb ? (t - tb) * 1900 : -1));
-    const burst = t < tDark ? 0 : Math.exp(-(t - tDark) / 0.3);
-    c.save();
-    c.translate(CX, 540); c.scale(z, z); c.translate(-CX, -cy);
-    c.font = font(PHOS_FONT, this.wallSize);
-    c.textBaseline = 'alphabetic';
-    const z0 = 1500 / Math.max(200, this.phrase.w);
-    for (const w of this.wall) {
-      const inLine = w.gi >= first && w.gi < first + E.words.length;
-      if (inLine && z > z0 * 0.97) continue;
-      const d = Math.hypot(w.x - CX, (w.y - this.phrase.y) * 1.6);
-      let lit = 0, flash = 0;
-      for (const f of fronts) if (f > 0 && d < f) { lit = 1; flash = Math.max(flash, Math.exp(-(f - d) / 160)); }
-      if (inLine) { const ww = all[w.gi]!; lit = t >= ww.start ? 1 : 0; flash = this.heat(ww, t, 0.3); }
-      const a = lit ? 0.62 + 0.38 * flash : 0.075 / Math.pow(z, 0.45);
-      const col = mix(lit ? GOLD : AMBER, HOT, Math.max(flash, burst));
-      c.fillStyle = css(col, Math.min(1, a + burst * 0.5));
-      c.fillText(w.text, w.x, w.y);
-    }
-    c.restore();
-    // the line itself stays big in front: darkness cut behind it, then the words
-    const dk = smoothstep(times[0] ?? 999, (times[0] ?? 999) + 0.1, t);
-    if (dk > 0) {
-      c.save();
-      c.globalCompositeOperation = 'destination-out';
-      c.filter = 'blur(30px)';
-      c.fillStyle = `rgba(0,0,0,${0.92 * dk})`;
-      for (const b of this.l5) if (t >= b.w.start - 0.01) { c.font = font(b.fam, b.size); c.lineWidth = 50; c.lineJoin = 'round'; c.strokeStyle = c.fillStyle; c.strokeText(b.text, b.x, b.y); c.fillText(b.text, b.x, b.y); }
-      c.restore();
-    }
-    for (const b of this.l5) {
-      if (t < b.w.start - 0.01) continue;
-      // before the first step the phrase is the wall's own line: the overlay fades in as the wall falls back
-      const h = Math.max(this.heat(b.w, t, 0.3), burst);
-      this.word(c, b, css(this.goldOf(h)), this.slam(b.w, t, b.w === E.words[5] ? 0.14 : 0.08));
-    }
-    // "dark!": the whole frame burns to gold
-    const fl = smoothstep(tDark + 0.05, this.ctx.end + 0.02, t);
-    if (fl > 0) { c.fillStyle = css(mix(GOLD, HOT, 0.5), fl * 0.9); c.fillRect(0, 0, W, H); }
-  }
-
-  render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides | void {
-    const { renderer, comp, audio: au } = this.ctx;
-    const t = f.t;
-    const c = this.L.ctx;
-    this.L.clear('#000');
-    const Ls = this.lines;
-    if (Ls.length < 5) { clearRT(renderer, out); return; }
-    let li = 0;
-    for (let i = 1; i < 5; i++) if (t >= Ls[i]!.start - 0.01) li = i;
-    c.save();
-    c.globalCompositeOperation = 'lighter';
-    // camera: a slow push per line, a step in on each downbeat in "dance"
-    const Lc = Ls[li]!;
-    let z = 1 + 0.035 * prog(t, Lc.start, Lc.end + 0.3);
-    if (li === 0 && t >= Lc.words[5]!.start) {
-      const dbs = au.downbeats.filter((d) => d > Lc.words[5]!.start && d < Lc.end);
-      z = 1 + 0.02 * prog(t, Lc.words[5]!.start, Lc.end);
-      for (const d of dbs) z *= 1 + 0.045 * ease.outCubic(prog(t, d, d + 0.1));
-    }
-    if (li === 0 && t >= Lc.words[3]!.start && t < Lc.words[5]!.start) for (const w of Lc.words.slice(3, 5)) z *= 1 + 0.045 * ease.outCubic(prog(t, w.start, w.start + 0.09));
-    let fx = CX, fy = 540;
-    if (li === 2) {
-      // in on the impact when it breaks, back out as the gold runs
-      const w3 = Lc.words;
-      const zin = ease.outCubic(prog(t, w3[1]!.start, w3[1]!.start + 0.06)) * (1 - ease.inOutCubic(prog(t, w3[3]!.start, w3[3]!.start + 0.6)));
-      z *= 1 + 0.15 * zin; fy = lerp(540, this.imp[1], zin);
-    }
-    if (li !== 4) { c.translate(fx, fy); c.scale(z, z); c.translate(-fx, -fy); }
-    if (li === 0) this.line1(c, t, Ls[0]!);
-    else if (li === 1) this.line2(c, t, Ls[1]!);
-    else if (li === 2) this.line3(c, t, Ls[2]!);
-    else if (li === 3) this.line4(c, t, Ls[3]!);
-    else this.line5(c, t, Ls[4]!);
-    c.restore();
-    // glow: a soft half-res copy
-    const g = this.G.ctx;
-    this.G.clear('#000');
-    g.filter = 'blur(9px)';
-    g.drawImage(this.L.canvas, 0, 0, W / 2, H / 2);
-    g.filter = 'none';
-    clearRT(renderer, out, [0, 0, 0], 1);
-    comp.draw(renderer, this.L.upload(), out, { mode: 'add', tint: [FLARE_OPACITY, FLARE_OPACITY, FLARE_OPACITY] });
-    comp.draw(renderer, this.G.upload(), out, { mode: 'add', opacity: li === 0 && t < Ls[0]!.words[3]!.start ? 0.2 : 0.55 });
-    // punches: kicks push in, the line cuts and "broken" hit hard
-    const kick = f.a.kick;
-    const W3 = Ls[2]!.words;
-    const brk = t >= W3[1]!.start ? Math.exp(-(t - W3[1]!.start) / 0.09) : 0;
-    const inv = t >= Ls[0]!.words[3]!.start ? Math.exp(-(t - Ls[0]!.words[3]!.start) / 0.05) : 0;
-    let cut = 0;
-    for (const l of Ls) if (t >= l.start) cut = Math.exp(-(t - l.start) / 0.07);
-    const fi = frameIdx(t), sh = 3 * kick + 16 * brk + 5 * cut;
-    return {
-      bloom: 0.5, bloomThreshold: 0.9, bloomRadius: 0.6, vignette: 0.4, grain: 0.035, halation: 0.08,
-      ca: 0.6 + 1.5 * brk + 0.8 * cut,
-      zoom: 1 + 0.014 * kick + 0.03 * cut + 0.04 * brk,
-      shake: [(hash(fi, 1) - 0.5) * 2 * sh, (hash(fi, 2) - 0.5) * 2 * sh],
-      flash: 0.25 * inv + 0.12 * brk,
-    };
+    const gn = this.wg(t, tg, 0.4);
+    txt(c, 'GLOWING', CX, this.glY, 420, { level: lvl(Math.max(gn.level, g0.level)) * 0.5, flash: g0.flash * 0.5 }, out ? mixTone('green', 'cyan', 0.3) : 'gold');
+    if (t < this.tOut) { this.say(c, "WE'LL", CX - 190, 330, 160, ws[0]!.start, t, 'green', { level: 0.8 }); this.say(c, 'BE', CX + 230, 330, 160, ws[1]!.start, t, 'green', { level: 0.8 }); }
+    this.say(c, 'IN', CX - 200, 960, 170, tIn, t, 'gold');
+    this.say(c, 'THE', CX + 140, 960, 170, tThe, t, 'gold');
+    void H;
+    return { idx, inv: false };
   }
 }
