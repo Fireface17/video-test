@@ -1,4 +1,4 @@
-// DROP 1, bars 1-8, in phosphor: the vocal chops are the lettering. Each chop of "Glo-o-owing", "Da-a-ance" ignites its
+// DROP 1, bars 1-8, in phosphor: the vocal chops are the lettering. Each chop of "Glo-o-owing" ignites its
 // letters; the held vowels and hyphens STRETCH in time, every chop onset bursts stars out of the word and every strong kick is
 // a UV flash that recharges the field. In bar 8 the last line's stickers leave the letters and, with the whole field, stream into
 // two spiral arms around a white-gold core: the star-dust spiral the galaxy scene (cosmos) opens on.

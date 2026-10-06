@@ -107,7 +107,7 @@ TEMPLATE = {42: (15, "drop1", "drop3"), 22: (4, "chorus1", "chorus2"), 23: (5, "
 # chop was wrong): the ASR models hear nothing in the filtered chops, so each chop was matched against the singer's
 # own sung words (MFCC templates of the aligned words, 3.8 kHz low-passed like the chops, DTW; plus a vowel-class
 # track and the pyin melody). Drop 1 and drop 3 share their phrases (drop 3 = drop 1 + 117.94 s for phrase 1):
-#   1  "Da-a-ance" (a held ae vowel on B4, retriggered by the chopper), "dance", "oh", "dance"   [dance: DTW 0.21]
+#   1  (removed: the artist says there is no "dance" in the drops — only the chorus sings it)
 #   2  "Glo-o-o-o" (a held o, G#4-A#4)                                                           [go/glo: 0.37]
 #   3  drop 1: "We'll be glo-o-owing in the dark" (EE, then O, IH, ER, AH)       [we'll be glowing in the dark: 0.30]
 #      drop 3: "Glo-o-o-owing in the dark" (no "We'll be": the O starts at once) [dark: 0.30]
@@ -115,8 +115,6 @@ TEMPLATE = {42: (15, "drop1", "drop3"), 22: (4, "chorus1", "chorus2"), 23: (5, "
 # The outro: a stutter "da da da ..." (the ASR also hears "duh, da"), the sung "Take my hand", then "Go-o-old"
 # (from the pre-chorus's "into gold"; gold: 0.27 against glowing 0.53), the second one pitched down two octaves.
 DROP1 = [
-    ("drop1", "chop", "Da-a-ance, dance, oh, dance",
-     [("Da-a-ance,", 70.74, 72.5, [70.74, 71.44, 71.74, 72.14]), ("dance,", 72.54, 72.92), ("oh,", 72.94, 73.95, [72.94, 73.34, 73.6]), ("dance", 74.01, 74.6)]),
     ("drop1", "chop", "Glo-o-o-o",
      [("Glo-o-o-o", 75.94, 78.4, [75.94, 76.34, 76.78, 77.38])]),
     ("drop1", "chop", "We\u2019ll be glo-o-owing in the dark",
@@ -124,8 +122,6 @@ DROP1 = [
       ("in", 82.32, 82.62), ("the", 82.62, 82.93), ("dark", 82.93, 83.4)]),
 ]
 DROP3 = [
-    ("drop3", "chop", "Da-a-ance, dance, oh, dance",
-     [("Da-a-ance,", 188.68, 190.44, [188.68, 189.13, 189.38, 189.64]), ("dance,", 190.46, 190.85), ("oh,", 190.87, 191.8, [190.87, 191.25]), ("dance", 191.85, 192.6)]),
     ("drop3", "chop", "Glo-o-o-o",
      [("Glo-o-o-o", 194.72, 197.5, [194.72, 195.39, 196.18, 196.46])]),
     ("drop3", "chop", "Glo-o-o-owing in the dark",
