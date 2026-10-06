@@ -107,6 +107,9 @@ export default class PhosVerse extends Scene {
     const [a, b, cc, d] = this.L as [Line, Line, Line, Line];
     g.begin();
     const kick = f.a.kick;
+    c.save();
+    { const zz = 1.015 + 0.05 * f.p + 0.006 * kick, rr = 0.012 * Math.sin(t * 0.5);
+      c.translate(W / 2 + 14 * Math.sin(t * 0.35), H / 2 + 9 * Math.cos(t * 0.3)); c.rotate(rr); c.scale(zz, zz); c.translate(-W / 2, -H / 2); }
 
     // --- galaxy dust: the afterglow of the previous scene, going out
     const dustA = 0.55 * (1 - smoothstep(0, 2.6, f.lt)) + 0.05;
@@ -223,6 +226,7 @@ export default class PhosVerse extends Scene {
       vg.addColorStop(0, lit(VIOLET, 0)); vg.addColorStop(1, lit(VIOLET, 0.16 * kick));
       c.fillStyle = vg; c.fillRect(0, 0, W, H);
     }
+    c.restore();
     g.present(renderer, comp, out, { glow: 1.5 });
     return { bloom: 0.9, bloomThreshold: 0.7, bloomRadius: 0.8, vignette: 0.45, grain: 0.05, ca: 0.6, halation: 0.1 };
   }

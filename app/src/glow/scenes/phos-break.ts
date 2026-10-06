@@ -11,6 +11,7 @@ import { measure } from '../../engine/type';
 import { Glow2D, PHOS, VIOLET, WHITE, CYAN, lit, setFont, drawSticker, FAM } from './phos-b-kit';
 import { ScopeRenderer } from './phos-scope';
 
+const fallEase = (t: number, a: number, b: number) => ease.inCubic(prog(t, a, b));
 const CX = 960, CY = 500, R = 205;
 const PHRASES = ['take my hand', 'every broken piece', 'becomes a star', 'look how beautiful', 'never coming down', 'wake the whole town', 'glowing in the dark'];
 
@@ -68,6 +69,9 @@ export default class PhosBreak extends Scene {
     const g = this.g, c = g.c, t = f.t, lt = f.lt;
     g.begin();
 
+    c.save();
+    { const a = smoothstep(0.8, 1.6, lt), zz = 1 + a * (0.03 + 0.02 * Math.sin(t * 0.4)) + 0.01 * (1 - fallEase(t, this.tFall, this.ctx.end)) * 0;
+      c.translate(W / 2 + a * 18 * Math.sin(t * 0.3), H / 2 + a * 10 * Math.cos(t * 0.37)); c.rotate(a * 0.012 * Math.sin(t * 0.25)); c.scale(zz, zz); c.translate(-W / 2, -H / 2); }
     // --- the scope's last screen goes out
     if (lt < 0.8) {
       const sy = 1 - ease.inCubic(prog(lt, 0, 0.34));
@@ -203,6 +207,7 @@ export default class PhosBreak extends Scene {
       vg.addColorStop(0, lit(VIOLET, 0)); vg.addColorStop(1, lit(VIOLET, 0.08 * kick));
       c.fillStyle = vg; c.fillRect(0, 0, W, H);
     }
+    c.restore();
     g.present(renderer, comp, out, { glow: 1.0 + 0.4 * Q });
     return { bloom: 0.95, bloomThreshold: 0.7, bloomRadius: 0.85, vignette: 0.55, grain: 0.06, ca: 0.4, halation: 0.12 };
   }

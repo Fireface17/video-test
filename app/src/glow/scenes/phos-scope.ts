@@ -167,7 +167,7 @@ export class ScopeRenderer {
     const hold = 1.0 * (t < L.end + 0.3 ? 1 : Math.exp(-(t - L.end - 0.3) / 0.7));
     const prog01 = clamp((t - p.t0) / (p.t1 - p.t0));
     const drawnS = p.len * prog01;
-    c.lineWidth = 4.8 / z;
+    c.lineWidth = (4.8 + 3 * kick) / z;
     for (let k = 0; k < p.contours.length; k++) {
       const pts = p.contours[k]!, cum = p.cum[k]!;
       if (cum[0]! > drawnS) break;
@@ -213,8 +213,8 @@ export class ScopeRenderer {
     }
   }
 
-  private graticule(c: CanvasRenderingContext2D, cam: Cam, amp: number) {
-    const z = cam.z, step = 160;
+  private graticule(c: CanvasRenderingContext2D, cam: Cam, amp: number, step = 160) {
+    const z = cam.z;
     const x0 = cam.x - cam.sx / z, x1 = cam.x + (W - cam.sx) / z, y0 = cam.y - H / 2 / z, y1 = cam.y + H / 2 / z;
     c.lineWidth = 1.4 / z;
     c.strokeStyle = lit(PHOS, 0.07 * amp);
@@ -262,6 +262,19 @@ export class ScopeRenderer {
     c.lineWidth = 2.6; c.strokeStyle = lit(PHOS, I, 0.2); c.stroke();
   }
 
+  /** Downbeat jumps: a new zoom / roll / graticule on every bar, with an overshoot. */
+  private dyn(t: number) {
+    const au = this.ctx.audio;
+    const a = 1 - smoothstep(this.lines[7]!.end - 0.05, this.lines[7]!.end + 0.3, t);
+    const bi = Math.max(0, Math.floor(au.barAt(t)));
+    const ZM = [1, 1.07, 0.93, 1.05, 0.9, 1.09, 0.96, 1.04], RT = [0, 0.03, -0.025, 0.02, -0.035, 0.015, 0.03, -0.02];
+    const tb = au.downbeats[bi] ?? t;
+    const e = ease.outBack(prog(t, tb, tb + 0.18));
+    const m = (i: number, arr: number[]) => arr[((i % 8) + 8) % 8]!;
+    const z = lerp(m(bi - 1, ZM), m(bi, ZM), e), r = lerp(m(bi - 1, RT), m(bi, RT), e);
+    return { z: 1 + (z - 1) * a, r: r * a, step: [160, 120, 200, 140][bi % 4]!, bi, tb };
+  }
+
   /** Draw the whole screen at song time t (also valid past the chorus: the beam is idle, everything decays). */
   draw(g: Glow2D, f: Frame | null, t: number) {
     const c = g.c, au = this.ctx.audio;
@@ -271,9 +284,12 @@ export class ScopeRenderer {
     const bar = au.barAt ? au.barAt(t) : 0;
     const frozen = this.freezes.some(([a, b]) => t >= a && t < b);
 
+    const dy = this.dyn(t);
+    cam.z *= dy.z;
     c.save();
-    c.setTransform(cam.z, 0, 0, cam.z, cam.sx - cam.x * cam.z, H / 2 - cam.y * cam.z);
-    this.graticule(c, cam, 1 + 2.2 * kick + (frozen ? 0.6 : 0));
+    c.translate(W / 2, H / 2); c.rotate(dy.r); c.translate(-W / 2, -H / 2);
+    c.translate(cam.sx, H / 2); c.scale(cam.z, cam.z); c.translate(-cam.x, -cam.y);
+    this.graticule(c, cam, 1 + 2.2 * kick + (frozen ? 0.6 : 0), dy.step);
     // the glass is held for the split screen on line 3: nothing but its own panel on the left
     for (const ps of this.pieces) for (const p of ps) {
       const sx0 = (p.x0 - cam.x) * cam.z + cam.sx, sx1 = (p.x1 - cam.x) * cam.z + cam.sx;
@@ -344,6 +360,7 @@ export class ScopeRenderer {
         this.liss(c, W / 2, H / 2, amp * (1 + 0.5 * l4), rr, td, (0.1 + 0.4 * l4) * (0.4 + 0.6 * env));
         let burst = 0;
         for (let k = 1; k < L.length; k++) { const tb = L[k]!.start - 0.22; if (t > tb) burst = Math.max(burst, Math.exp(-(t - tb) / 0.28)); }
+        if (t < L[7]!.end) burst = Math.max(burst, 0.7 * Math.exp(-(t - dy.tb) / 0.18));
         if (burst > 0.02) this.liss(c, W / 2, H / 2, 420 * (1 + 0.5 * (1 - burst)), RATIOS[Math.floor(bar + 2) % RATIOS.length]!, td, 0.9 * burst);
       }
     }
@@ -393,6 +410,8 @@ export default class PhosScope extends Scene {
     this.g.begin();
     this.sr.draw(this.g, f, f.t);
     this.g.present(this.ctx.renderer, this.ctx.comp, out, { glow: 1.5 });
-    return { bloom: 0.95, bloomThreshold: 0.7, bloomRadius: 0.8, vignette: 0.5, grain: 0.05, ca: 0.8, halation: 0.1 };
+    const k = f.a.kick, sn = f.a.snare, fi = Math.round(f.t * 60);
+    const hx = Math.sin(fi * 12.9898) * 43758.5453, hy = Math.sin(fi * 78.233) * 12345.678;
+    return { zoom: 1 + 0.04 * k, shake: [(hx - Math.floor(hx) - 0.5) * 14 * k, (hy - Math.floor(hy) - 0.5) * 14 * k], flash: 0.16 * Math.max(0, sn - 0.55), bloom: 0.95, bloomThreshold: 0.7, bloomRadius: 0.8, vignette: 0.5, grain: 0.05, ca: 0.8, halation: 0.1 };
   }
 }
