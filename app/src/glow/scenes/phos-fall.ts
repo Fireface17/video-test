@@ -459,16 +459,15 @@ export default class PhosFall extends Scene {
     this.sets.forEach((set, li) => {
       if (t < set.line.start - 0.7) return;
       const next = this.sets[li + 1];
-      const lift = next ? ease.inOutCubic(clamp((t - (next.line.start - 0.3)) / 0.8)) : 0;
-      const gone = li + 2 < this.sets.length ? t > this.sets[li + 2]!.line.start - 0.3 : false;
-      const a = gone ? 0 : lerp(1, 0.38, lift) * G;
+      const lift = next ? ease.inCubic(clamp((t - (next.line.start - 0.6)) / 0.6)) : 0;
+      const a = (next ? 1 - smoothstep(next.line.start - 0.6, next.line.start - 0.15, t) : 1) * G;
       if (a <= 0) return;
       set.rows.forEach((row, ri) => {
         const len = writtenLength(row.st, row.times, t);
         if (len <= 0) return;
         const bubble = li === 1 && ri === 1;
         Lc.save();
-        Lc.translate(row.ox, row.oy - lift * 330); Lc.scale(row.sc, row.sc);
+        Lc.translate(row.ox, row.oy - lift * 160); Lc.scale(row.sc, row.sc);
         const wsc = 1 / row.sc;
         for (let i = 0; i < row.st.strokes.length; i++) {
           const s0 = row.st.startLen[i]!;
