@@ -85,7 +85,7 @@ const FRAG = /* glsl */ `
 precision highp float;
 varying vec2 vUv;
 uniform vec2 uRes, uC, uSeed;
-uniform float uZ, uRot, uCt, uT, uPat, uExpo, uKick, uPulseR, uPulseA, uGalaxy;
+uniform float uZ, uRot, uCt, uT, uT0, uPat, uExpo, uKick, uPulseR, uPulseA, uGalaxy;
 uniform vec3 cCore, cArm, cNeb1, cNeb2, cStarA, cStarB, cHot, cStk1, cStk2, cBg, cUv;
 uniform vec4 uScrim;      // centre xy, half-size zw (ndc units)
 uniform float uScrimK;
@@ -144,15 +144,18 @@ void main() {
   dens = (disk * (0.15 + 1.1 * arm) + bulge) * uGalaxy;
 
   // dust lanes along the inner edge of the arms
+  // (the swirl runs on time since the drop began: on song time the differential rotation had wound the noise into
+  //  thin concentric streaks — the dark lines down the sides of drop 1)
   float lane = pow(0.5 + 0.5 * cos(2.0 * ph - 0.9), 5.0);
-  float dFine = fbm3(rot2(q, -uT * 0.05 / (r + 0.25)) * 20.0 + uSeed * 3.0);
+  float dFine = fbm3(rot2(q, -(uT - uT0) * 0.05 / (r + 0.25)) * 20.0 + uSeed * 3.0);
   dust = lane * clamp((dFine - 0.22) * 2.6, 0.0, 1.0) * smoothstep(0.06, 0.22, r) * edge;
   if (deep > 0.0) dust *= mix(1.0, 0.25 + 1.5 * fbm5(q * 170.0 + 5.0), deep);
   ab = exp(-2.8 * dust);
 
   // clusters
-  vec2 cc = q / 0.11; vec2 cid = floor(cc) + step(0.5, fract(cc)) - 1.0;
-  for (int j = 0; j <= 1; j++) for (int i = 0; i <= 1; i++) {
+  // (all 3x3 neighbour cells: with only the nearest 2x2 a bright cluster's glow was cut off at a straight cell edge)
+  vec2 cc = q / 0.11; vec2 cid = floor(cc) - 1.0;
+  for (int j = 0; j <= 2; j++) for (int i = 0; i <= 2; i++) {
     vec2 g = cid + vec2(float(i), float(j));
     if (hash12(g + 5.0) < 0.8) continue;
     vec2 hh = hash22(g + 31.0);
@@ -164,7 +167,7 @@ void main() {
   cl *= smoothstep(0.25, 0.6, arm) * edge * smoothstep(0.08, 0.2, r) * uGalaxy;
 
   // gas and nebulae
-  float gas = fbm3(rot2(q, uT * 0.03 / (r + 0.3)) * 7.0 + uSeed * 2.0);
+  float gas = fbm3(rot2(q, (uT - uT0) * 0.03 / (r + 0.3)) * 7.0 + uSeed * 2.0);
   neb = pow(arm, 1.5) * smoothstep(0.45, 0.8, gas) * (1.0 - 0.85 * dust) * smoothstep(0.1, 0.3, r) * (1.0 - smoothstep(0.7, 1.0, r));
   if (deep > 0.0) neb *= mix(1.0, 0.3 + 1.5 * fbm5(q * 75.0 + 11.0), deep);
   neb *= uGalaxy;
@@ -189,7 +192,8 @@ void main() {
     if (dot(a, a) < 0.1) {
       float d = sdStar5(rot2(a, 0.3), 0.16, 0.45);
       float f = 0.4 + 0.9 * fbm3(rot2(q, uT * 0.05) * 28.0 + 3.0);
-      diff += mix(cNeb1, cNeb2, 0.3) * (exp(-abs(d) / 0.010) * 1.1 + exp(-max(d, 0.0) / 0.05) * 0.25 * step(d, 0.0) + 0.25 * exp(-max(d, 0.0) / 0.04)) * f * (1.0 - 0.7 * deep) * uGalaxy;
+      // (faded out before the bounding circle: a hard cut there showed as a straight edge across the sky)
+      diff += mix(cNeb1, cNeb2, 0.3) * (exp(-abs(d) / 0.010) * 1.1 + exp(-max(d, 0.0) / 0.05) * 0.25 * step(d, 0.0) + 0.25 * exp(-max(d, 0.0) / 0.04)) * f * (1.0 - 0.7 * deep) * uGalaxy * smoothstep(0.1, 0.05, dot(a, a));
     }
     vec2 b1 = q - vec2(0.5, -0.55), b2 = q - vec2(0.78, -0.36);
     if (dot(b1, b1) < 0.3) {
@@ -198,7 +202,7 @@ void main() {
       float d3 = length(b1 - ab2 * hh + vec2(0.0, 0.03 * sin(hh * 3.14159))) - 0.004;
       float dd = min(min(d1, d2), d3);
       float f = 0.4 + 0.9 * fbm3(rot2(q, -uT * 0.05) * 30.0 + 8.0);
-      diff += mix(cNeb2, cHot, 0.35) * (exp(-abs(dd) / 0.008) * 1.0 + 0.3 * exp(-max(dd, 0.0) / 0.035)) * f * (1.0 - 0.7 * deep) * uGalaxy;
+      diff += mix(cNeb2, cHot, 0.35) * (exp(-abs(dd) / 0.008) * 1.0 + 0.3 * exp(-max(dd, 0.0) / 0.035)) * f * (1.0 - 0.7 * deep) * uGalaxy * smoothstep(0.3, 0.18, dot(b1, b1));
     }
     // distant galaxies
     for (int k = 0; k < 2; k++) {
@@ -208,7 +212,7 @@ void main() {
         g = rot2(g, k == 0 ? 0.6 : -0.4); g.y /= (k == 0 ? 0.45 : 0.6);
         float gr = length(g), gt = atan(g.y, g.x);
         float ga = exp(-gr * 7.0) * (0.25 + 0.9 * pow(0.5 + 0.5 * cos(2.0 * (gt - 2.6 * log(gr + 0.04))), 2.0)) + 1.5 * exp(-gr * gr * 700.0);
-        diff += mix(cArm, cCore, 0.4) * ga * 0.5 * (1.0 - 0.8 * deep);
+        diff += mix(cArm, cCore, 0.4) * ga * 0.5 * (1.0 - 0.8 * deep) * smoothstep(0.5, 0.3, dot(q - c0, q - c0));
       }
     }
   }
@@ -272,12 +276,13 @@ void main() {
   }
 
   // ---- star stickers: the motif, scattered through the galaxy
-  float i0k = max(0.0, ceil(log(1.2 / (520.0 * pxw)) / log(2.5)));
+  float i0k = max(0.0, ceil(log(1.2 / (320.0 * pxw)) / log(2.5)));
   for (int k = 0; k < 3; k++) {
     float i = i0k + float(k);
     float cell = 1.2 * pow(0.4, i);
     float cpx = cell / pxw;
-    float w = smoothstep(120.0, 190.0, cpx) * (1.0 - smoothstep(360.0, 520.0, cpx));
+    // (fade out before they grow big: a large half-faded sticker read as a ghost quad across the sky)
+    float w = smoothstep(120.0, 190.0, cpx) * (1.0 - smoothstep(250.0, 320.0, cpx));
     if (w <= 0.0) continue;
     vec2 pc = P / cell + vec2(i * 3.3, i * 9.1);
     vec2 id = floor(pc), f = fract(pc);
@@ -295,12 +300,15 @@ void main() {
       float fill = 1.0 - smoothstep(-1.2, 1.0, d);
       float rim = exp(-abs(d) * 0.35) * 0.0 + (1.0 - smoothstep(0.0, 2.5, abs(d))) * 0.6;
       float halo = exp(-max(d, 0.0) / (0.5 * rS)) * 0.55;
+      // (everything a sticker adds must stay inside its own cell, or the cell's edge shows as a hard line)
+      float win = 1.0 - smoothstep(0.17 * cpx, 0.27 * cpx, length(dv));
+      halo *= win;
       vec3 add = sc * ((0.85 + rim) * charge * fill + halo * charge);
       col = col * (1.0 - 0.75 * fill * w) + add * w * 1.4;
       // a glint crossing the sticker
       vec2 gv = dv; float ga = abs(gv.x), gb = abs(gv.y);
       float gl = (exp(-ga * 0.06) * exp(-gb * 1.6) + exp(-gb * 0.06) * exp(-ga * 1.6)) * pow(max(0.0, sin(uT * 1.3 + hh.z * 20.0)), 24.0);
-      col += sc * gl * 0.7 * w * exp(-length(gv) / (rS * 3.0));
+      col += sc * gl * 0.7 * w * exp(-length(gv) / (rS * 3.0)) * win;
     }
   }
 
@@ -339,7 +347,7 @@ export function galaxyMaterial(look: Look) {
     vertexShader: VERT, fragmentShader: FRAG, depthTest: false, depthWrite: false, transparent: false,
     uniforms: {
       uRes: { value: new THREE.Vector2(1920, 1080) }, uC: { value: new THREE.Vector2() }, uSeed: { value: new THREE.Vector2(...look.seed) },
-      uZ: { value: 1 }, uRot: { value: 0 }, uCt: { value: 1 }, uT: { value: 0 }, uPat: { value: look.pat }, uExpo: { value: 1 }, uKick: { value: 0 },
+      uZ: { value: 1 }, uRot: { value: 0 }, uCt: { value: 1 }, uT: { value: 0 }, uT0: { value: 0 }, uPat: { value: look.pat }, uExpo: { value: 1 }, uKick: { value: 0 },
       uPulseR: { value: 0 }, uPulseA: { value: 0 }, uGalaxy: { value: 1 },
       cCore: { value: C(look.core, g.core) }, cArm: { value: C(look.arm, g.arm) }, cNeb1: { value: C(look.neb1, g.neb) }, cNeb2: { value: C(look.neb2, g.neb) },
       cStarA: { value: C(look.starA, g.star) }, cStarB: { value: C(look.starB, g.star) }, cHot: { value: C(look.hot, g.star) },

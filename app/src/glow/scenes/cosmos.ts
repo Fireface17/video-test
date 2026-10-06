@@ -233,6 +233,7 @@ export default class Cosmos extends Scene {
     U.uC!.value.set(cam.c[0], cam.c[1]);
     U.uZ!.value = cam.z; U.uRot!.value = cam.rot; U.uCt!.value = Math.cos(cam.tilt);
     U.uT!.value = t;
+    U.uT0!.value = this.t0 - 2.0;
     U.uKick!.value = kick;
     U.uPulseR!.value = age * 0.9;
     U.uPulseA!.value = 1.3 * Math.pow(Math.max(0, 1 - age / 1.2), 1.5);
