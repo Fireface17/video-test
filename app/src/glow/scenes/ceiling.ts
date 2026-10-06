@@ -18,6 +18,7 @@ import { LightTrail } from '../lib/lightpaint';
 import { displayTextGeometry, loadDisplayFont } from '../lib/fonts';
 import { flickerOn } from '../lib/neon';
 import { Earth } from '../lib/earth';
+import { prewarm } from '../lib/prewarm';
 import { StarStreaks } from './fall-stars';
 import { nebulaMap, nebulaSphere } from './fall-sky';
 
@@ -292,6 +293,8 @@ export default class Ceiling extends Scene {
       const cands = this.stickers.filter((x) => x.key.startsWith('s') && x.tOn < this.tCatch - 1.2 && Math.abs(x.u) < 0.7 && x.v < -0.25 && x.v > -1.0);
       this.caught = cands.sort((x, y) => y.r - x.r)[0] ?? this.stickers.find((x) => x.key.startsWith('s') && x.tOn < this.tCatch - 1.2);
     }
+    // (compiled and uploaded now: the preview must not stall when the scene comes on)
+    prewarm(this.ctx.renderer, [{ scene: S.scene, cam: S.cam }]);
   }
 
   /**

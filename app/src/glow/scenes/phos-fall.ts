@@ -4,6 +4,7 @@
 // sticker debris over it: violet night for "And if you fall", every colour for "through the colors", deep blue for
 // "and the blue", gold for "golden", the fall gathering speed toward a gold light below which, at the very end,
 // takes the frame (chorus 3 starts from that gold). Pure function of song time.
+import { prewarm } from '../lib/prewarm';
 import { Scene, type Frame, type PostOverrides } from '../../engine/scene';
 import { Layer2D, FSPass, makeRT, W, H } from '../../engine/gl';
 import { strokeText, writtenLength, type StrokeText } from '../../engine/stroke';
@@ -184,6 +185,9 @@ export default class PhosFall extends Scene {
     for (let i = 0; i < 260; i++) { const d = r(); this.sky.push({ x: r() * 1920, y: r(), d: 0.15 + 0.85 * d * d, m: 0.35 + 0.65 * r(), h: r() }); }
     for (let i = 0; i < 9; i++) this.debris.push({ x: r() * 2000 - 40, y: r() * 1500, d: 0.3 + r() * 0.8, r: 8 + r() * 26, spin: (r() - 0.5) * 6, k: r(), ph: r() * 6 });
     this.bg = new FSPass(SPACE, { uD: { value: 0 }, uT: { value: 0 }, uC: { value: 0 }, uB: { value: 0 }, uG: { value: 0 }, uM: { value: 0 }, uKick: { value: 0 } });
+
+    // (compiled now: the preview must not stall when the bridge comes on)
+    prewarm(this.ctx.renderer, [{ scene: this.bg.scene, cam: this.bg.cam }]);
   }
 
   /** Where the pen (the lead star) is while a row is being written. */
