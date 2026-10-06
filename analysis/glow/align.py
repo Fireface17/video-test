@@ -96,6 +96,45 @@ LOW_CONF = 0.12
 TEMPLATE = {42: (15, "drop1", "drop3"), 22: (4, "chorus1", "chorus2"), 23: (5, "chorus1", "chorus2"), 24: (6, "chorus1", "chorus2")}
 
 
+# Chop / echo lines: the drops' vocal chops and the backing echoes are not in the
+# aligned sheet (the star garbage token absorbs them), so they are placed by hand
+# against the chop/vocal onsets of audio.json and merged into the output with a
+# `kind` field ('chop' | 'echo').  Texts avoid the sheet's wording so that
+# lyrics.get('We\u2019ll be glowing') etc. keep their nth indices.
+# (section, kind, text, [(word, start, end), ...])
+DROP1 = [
+    ("drop1", "chop", "Glo-o-owing in the dark",
+     [("Glo-o-owing", 70.74, 72.54), ("in", 72.94, 73.34), ("the", 73.34, 74.01), ("dark", 74.01, 74.6)]),
+    ("drop1", "chop", "Da-a-ance, da-a-ance",
+     [("Da-a-ance,", 75.94, 77.30), ("da-a-ance", 77.38, 78.9)]),
+    ("drop1", "chop", "Glo-o-owing in the dark",
+     [("Glo-o-owing", 79.16, 80.83), ("in", 80.83, 81.56), ("the", 81.56, 82.14), ("dark", 82.14, 83.2)]),
+]
+# drop 3: same pattern from the drop; the second and third chop phrases are two beats later
+# (onsets 194.72 / 197.82 in audio.json, drop 1: 75.94 / 79.16)
+DROP3 = [
+    ("drop3", "chop", "Glo-o-owing in the dark",
+     [("Glo-o-owing", 188.68, 190.48), ("in", 190.87, 191.25), ("the", 191.25, 191.85), ("dark", 191.85, 192.6)]),
+    ("drop3", "chop", "Da-a-ance, da-a-ance",
+     [("Da-a-ance,", 194.72, 196.2), ("da-a-ance", 196.3, 197.6)]),
+    ("drop3", "chop", "Glo-o-owing in the dark",
+     [("Glo-o-owing", 197.82, 199.4), ("in", 199.4, 200.22), ("the", 200.22, 200.73), ("dark", 200.73, 201.9)]),
+]
+ECHO1 = [
+    ("pre1", "echo", "(felt low)", [("(felt", 34.0, 34.3), ("low)", 34.3, 34.72)]),
+    ("pre1", "echo", "(all go)", [("(all", 37.1, 37.35), ("go)", 37.35, 37.72)]),
+]
+PRE2_SHIFT = 107.708 - 30.975  # pre-chorus 2 repeats pre-chorus 1 at the same tempo
+ECHO2 = [(("pre2",) + e[1:3] + ([(w, round(a + PRE2_SHIFT, 3), round(b + PRE2_SHIFT, 3)) for w, a, b in e[3]],)) for e in ECHO1]
+OUTRO = [
+    ("outro", "chop", "Glo-o-owing in the dark",
+     [("Glo-o-owing", 222.66, 224.0), ("in", 224.12, 224.4), ("the", 224.4, 224.7), ("dark", 224.7, 225.7)]),
+    ("outro", "chop", "Ta-ake my hand",
+     [("Ta-ake", 226.56, 226.96), ("my", 226.96, 227.16), ("hand", 227.16, 227.73)]),
+]
+EXTRA = DROP1 + DROP3 + ECHO1 + ECHO2 + OUTRO
+
+
 def load_vocab():
     v = {}
     for line in TOKENS.read_text(encoding="utf-8").splitlines():
@@ -303,6 +342,12 @@ def main(plots=False):
         out_lines.append(dict(i=li, section=l["section"], text=l["text"], start=ws[0]["start"], end=ws[-1]["end"], words=ws))
         print(f"L{li:02d} {l['section']:8s} {ws[0]['start']:7.2f}-{ws[-1]['end']:7.2f}  " +
               " ".join(f"{w['w']}[{w['start']:.2f} {w['conf']:.2f}]" for w in ws))
+    for sec_, kind, text, ws in EXTRA:
+        out_lines.append(dict(section=sec_, kind=kind, text=text, start=ws[0][1], end=ws[-1][2],
+                              words=[dict(w=w, start=a, end=b, conf=0.5) for w, a, b in ws]))
+    out_lines.sort(key=lambda l: (l["start"], l.get("kind") == "echo"))
+    for i, l in enumerate(out_lines):
+        out_lines[i] = dict(i=i, **{k: v for k, v in l.items() if k != "i"})
     doc = dict(lines=out_lines, notes=NOTES)
     (DATA / "lyrics.json").write_text(json.dumps(doc, indent=1))
     print("wrote", DATA / "lyrics.json")
@@ -313,7 +358,7 @@ def main(plots=False):
 NOTES = ("Word times in the gapless-mp3 timeline. CTC forced alignment (NeMo Conformer-CTC large, "
          "vocal stem from UVR-MDX-NET-Voc_FT) of the lyrics as sung, word starts snapped to vocal "
          "onsets; conf = mean CTC probability of the word's frames. Chops (the drops' vocal "
-         "samples) are not lyric lines: see audio.json onsets.chop.")
+         "samples) and the backing echoes are hand-placed lines with kind 'chop' / 'echo' (align.py EXTRA), placed against audio.json onsets.")
 
 
 def make_plots(lines, f):

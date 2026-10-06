@@ -14,6 +14,8 @@ export interface Word {
 }
 export interface Line {
   i: number;
+  /** absent for sung lines; 'chop' = the drops' vocal chops, 'echo' = backing echo in parentheses */
+  kind?: 'chop' | 'echo';
   text: string;
   start: number;
   end: number;
