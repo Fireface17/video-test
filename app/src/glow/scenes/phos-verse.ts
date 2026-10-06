@@ -65,10 +65,10 @@ export default class PhosVerse extends Scene {
     }
     const t0 = c.words[1]!.start, tm = c.words[6]!.start;
     this.blots = [
-      { x: 1960, y: 330, r: 1300, t0: t0, t1: tm + 0.5, seed: 1 },
-      { x: -60, y: 640, r: 1250, t0: t0 + 0.25, t1: tm + 0.6, seed: 2 },
-      { x: 700, y: -80, r: 760, t0: t0 + 0.5, t1: tm + 0.4, seed: 3 },
-      { x: 1250, y: 1100, r: 1000, t0: t0 + 0.4, t1: tm + 0.7, seed: 4 },
+      { x: 1960, y: 330, r: 1150, t0: t0 - 0.2, t1: tm + 0.7, seed: 1 },
+      { x: -60, y: 640, r: 1100, t0: t0 + 0.05, t1: tm + 0.75, seed: 2 },
+      { x: 700, y: -80, r: 760, t0: t0 + 0.3, t1: tm + 0.6, seed: 3 },
+      { x: 1250, y: 1100, r: 1000, t0: t0 + 0.2, t1: tm + 0.8, seed: 4 },
       { x: MOON.x, y: MOON.y, r: 330, t0: tm - 0.1, t1: tm + 0.55, seed: 5 },
     ];
     // the pair that clings in line 2
@@ -145,9 +145,21 @@ export default class PhosVerse extends Scene {
       // the ink blots: black, with a faint blue rim where the night is wet
       for (const bl of this.blots) {
         if (t < bl.t0) continue;
+        c.filter = 'blur(9px)';
         this.blotPath(c, bl, t);
-        c.lineWidth = 9; c.strokeStyle = 'rgba(40,48,120,0.55)'; c.stroke();
         c.fillStyle = '#000'; c.fill();
+        // tendrils creeping ahead of the mass
+        const R = this.blotR(bl, t), gr = ease.outCubic(prog(t, bl.t0, bl.t1));
+        c.strokeStyle = '#000'; c.lineCap = 'round';
+        for (let k = 0; k < 9; k++) {
+          const a = k * 0.7 + bl.seed * 1.3, r0 = R * (0.82 + 0.1 * noise1(k + bl.seed, 7)), L = (60 + 160 * noise1(k * 3 + bl.seed, 8) ** 2 + 90) * gr;
+          const sx = bl.x + Math.cos(a) * r0, sy = bl.y + Math.sin(a) * r0, side = (k % 2 ? 1 : -1) * L * 0.4;
+          c.lineWidth = 8 + 16 * noise1(k + 2, bl.seed);
+          c.beginPath(); c.moveTo(sx, sy);
+          c.quadraticCurveTo(sx + Math.cos(a) * L * 0.5 - Math.sin(a) * side, sy + Math.sin(a) * L * 0.5 + Math.cos(a) * side, sx + Math.cos(a) * L, sy + Math.sin(a) * L);
+          c.stroke();
+        }
+        c.filter = 'none';
       }
       c.globalCompositeOperation = 'lighter';
     }
@@ -163,7 +175,8 @@ export default class PhosVerse extends Scene {
       I += 0.1 * kick * Math.exp(-age / gh.tau) * (1 - hide);
       const dd = Math.hypot(gh.x - SPOT.x, gh.y - SPOT.y);
       const inside = 1 - smoothstep(spotR - 40, spotR + 10, dd);
-      I = Math.max(I, 0.3 * spotCharge * inside);
+      I = Math.max(I, 0.2 * spotCharge * inside);
+      if (t > d.start - 0.3 && Math.abs(gh.y - 540) < 210 && Math.abs(gh.x - 960) < 760) I *= 0.08;
       if (I < 0.006) continue;
       c.save();
       c.translate(gh.x, gh.y); c.rotate(gh.rot);

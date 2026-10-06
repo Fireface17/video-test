@@ -20,12 +20,12 @@ interface Spec { rows: number[]; size: number; cx: number; cy: number; zoom: num
 
 const SPECS: Spec[] = [
   { rows: [3, 4], size: 176, cx: 0, cy: 0, zoom: 1 },
-  { rows: [9], size: 124, cx: 1900, cy: 0, zoom: 1.28 },
+  { rows: [5, 4], size: 124, cx: 1900, cy: 0, zoom: 1.1 },
   { rows: [2, 2, 2], size: 108, cx: 3600, cy: 0, zoom: 1, sx: 1440 },
   { rows: [2, 3], size: 176, cx: 5200, cy: 0, zoom: 1 },
-  { rows: [3, 3, 2], size: 150, cx: 6900, cy: 0, zoom: 1.12, ystretch: 1.9 },
+  { rows: [3, 3, 2], size: 150, cx: 6900, cy: 0, zoom: 1, ystretch: 1.35 },
   { rows: [4, 3], size: 124, cx: 8700, cy: 0, zoom: 1 },
-  { rows: [3, 4], size: 170, cx: 10300, cy: 0, zoom: 1.75 },
+  { rows: [2, 2, 3], size: 170, cx: 10300, cy: 0, zoom: 1.3 },
   { rows: [2, 1, 3], size: 150, cx: 12400, cy: 0, zoom: 1 },
 ];
 const RATIOS: Pt[] = [[3, 2], [5, 4], [3, 4], [4, 5], [2, 3], [5, 6], [1, 2]];
@@ -137,8 +137,10 @@ export class ScopeRenderer {
     const s = SPECS[i]!, L = this.lines[i]!;
     let x = s.cx, y = s.cy, z = s.zoom;
     const tt = Math.min(t, L.end);
-    if (i === 1 || i === 6 || i === 4) { const h = this.head(i, tt); if (i !== 4) x = h.x; if (i === 4 || i === 6) y = h.y; }
-    if (i === 6) { x = lerp(s.cx - 150, x, 1); z = 1.75 + 0.1 * prog(t, L.start, L.end); }
+    void tt;
+    if (i === 4) y = s.cy + 50 * ease.inOutQuad(prog(t, L.start, L.end));
+    if (i === 6) z = 1.3 + 0.06 * prog(t, L.start, L.end);
+    if (i === 1) z = 1.1 + 0.05 * prog(t, L.start, L.end);
     if (i === 0) z = 1 + 0.05 * prog(t, L.start, L.end);
     if (i === 7) z = 1 + 0.08 * prog(t, L.start, L.end + 2);
     if (i === 3) z = 1 + 0.07 * ease.inOutQuad(prog(t, L.start, L.end));
@@ -161,10 +163,11 @@ export class ScopeRenderer {
     const L = this.lines[p.line]!;
     const tdEnd = this.tD(p.t1);
     if (t < p.t0 || td - tdEnd > 14) return;
-    const hold = 0.8 * (t < L.end + 0.3 ? 1 : Math.exp(-(t - L.end - 0.3) / 0.7));
+    const active = t < L.end + 0.3 ? 1 : 0;
+    const hold = 1.0 * (t < L.end + 0.3 ? 1 : Math.exp(-(t - L.end - 0.3) / 0.7));
     const prog01 = clamp((t - p.t0) / (p.t1 - p.t0));
     const drawnS = p.len * prog01;
-    c.lineWidth = 3.8 / z;
+    c.lineWidth = 4.8 / z;
     for (let k = 0; k < p.contours.length; k++) {
       const pts = p.contours[k]!, cum = p.cum[k]!;
       if (cum[0]! > drawnS) break;
@@ -175,8 +178,8 @@ export class ScopeRenderer {
         const tv = p.t0 + (p.t1 - p.t0) * (cum[Math.min(i1, pts.length - 1)]! / p.len);
         const age = td - this.tD(Math.min(tv, t));
         const I = Math.min(1.4, Math.max(this.intensity(age), hold * smoothstep(0, 0.05, age)) + 0.25 * kick * Math.exp(-age / 2));
-        const hot = Math.exp(-age / 0.14);
-        c.strokeStyle = lit(PHOS, I, 0.15 + 0.8 * hot);
+        const hot = Math.max(Math.exp(-age / 0.14), 0.45 * active * smoothstep(0, 0.05, age));
+        c.strokeStyle = lit(PHOS, I, 0.1 + 0.85 * hot);
         c.beginPath();
         c.moveTo(pts[i0]![0], pts[i0]![1]);
         for (let i = i0 + 1; i <= i1; i++) {
