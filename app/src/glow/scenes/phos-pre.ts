@@ -395,8 +395,8 @@ export default class PhosPre extends Scene {
   }
 
   private render1(c: CanvasRenderingContext2D, t: number, m: Xf, idx: number): number {
-    if (t < this.ton.start) { idx = this.group(c, this.A!, t, m, idx); this.echoFall(c, t); }
-    else if (t < this.turn.start) { idx = this.group(c, this.B!, t, m, idx); this.echoRecede(c, t, 6); }
+    if (t < this.ton.start) { idx = this.group(c, this.A!, t, m, idx); idx = this.stickerFall(t, m, idx); }
+    else if (t < this.turn.start) { idx = this.group(c, this.B!, t, m, idx); idx = this.stickerRecede(t, m, idx); }
     else if (t < this.here.start) {
       idx = this.group(c, this.C!, t, m, idx);
       // the front itself: a seam of white-gold stickers sweeping across
@@ -411,14 +411,79 @@ export default class PhosPre extends Scene {
     return idx;
   }
 
+  /**
+   * pre 1, "felt low": the stickers of FELT LOW fall off their letters as the echo comes (each a little behind the one
+   * above it: a pour, not a block), and on every 16th the falling word re-forms for an instant as an imprint in the
+   * phosphor that then fades: a stair of afterimages, further apart as it falls, deeper green the older it is.
+   */
+  private stickerFall(t: number, m: Xf, idx: number): number {
+    const e = this.echoLow, A = this.A!;
+    if (!e || t < e.start) return idx;
+    const tt = t - e.start, step = 0.1, n = A.words.length, rad = (A.size / 12) * 0.8;
+    const hot = Math.max(...e.words.map((w) => (t >= w.start ? Math.pow(0.5, (t - w.start) / 0.08) : 0)));
+    const st = this.st;
+    for (let wi = n - 2; wi < n; wi++) {
+      const bx = A.boxes[wi]!, sw = A.sw[wi]!;
+      for (let k = 0; k < sw.pts.length; k++) {
+        const p = sw.pts[k]!, x = bx.x + p.x, y0 = bx.y + p.y;
+        const lag = 0.06 * (1 - (p.y + A.size * 0.75) / A.size) + 0.02 * p.a; // the bottom of the word goes first
+        // the imprints
+        for (let j = 1; j * step <= tt; j++) {
+          if ((k + j) % 2) continue; // airy imprints: every other sticker
+          const tj = j * step - lag;
+          if (tj <= 0) continue;
+          const age = tt - j * step, lv = 0.6 * Math.exp(-age / 0.22) * Math.pow(0.84, j);
+          if (lv < 0.02) continue;
+          idx = starW(st.stars, idx, m, x, y0 + this.fall(tj), rad * (0.8 + 0.25 * p.a) * (1 - 0.03 * j), p.a * TAU, { level: lv, flash: 0 }, mixTone('green', 'cyan', Math.min(0.4, 0.12 + 0.03 * j)), 0);
+        }
+        // the falling sticker
+        const tf = Math.max(0, tt - lag);
+        const lv = 0.95 * Math.exp(-Math.max(0, tf - 0.45) / 0.3);
+        if (lv < 0.02) continue;
+        idx = starW(st.stars, idx, m, x + 6 * Math.sin(k * 2.1) * tf, y0 + this.fall(tf), rad * (0.9 + 0.3 * p.a), p.a * TAU + tf * (p.b - 0.5) * 6, { level: lv, flash: hot * 0.7 }, mixTone('green', 'white', 0.25 * hot), 0);
+      }
+    }
+    return idx;
+  }
+
+  /**
+   * pre 1, "all go": the words re-form from stickers on every delay tap, each tap smaller, higher and further away, its
+   * green warming toward the gold of the next line; the taps fade as they go.
+   */
+  private stickerRecede(t: number, m: Xf, idx: number): number {
+    const e = this.echoGo, B = this.B!;
+    if (!e || t < e.start) return idx;
+    const tt = t - e.start, dly = 0.11, taps = 7, n = B.words.length, rad = (B.size / 12) * 0.8, st = this.st;
+    const src = this.eGo, vx = src.x + 80, vy = src.y - 1250;
+    for (let j = 0; j < taps; j++) {
+      const tj = j * dly;
+      if (tt < tj) continue;
+      const age = tt - tj, s = Math.pow(0.8, j), q = 1 - Math.pow(0.78, j);
+      const lv = 0.9 * Math.pow(0.84, j) * Math.exp(-age / (0.32 + 0.06 * j)), fl = Math.pow(0.5, age / 0.06) * 0.6;
+      if (lv < 0.02) continue;
+      const tone = mixTone('green', 'gold', Math.min(0.75, 0.12 * j));
+      for (let wi = n - 2; wi < n; wi++) {
+        const bx = B.boxes[wi]!, sw = B.sw[wi]!;
+        for (let k = 0; k < sw.pts.length; k += j > 2 ? 2 : 1) {
+          const p = sw.pts[k]!;
+          const x = lerp(src.x, vx, q) + (bx.x + p.x - src.x) * s, y = lerp(src.y, vy, q) + (bx.y + p.y - src.y) * s;
+          idx = starW(st.stars, idx, m, x, y, rad * s * (0.85 + 0.3 * p.a) * (j > 2 ? 1.3 : 1), p.a * TAU, { level: lv, flash: fl }, tone, 0);
+        }
+      }
+    }
+    return idx;
+  }
+
   /** a line of sticker words: stickers fly in and land on the onset; letters lit once landed */
   private group(c: CanvasRenderingContext2D, g: Grp, t: number, m: Xf, idx: number): number {
     const st = this.st, rad = (g.size / 12) * 0.8;
     g.words.forEach((w, wi) => {
       const bx = g.boxes[wi]!, sw = g.sw[wi]!;
+      // pre 1's "felt low": once the echo comes, these stickers are the ones falling (stickerFall); the neon stays
+      const fallen = g === this.A && this.echoLow && wi >= g.words.length - 2 && t >= this.echoLow.start;
       const gl = glowAt(t, [{ t: w.start, s: 1 }, ...this.uv.filter((e) => e.t > w.start).map((e) => ({ t: e.t, s: e.s! * 0.7 }))], { tau: 2.2 });
       const lv = Math.max(gl.level, t >= w.start ? 0.42 : 0);
-      for (let k = 0; k < sw.pts.length; k++) {
+      for (let k = 0; k < (fallen ? 0 : sw.pts.length); k++) {
         const p = sw.pts[k]!;
         const arr = w.start + 0.04 * p.a, D = 0.42 + 0.2 * p.b;
         if (t < arr - D) continue;
@@ -431,6 +496,8 @@ export default class PhosPre extends Scene {
         if (g.peel !== undefined) {
           const tp = Math.max(g.peel, w.start + 0.5) + 0.9 * p.b + 0.3 * ((tx - g.boxes[0]!.x) / 1400), tt = t - tp;
           if (tt > 0) { y -= 260 * tt + 160 * tt * tt; x += 60 * Math.sin(k * 1.3) * tt; level *= Math.exp(-tt / 1.0) * 0.9 + 0.1; flash = 0; rot += tt * (p.a - 0.5) * 3; }
+          // the echo of "all go" is the thing to read: the drifting stickers step back
+          if (this.echoGo && t > this.echoGo.start) level *= 1 - 0.6 * smoothstep(this.echoGo.start, this.echoGo.start + 0.2, t);
         }
         let tone: Tone = this.v.base;
         if (g === this.C) { const [sx] = apply(m, x, y); const mm = this.waveM(sx, t); if (mm > 0) { tone = mixTone(tone, 'gold', mm); const g2 = glowAt(t, [{ t: this.tPass(sx), s: 1 }], { tau: 1.6 }); level = Math.max(level, g2.level); flash = Math.max(flash, g2.flash * 0.6); } }
@@ -440,7 +507,7 @@ export default class PhosPre extends Scene {
       // the lit lettering on top once the stickers have landed
       const pk = g.peel !== undefined ? Math.max(g.peel, w.start + 0.5) : 0;
       const fade = g.peel !== undefined ? 1 - 0.75 * smoothstep(pk, pk + 1.3, t) : 1;
-      const fl = lv * 0.4 * smoothstep(w.start - 0.02, w.start + 0.12, t) * fade;
+      const fl = lv * 0.4 * smoothstep(w.start - 0.02, w.start + 0.12, t) * fade * (fallen ? 0.55 : 1);
       let tone: Tone = this.v.base;
       if (g === this.C) { const [sx] = apply(m, bx.x + bx.w / 2, bx.y); const mm = this.waveM(sx, t); if (mm > 0) tone = mixTone(tone, 'gold', mm); }
       if (fl > 0.01) txt(c, bx.text, bx.x, bx.y, g.size, { level: fl, flash: gl.flash * 0.4 * fade }, tone, { align: 'left' });
