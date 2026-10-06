@@ -308,6 +308,9 @@ uniform sampler2D uA, uB; uniform float uU; uniform int uK; uniform vec2 uC;
 const float ASP = ${AS.toFixed(5)};
 // (a sample from outside the frame fades out softly: clamping smeared the frame's edge into streaks)
 vec3 at(sampler2D t, vec2 s) { vec2 uv = vec2(s.x / (2.0 * ASP) + 0.5, s.y * 0.5 + 0.5); vec2 o = max(-uv, uv - 1.0); float w = 1.0 - smoothstep(0.0, 0.12, max(o.x, o.y)); return texture(t, clamp(uv, vec2(0.0005), vec2(0.9995))).rgb * w; }
+// a sample of a world scaled about the centre: faded out softly inside an ellipse, never showing the frame's
+// rectangle (k = 1: no window, at rest)
+vec3 atW(sampler2D t, vec2 s, float k) { vec2 q = s / vec2(ASP, 1.0); float w = 1.0 - smoothstep(0.62, 0.98, length(q)); return at(t, s) * mix(w, 1.0, k); }
 void main() {
   vec2 s = (vUv - 0.5) * vec2(2.0 * ASP, 2.0);
   float u = uU, e = u * u * (3.0 - 2.0 * u);
@@ -320,7 +323,7 @@ void main() {
     // (a radial zoom blur of A: we accelerate through it)
     for (int i = 0; i < 6; i++) a += at(uA, s / (1.0 + (0.6 + 0.12 * float(i)) * e));
     a /= 6.0;
-    vec3 b = at(uB, s * mix(2.2, 1.0, e));
+    vec3 b = at(uB, s * mix(0.6, 1.0, e));
     float m = 1.0 - smoothstep(R * 0.55, R + 0.02, r);
     col = mix(a, b, m) + vec3(1.0, 0.8, 0.5) * exp(-pow((r - R * 0.8) / (0.08 + 0.2 * R), 2.0)) * 0.35 * (1.0 - e) * step(0.001, R);
   } else if (uK == 1) {
@@ -330,7 +333,7 @@ void main() {
     float k = 1.0 + 4.0 * e * e;
     float sw = 2.2 * e / (r + 0.25);
     vec2 da = mat2(cos(sw), -sin(sw), sin(sw), cos(sw)) * d * k;
-    vec3 a = at(uA, uC + da) * (1.0 + 0.7 * e) * (1.0 - smoothstep(0.5, 0.95, u));
+    vec3 a = atW(uA, uC + da, 1.0 - smoothstep(0.0, 0.1, e)) * (1.0 + 0.7 * e) * (1.0 - smoothstep(0.5, 0.95, u));
     vec3 b = at(uB, s) * smoothstep(0.35, 1.0, u);
     col = a + b + vec3(1.0, 0.85, 0.6) * exp(-r * r / (0.002 + 0.02 * e)) * 1.6 * sin(3.14159 * u);
   } else {
@@ -344,7 +347,7 @@ void main() {
     vec3 a = at(uA, uC + da);
     // B inside, the shadow (a soft dark band) around it, A bent outside, a faint Einstein brightening at the edge
     float inside = 1.0 - smoothstep(Rl * 0.45, Rl * 0.8, r);
-    vec3 b = at(uB, uC + d * mix(1.8, 1.0, e)) * smoothstep(0.2, 0.7, u);
+    vec3 b = at(uB, uC + d * mix(0.6, 1.0, e)) * smoothstep(0.2, 0.7, u);
     float outside = smoothstep(Rl * 0.85, Rl * 1.15, r);
     float ring = exp(-pow((r - Rl * 1.2) / (0.05 + 0.12 * Rl), 2.0));
     col = a * outside * (1.0 + 0.5 * ring) + b * inside;
