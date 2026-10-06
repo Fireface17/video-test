@@ -21,6 +21,7 @@ import { armAt, clusterNear, galaxyMaterial, type Cfg, type Look } from './cosmo
 import { StarText } from './cosmos-text';
 import { Details, type Nova } from './cosmos-details';
 import { Motif, type Fx, type Join } from './cosmos-motif';
+import { NovaFx } from './cosmos-nova';
 
 const ASP = 16 / 9;
 const quint = (x: number) => { x = clamp(x); return x * x * x * (x * (x * 6 - 15) + 10); };
@@ -58,6 +59,9 @@ export default class Cosmos extends Scene {
   details!: Details;
   novae: Nova[] = [];
   pulsar: [number, number] = [0.8, 0.5];
+  /** drop 1's supernova: when, where (world), the camera zoom then */
+  sn: { t: number; at: [number, number]; z: number } | null = null;
+  snFx: NovaFx;
   keys: Key[] = [];
   joins: { ev: Join; slot: number }[] = [];
   bars: number[] = [];
@@ -81,7 +85,8 @@ export default class Cosmos extends Scene {
     const hot = this.n === 1 ? col('#FFFFFF') : col('#FFF4D8');
     this.text = new StarText(ctx.lyrics, this.t0, this.t1, tint, hot);
     this.details = new Details(ctx.audio.beats, this.t0, this.t1, tint, hot, this.n === 3 ? 0.55 : 0.3);
-    this.scene.add(this.details.pts, this.text.group, this.motif.group);
+    this.snFx = new NovaFx(ASP, { hot: col('#FFFFFF').multiplyScalar(1.4), shell: col('#7FE3FF').multiplyScalar(1.1), gas: col('#2E8CFF'), gas2: col('#9B5CFF') });
+    this.scene.add(this.details.pts, this.text.group, this.motif.group, this.snFx.mesh);
     this.buildShots();
     this.punchUp();
     this.buildNovae();
@@ -168,7 +173,15 @@ export default class Cosmos extends Scene {
   private buildNovae() {
     const cfg = this.look.cfg, B = (k: number) => this.bar(k);
     const at = (r: number, k: number): [number, number] => { const a = armAt(cfg, r, k), c = clusterNear(a.x, a.y, 0.12); return c ? [c.x, c.y] : [a.x, a.y]; };
-    if (this.n === 1) this.novae = [{ t: B(4) + 0.02, at: at(0.5, 1), scale: 1 }];
+    if (this.n === 1) {
+      // one supernova, on the hardest hit of the drop's first half, where the camera lands for it
+      this.novae = [];
+      // placed off the core (where the sky behind it is dark), to the right of the frame's centre
+      const t = B(2) + 0.0, c = this.camAt(t + 0.05);
+      const u: [number, number] = [0.42, 0.1];
+      const pr = [(Math.cos(c.rot) * u[0] - Math.sin(c.rot) * u[1]) * c.z, (Math.sin(c.rot) * u[0] + Math.cos(c.rot) * u[1]) * c.z];
+      this.sn = { t, at: [c.c[0] + pr[0]!, c.c[1] + pr[1]! / Math.cos(c.tilt)], z: c.z };
+    }
     else this.novae = [
       { t: B(5) + 0.02, at: at(0.55, 0), scale: 1 }, { t: B(8) + 0.02, at: at(0.7, 1), scale: 1.2 },
       { t: B(10) + 0.02, at: at(0.3, 0), scale: 1.2 }, { t: B(12) + 0.02, at: [0.35, 0.2], scale: 2.2 },
@@ -226,6 +239,14 @@ export default class Cosmos extends Scene {
     let expo = 1 + 0.35 * kick;
     if (this.n === 1) expo *= 1 + 2.2 * smoothstep(this.bar(7) + 0.45, this.t1, t);
     else { expo *= 1 - 0.3 * smoothstep(this.bar(14) + 1.0, this.bar(16) - 0.2, t); U.uGalaxy!.value = 1 - smoothstep(this.bar(14) + 1.2, this.bar(16) - 0.7, t); }
+    // the supernova: its flash, then the galaxy looks dimmer next to it for a moment
+    let snA = -9;
+    if (this.sn) {
+      snA = t - this.sn.t;
+      const [x, y] = this.projUV(cam, this.sn.at);
+      this.snFx.update([x, y], 0.78 * (this.sn.z / cam.z), snA, out.height);
+      if (snA > 0) expo *= 1 - 0.35 * Math.exp(-snA / 0.6);
+    }
     U.uExpo!.value = expo;
 
     // the lyrics and their scrim
@@ -265,10 +286,13 @@ export default class Cosmos extends Scene {
     const slam = Math.exp(-since / 0.14);
     const snare = Math.min(1, f.a.snare);
     const fi = frameIdx(t), sh = 6 * kick + 10 * slam;
+    const boom = snA >= 0 ? Math.exp(-snA / 0.12) : 0;
+    const sh2 = sh + 22 * boom;
     const post = {
-      zoom: 1 + (this.n === 3 ? 0.07 : 0.05) * kick + 0.07 * slam,
-      shake: [(hash(fi, 1) - 0.5) * 2 * sh, (hash(fi, 2) - 0.5) * 2 * sh] as [number, number],
-      flash: 0.012 * slam * (1 + snare),
+      zoom: 1 + (this.n === 3 ? 0.07 : 0.05) * kick + 0.07 * slam + 0.09 * boom,
+      shake: [(hash(fi, 1) - 0.5) * 2 * sh2, (hash(fi, 2) - 0.5) * 2 * sh2] as [number, number],
+      flash: 0.012 * slam * (1 + snare) + 0.3 * (snA >= 0 ? Math.exp(-snA / 0.045) : 0),
+      ca: 0.8 + 3 * boom,
     };
     const r = this.ctx.renderer;
     r.setRenderTarget(out);
@@ -276,6 +300,13 @@ export default class Cosmos extends Scene {
     r.clear(true, true, true);
     r.render(this.scene, this.cam);
     return post;
+  }
+
+  /** a plane point on screen (ndc) */
+  private projUV(c: Cam, w: [number, number]): [number, number] {
+    const px = w[0] - c.c[0], py = (w[1] - c.c[1]) * Math.cos(c.tilt);
+    const cs = Math.cos(-c.rot), sn = Math.sin(-c.rot);
+    return [(cs * px - sn * py) / c.z, (sn * px + cs * py) / c.z];
   }
 
   /** where the core of the galaxy is on screen (ndc) */
@@ -288,6 +319,7 @@ export default class Cosmos extends Scene {
   override dispose() {
     this.mat.dispose();
     this.text.dispose();
+    this.snFx.dispose();
   }
 }
 void ASP;
