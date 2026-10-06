@@ -19,6 +19,7 @@ import { displayTextGeometry, loadDisplayFont } from '../lib/fonts';
 import { flickerOn } from '../lib/neon';
 import { Earth } from '../lib/earth';
 import { prewarm } from '../lib/prewarm';
+import { diveBars, diveFactor, diveMatch } from '../lib/dive';
 import { StarStreaks } from './fall-stars';
 import { nebulaMap, nebulaSphere } from './fall-sky';
 
@@ -47,6 +48,35 @@ const PATH = [
 const JOINT_KEYS = ['Head', 'Neck', 'ShL', 'ShR', 'ElL', 'ElR', 'HaL', 'HaR', 'Hip', 'KnL', 'KnR', 'FtL', 'FtR'];
 /** Outro: the order the figures' stars go out (feet first, hands last). */
 const FIG_OUT = ['aFtL', 'bFtR', 'aFtR', 'bFtL', 'aKnL', 'bKnR', 'aKnR', 'bKnL', 'aHip', 'bHip', 'aHaL', 'bHaR', 'aElL', 'bElR', 'aHead', 'bHead', 'aShL', 'bShR', 'aNeck', 'bNeck', 'aShR', 'bShL', 'aElR', 'bElL'];
+
+/** The stickers (the two figures, and scattered stars around them): ceiling (u, v), size r. Also used by drop 3,
+ *  whose city lights become these stickers. Returns the generator too (init goes on drawing from it). */
+export function stickerLayout() {
+  const rnd = mulberry32(5);
+  const pts: { key: string; u: number; v: number; r: number }[] = Object.entries(J).map(([key, [u, v]]) => ({ key, u, v, r: 0.075 + rnd() * 0.03 }));
+  for (let tries = 0; pts.length < 50 && tries < 6000; tries++) {
+    const r = 0.05 + Math.pow(rnd(), 2) * 0.09;
+    const u = (rnd() * 2 - 1) * 2.1, v = (rnd() * 2 - 1) * 1.15;
+    if (Math.hypot(u - DET[0], v - DET[1]) > r * 1.6 + 0.16 && pts.every((p) => Math.hypot(p.u - u, p.v - v) > (p.r + r) * 1.6 + 0.08)) pts.push({ key: `s${pts.length}`, u, v, r });
+  }
+  return { pts, rnd };
+}
+export const CEIL_Y = CEIL;
+const PHOS = col('phosphor'), CITY = col('#FFB45A', 1.1);
+
+/**
+ * The outro's camera at t: in bed, looking up, drifting slowly in toward the hands. At its start it is still
+ * coming up out of drop 3's dive at the city (lib/dive.ts): farther away by the dive's factor, decelerating.
+ */
+export function outroView(t: number, start: number, tEnd: number, bars: [number, number, number]) {
+  const mid = new THREE.Vector2((J.aHaR![0] + J.bHaL![0]) / 2, (J.aHaR![1] + J.bHaL![1]) / 2);
+  const k = ease.inOutQuad(prog(t, start, tEnd));
+  const pos = EYE.clone().add(new THREE.Vector3(mid.x * 0.6 * k, 0.15 + 0.85 * k, mid.y * 0.6 * k));
+  pos.x += noise1(t * 0.3, 1) * 0.03;
+  pos.z += noise1(t * 0.27, 2) * 0.03;
+  pos.y = CEIL - (CEIL - pos.y) * diveFactor(t, bars);
+  return { pos, look: pos.clone().add(new THREE.Vector3(0, 1, 0)), roll: 0.05 * Math.sin(t * 0.2), up: new THREE.Vector3(0, 0, 1), fov: 60 - 8 * k };
+}
 
 interface Sticker { key: string; u: number; v: number; r: number; mesh: THREE.Mesh; mat: THREE.MeshStandardMaterial; halo: THREE.Mesh; hmat: THREE.ShaderMaterial; tOn: number; tOff: number; seed: number }
 
@@ -104,6 +134,8 @@ export default class Ceiling extends Scene {
   earth = new Earth();
   earthDir = new THREE.Vector3();
   dis = -1;
+  /** drop 3's last bars and the outro's start (the dive, lib/dive.ts) */
+  dive: [number, number, number] = [0, 0, 0];
   /** Intro: the sticker that comes loose and falls past the lens. */
   caught?: Sticker;
   tCatch = 0;
@@ -111,6 +143,7 @@ export default class Ceiling extends Scene {
   override async init() {
     const { audio, params, start, end } = this.ctx;
     this.outro = params.mode === 'outro';
+    this.dive = diveBars(audio.downbeats, start);
     const S = this.st;
     S.bg.copy(col('night', 0.25));
     this.B = audio.downbeats.filter((d) => d >= start - 2 && d <= end + 2);
@@ -120,33 +153,35 @@ export default class Ceiling extends Scene {
     const map = plaster();
     this.ceilMat = new THREE.ShaderMaterial({
       transparent: true,
-      uniforms: { map: { value: map }, light: { value: col('blue', 0.03) }, dis: { value: -1 }, glow: { value: new THREE.Color(0, 0, 0) }, moonK: { value: 1 }, warm: { value: 0 }, time: { value: 0 }, sweep: { value: new THREE.Vector2(-9, 0) } },
+      uniforms: { roomK: { value: 1 }, map: { value: map }, light: { value: col('blue', 0.03) }, dis: { value: -1 }, glow: { value: new THREE.Color(0, 0, 0) }, moonK: { value: 1 }, warm: { value: 0 }, time: { value: 0 }, sweep: { value: new THREE.Vector2(-9, 0) } },
       vertexShader: /* glsl */ `varying vec2 vUv; varying vec3 vP; void main(){ vUv = uv; vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: /* glsl */ `
-        uniform sampler2D map; uniform vec3 light, glow; uniform float dis, moonK, warm, time; uniform vec2 sweep;
+        uniform sampler2D map; uniform vec3 light, glow; uniform float dis, moonK, warm, time, roomK; uniform vec2 sweep;
         varying vec2 vUv; varying vec3 vP;
         float h(vec2 p){ return fract(sin(dot(p, vec2(41.3, 289.1))) * 15731.743); }
         void main() {
           vec3 a = texture2D(map, vUv * 3.0).rgb; a = pow(a, vec3(2.2));
           // moonlight through a window on the left: a soft barred patch near the wall
           vec2 m = (vP.xy - vec2(-1.55, 0.35)) / vec2(0.75, 0.55);
-          float mpatch = (1.0 - smoothstep(0.55, 1.0, length(m))) * smoothstep(0.03, 0.08, abs(fract(m.x * 1.0 + 0.5) - 0.5)) * smoothstep(0.03, 0.08, abs(m.y));
+          // (soft: its window bars and its border, cut by the frame's edge, read as strips of texture)
+          float mpatch = (1.0 - smoothstep(0.2, 1.1, length(m))) * (0.6 + 0.4 * smoothstep(0.0, 0.2, abs(fract(m.x * 1.0 + 0.5) - 0.5)) * smoothstep(0.0, 0.2, abs(m.y)));
           // the curtain, half drawn, breathes in the draught: its soft shadow edge drifts across the patch
           float ce = -0.42 + 0.09 * sin(time * 0.55) + 0.035 * sin(time * 1.3 + m.y * 3.0);
           mpatch *= mix(0.3, 1.0, smoothstep(ce - 0.14, ce + 0.14, m.x));
           // a car passing below: its headlights throw the window's panes across the ceiling, sheared
           vec2 sp = vP.xy - vec2(sweep.x, 0.25); sp.x -= 0.5 * sp.y;
           vec2 sq = sp / vec2(0.62, 0.46);
-          float spatch = (1.0 - smoothstep(0.5, 1.0, max(abs(sq.x), abs(sq.y)))) * smoothstep(0.02, 0.07, abs(fract(sq.x + 0.5) - 0.5)) * smoothstep(0.02, 0.07, abs(sq.y));
+          float spatch = (1.0 - smoothstep(0.25, 1.1, length(sq))) * (0.6 + 0.4 * smoothstep(0.0, 0.2, abs(fract(sq.x + 0.5) - 0.5)) * smoothstep(0.0, 0.2, abs(sq.y)));
           // a warm window light across the street (outro): the same panes, larger and softer, spilling in
           vec2 w = (vP.xy - vec2(-1.55, 0.35)) / vec2(1.35, 0.95);
-          float wpatch = (1.0 - smoothstep(0.2, 1.0, length(w))) * (0.55 + 0.45 * smoothstep(0.02, 0.09, abs(fract(w.x * 1.6 + 0.5) - 0.5)) * smoothstep(0.02, 0.07, abs(w.y)));
+          float wpatch = (1.0 - smoothstep(0.1, 1.15, length(w))) * (0.7 + 0.3 * smoothstep(0.0, 0.22, abs(fract(w.x * 1.6 + 0.5) - 0.5)) * smoothstep(0.0, 0.2, abs(w.y)));
           vec3 c = a * (light + col_moon() * mpatch * moonK + glow + vec3(0.95, 0.55, 0.22) * wpatch * warm + vec3(1.0, 0.86, 0.62) * spatch * sweep.y);
           // dissolve: burns away from the centre with a glowing edge
           vec2 q = vP.xy * 9.0; vec2 fi = floor(q), fr = fract(q); fr = fr * fr * (3.0 - 2.0 * fr);
           float vn = mix(mix(h(fi), h(fi + vec2(1.0, 0.0)), fr.x), mix(h(fi + vec2(0.0, 1.0)), h(fi + vec2(1.0, 1.0)), fr.x), fr.y);
           float r = length(vP.xy) + (vn - 0.5) * 0.16;
           if (r < dis) discard;
+          c *= roomK;
           float edge = exp(-pow((r - dis) / 0.05, 2.0)) * step(0.0, dis);
           c += vec3(0.7, 1.0, 0.4) * edge * 1.5;
           gl_FragColor = vec4(c, 1.0);
@@ -192,13 +227,7 @@ export default class Ceiling extends Scene {
     S.add(this.room);
 
     // ---- stickers: the two figures, and scattered stars around them ----
-    const rnd = mulberry32(5);
-    const pts: { key: string; u: number; v: number; r: number }[] = Object.entries(J).map(([key, [u, v]]) => ({ key, u, v, r: 0.075 + rnd() * 0.03 }));
-    for (let tries = 0; pts.length < 50 && tries < 6000; tries++) {
-      const r = 0.05 + Math.pow(rnd(), 2) * 0.09;
-      const u = (rnd() * 2 - 1) * 2.1, v = (rnd() * 2 - 1) * 1.15;
-      if (Math.hypot(u - DET[0], v - DET[1]) > r * 1.6 + 0.16 && pts.every((p) => Math.hypot(p.u - u, p.v - v) > (p.r + r) * 1.6 + 0.08)) pts.push({ key: `s${pts.length}`, u, v, r });
-    }
+    const { pts, rnd } = stickerLayout();
     // ignition: one sticker per beat to begin with, faster as the bars go by; the figures' stars come last
     const scattered = pts.filter((p) => p.key.startsWith('s')).sort((a, b) => Math.hypot(a.u * 0.7, a.v) - Math.hypot(b.u * 0.7, b.v));
     const figure = Object.keys(J).map((k) => pts.find((p) => p.key === k)!).sort((a, b) => b.v - a.v);
@@ -223,7 +252,10 @@ export default class Ceiling extends Scene {
         uniforms: { k: { value: 0 }, c: { value: col('phosphor', 0.2) } },
         vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
         fragmentShader: `uniform float k; uniform vec3 c; varying vec2 vUv;
-          void main(){ float r = length(vUv - 0.5) * 2.0; gl_FragColor = vec4(c * k * (exp(-r * r * 6.0) + 0.25 * exp(-r * r * 40.0)) * (1.0 - smoothstep(0.85, 1.0, r)), 1.0); }`,
+          void main(){ float r = length(vUv - 0.5) * 2.0;
+            // (the glow reaches zero well inside its quad: cut at the quad's edge it showed as a disc around a bright star)
+            float g = max(exp(-r * r * 6.0) - exp(-6.0), 0.0) / (1.0 - exp(-6.0));
+            gl_FragColor = vec4(c * k * (g + 0.25 * exp(-r * r * 40.0)) * (1.0 - smoothstep(0.55, 1.0, r)), 1.0); }`,
       });
       const halo = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), hmat);
       halo.rotation.x = Math.PI / 2;
@@ -523,8 +555,16 @@ export default class Ceiling extends Scene {
     const hand = lines.find((l) => /take my hand/i.test(l.text));
     const tHand = hand ? hand.words[0]!.start : this.beatT(14);
     const tEnd = this.B.filter((d) => d <= this.ctx.end - 0.3).pop() ?? this.ctx.end - 1.5; // the last downbeat
+    // coming out of drop 3's dive: at first only the stickers, warm, as the city's lights they were; the room
+    // (plaster, walls, moonlight) comes up once the camera is close enough for the ceiling to fill the frame
+    const tM = diveMatch(this.dive);
+    const roomK = smoothstep(tM + 0.05, tM + 0.8, t), warmW = 1 - smoothstep(tM - 0.05, tM + 0.75, t);
     // the stickers go out on the beat; the two hands stay
     this.poseStickers(t, 1, 1);
+    for (const st of this.stickers) {
+      st.mat.emissive.copy(PHOS).lerp(CITY, warmW);
+      (st.hmat.uniforms.c!.value as THREE.Color).copy(PHOS).lerp(CITY, warmW).multiplyScalar(0.2 * (1 + 1.5 * warmW));
+    }
     const ha = this.byKey.get('aHaR')!, hb = this.byKey.get('bHaL')!;
     // the hands: they drift together after the figures are gone, merge, and go out on the last downbeat
     const meet = ease.inOutCubic(prog(t, this.beatT(22), tEnd - 0.8));
@@ -544,7 +584,7 @@ export default class Ceiling extends Scene {
     // the figures' lines fade with their stars; the hands' line draws on "take my hand" and fades as they meet
     const figGone = prog(t, this.beatT(12), this.beatT(20));
     this.body.reveal = this.body.total;
-    this.body.gain = 0.55 * (1 - figGone);
+    this.body.gain = 0.55 * (1 - figGone) * smoothstep(tM - 0.2, tM + 0.6, t);
     this.join.reveal = prog(t, tHand, tHand + 0.7) * this.join.total;
     this.join.gain = (1.2 + 1.5 * pulse(t, tHand + 0.7, 0.4)) * (1 - prog(t, this.beatT(22), this.beatT(26)));
     this.pen.commit(0);
@@ -555,20 +595,20 @@ export default class Ceiling extends Scene {
     this.dis = -1;
     this.poseRoom(t, SWEEPS_OUT);
     this.ceilMat.uniforms.moonK!.value = 1 - prog(t, tEnd - 1, tEnd + 0.5);
+    this.ceilMat.uniforms.roomK!.value = roomK;
+    this.wallMat.opacity = roomK;
+    this.moonLight.intensity = 0.6 * roomK;
+    S.bg.copy(col('night', 0.25)).multiplyScalar(roomK);
+    this.detector.visible = roomK > 0.02;
     // ...and in the dark, a warm light comes on across the street: her lantern
     this.ceilMat.uniforms.warm!.value = 0.75 * flickerOn(t, tEnd + 0.12, 3) * (1 + 0.06 * noise1(t * 3, 7));
     const lit = this.stickers.reduce((a, s) => a + (t < s.tOff ? 1 : 0), 0);
-    (this.ceilMat.uniforms.glow!.value as THREE.Color).copy(col('phosphor', 0.0025 * lit));
-    // camera: in bed, looking up, drifting slowly in toward the hands
-    const k = ease.inOutQuad(prog(t, this.ctx.start, tEnd));
-    const pos = EYE.clone().add(new THREE.Vector3(mid.x * 0.6 * k, 0.15 + 0.85 * k, mid.y * 0.6 * k));
-    // the dive at the Earth's city lights (drop 3's end) carries on into the ceiling: the camera still rushing up at
-    // it as the stickers cross-fade in over the lights, slowing to the drift
-    pos.y -= 1.1 * Math.pow(1 - ease.outCubic(prog(t, this.ctx.start - 0.75, this.ctx.start + 1.6)), 1.0);
-    pos.x += noise1(t * 0.3, 1) * 0.03;
-    pos.z += noise1(t * 0.27, 2) * 0.03;
-    aim(cam, pos, pos.clone().add(new THREE.Vector3(0, 1, 0)), 0.05 * Math.sin(t * 0.2), new THREE.Vector3(0, 0, 1));
-    cam.fov = 60 - 8 * k;
+    (this.ceilMat.uniforms.glow!.value as THREE.Color).copy(col('phosphor', 0.0025 * lit * roomK));
+    // camera: in bed, looking up, drifting slowly in toward the hands — at first still coming up out of drop 3's dive
+    const v = outroView(t, this.ctx.start, tEnd, this.dive);
+    aim(cam, v.pos, v.look, v.roll, v.up);
+    cam.fov = v.fov;
+    cam.far = 500;
     cam.updateProjectionMatrix();
     S.render(this.ctx.renderer, out);
     return { bloom: 0.95, bloomThreshold: 0.75, bloomRadius: 0.85, halation: 0.14, vignette: 0.5, grain: 0.05, ca: 0.5 };

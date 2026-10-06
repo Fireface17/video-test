@@ -23,6 +23,9 @@ import { FSPass, W, H, makeRT } from '../../engine/gl';
 import { clamp, ease, hash, lerp, smoothstep, frameIdx, mulberry32 } from '../../engine/util';
 import { Earth } from '../lib/earth';
 import { prewarm } from '../lib/prewarm';
+import { aim } from '../lib/stage';
+import { diveAlt, diveBars } from '../lib/dive';
+import { stickerLayout, outroView, CEIL_Y } from './ceiling';
 
 const AS = 16 / 9;
 type World = 'warp' | 'neb' | 'hole' | 'earth';
@@ -349,6 +352,32 @@ void main() {
   fragColor = vec4(col, 1.0);
 }`;
 
+// the city's lights becoming the ceiling's stickers: soft warm lights exactly where the outro's stickers will be
+// (projected through the outro's own camera), each first a little cluster of lights that resolves into one
+const LIGHTS_FRAG = /* glsl */ `
+uniform vec4 uP[50]; uniform int uN; uniform float uRes, uK;
+uniform vec3 cW;
+const float ASP = ${AS.toFixed(5)};
+void main() {
+  vec2 s = (vUv - 0.5) * vec2(2.0 * ASP, 2.0);
+  vec3 col = vec3(0.0);
+  for (int i = 0; i < 50; i++) {
+    if (i >= uN) break;
+    vec4 p = uP[i];
+    float R = max(p.z, 0.0008);
+    for (int j = 0; j < 4; j++) {
+      float a = float(i) * 2.4 + float(j) * 1.9;
+      vec2 o = j == 0 ? vec2(0.0) : vec2(cos(a), sin(a)) * R * 2.6 * uRes;
+      float d = length(s - p.xy - o);
+      float w = j == 0 ? 1.0 : 0.45 * uRes;
+      float rc = R * 0.55, rh = R * 4.5;
+      float g = max(exp(-d * d / (rh * rh) * 6.0) - exp(-6.0), 0.0);
+      col += cW * w * p.w * (exp(-d * d / (rc * rc)) * 1.4 + g * 0.35);
+    }
+  }
+  fragColor = vec4(col * uK, 1.0);
+}`;
+
 /** New York, on the globe (object space of lib/earth), as in the intro */
 const SITE = (() => { const lat = 40.7 * Math.PI / 180, lon = -74.0 * Math.PI / 180; const th = Math.PI / 2 - lat, ph = lon + Math.PI; return new THREE.Vector3(-Math.cos(ph) * Math.sin(th), Math.cos(th), Math.sin(ph) * Math.sin(th)); })();
 const ezIO = (x: number) => { x = clamp(x); return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
@@ -364,6 +393,10 @@ export default class CosmosDeck extends Scene {
   private earth = new Earth();
   private eScene = new THREE.Scene();
   private eCam = new THREE.PerspectiveCamera(50, AS, 0.01, 4000);
+  private lights: FSPass;
+  private stickers = stickerLayout().pts;
+  private oCam = new THREE.PerspectiveCamera(60, AS, 0.05, 500);
+  private dive: [number, number, number] = [0, 0, 0];
   private runs: Run[] = [];
   private kicks: [number, number][] = [];
   private bars: number[] = [];
@@ -384,12 +417,14 @@ export default class CosmosDeck extends Scene {
       uNoise: nz, uRo: { value: new THREE.Vector3() }, uFw: { value: new THREE.Vector3() }, uRoll: v2(), uT: v2(), uPx: v2(), uExpo: v2(),
       uDisk: v2(), uRing: v2(), uInside: v2(), uTrav: v2(), uSpeed: v2(),
     });
+    this.lights = new FSPass(LIGHTS_FRAG, { uP: { value: Array.from({ length: 50 }, () => new THREE.Vector4()) }, uN: { value: 0 }, uRes: v2(), uK: v2(), cW: { value: new THREE.Color('#FFB45A').multiplyScalar(1.1) } }, { blending: THREE.AdditiveBlending, transparent: true });
     this.xf = new FSPass(XF_FRAG, { uA: { value: this.rtA.texture }, uB: { value: this.rtB.texture }, uU: v2(), uK: { value: 0 }, uC: { value: new THREE.Vector2() } });
     const au = ctx.audio;
     this.kicks = au.events('kick', this.t0 - 1, this.t1 + 2);
     let i0 = 0, best = 1e9;
     au.downbeats.forEach((d, i) => { if (Math.abs(d - this.t0) < best) { best = Math.abs(d - this.t0); i0 = i; } });
     this.bars = au.downbeats.slice(i0, i0 + 20);
+    this.dive = diveBars(au.downbeats, this.t1);
     this.plan();
   }
 
@@ -397,7 +432,7 @@ export default class CosmosDeck extends Scene {
     await this.earth.init();
     this.eScene.add(this.earth);
     // (everything compiled and uploaded now: the preview must not stall when the drop comes on)
-    const ps = [this.warp, this.neb, this.nebC, this.hole, this.xf];
+    const ps = [this.warp, this.neb, this.nebC, this.hole, this.xf, this.lights];
     prewarm(this.ctx.renderer, [...ps.map((p) => ({ scene: p.scene, cam: p.cam })), { scene: this.eScene, cam: this.eCam }], [this.tex]);
   }
 
@@ -457,8 +492,10 @@ export default class CosmosDeck extends Scene {
   private holeCam(run: Run, t: number) {
     const ks = run.keys!;
     const at = (k: HoleKey, tt: number, end: number) => {
-      const u = clamp((tt - k.t) / Math.max(0.1, end - k.t));
-      const d = k.fall ? k.d0 * Math.pow(k.d1 / k.d0, Math.pow(u, 1.6)) : k.d0 + (k.d1 - k.d0) * (1 - Math.pow(1 - u, 2));
+      // (not clamped: before its key and after its end the orbit keeps moving at the same rate — a transition
+      //  renders the outgoing and incoming worlds outside their own spans, and they must keep flying)
+      const u = (tt - k.t) / Math.max(0.1, end - k.t);
+      const d = k.fall ? k.d0 * Math.pow(k.d1 / k.d0, u < 0 ? u : Math.pow(u, 1.6)) : k.d0 * Math.pow(k.d1 / k.d0, u);
       return { d, el: k.el * (k.fall ? 1 - 0.6 * u : 1), az: k.az + k.daz * u, roll: k.roll + (k.fall ? 0.6 * u * u : 0.05 * u), u };
     };
     let i = 0;
@@ -486,17 +523,8 @@ export default class CosmosDeck extends Scene {
     return [clamp(v.dot(R) / z / 0.7, -2, 2), clamp(v.dot(U) / z / 0.7, -1.2, 1.2)];
   }
 
-  /** the Earth's altitude (1 unit = 1000 km) over the dive: log-space keys */
-  private alt(t: number) {
-    const B = (k: number) => this.bar(k);
-    const K: [number, number][] = [[B(14) + 0.9, 150], [B(15), 24], [B(15) + 0.88, 4], [B(16), 0.35], [B(16) + 0.8, 0.04]];
-    if (t <= K[0]![0]) return K[0]![1];
-    for (let i = 1; i < K.length; i++) if (t <= K[i]![0]) {
-      const [t0, a0] = K[i - 1]!, [t1, a1] = K[i]!;
-      return Math.exp(lerp(Math.log(a0), Math.log(a1), ease.inOutQuad((t - t0) / (t1 - t0))));
-    }
-    return K[K.length - 1]![1];
-  }
+  /** the Earth's altitude (1 unit = 1000 km) over the dive (shared with the ceiling outro: lib/dive.ts) */
+  private alt(t: number) { return diveAlt(t, this.dive); }
 
   /** renders run `run` at t into target */
   private world(run: Run, t: number, target: THREE.WebGLRenderTarget, kick: number, I: number, px: number) {
@@ -566,12 +594,14 @@ export default class CosmosDeck extends Scene {
     e.quaternion.setFromRotationMatrix(mW.multiply(mObj.transpose()));
     e.time = t;
     const u = e.surface.material.uniforms;
-    // (the lights dim as the ceiling's stickers come in over them)
-    u.cityGain!.value = 1.2 * (1 - 0.85 * smoothstep(this.bar(16) - 0.7, this.bar(16) + 0.15, t)); u.moonK!.value = 0.35;
-    e.clouds.material.uniforms.k!.value = 1; e.clouds.material.uniforms.moonK!.value = 0.45;
+    // (the city's own lights and the moonlit ground go dark as the lights that become the stickers take over)
+    const [, b15, b16] = this.dive;
+    const over = smoothstep(b16 - 0.75, b16 + 0.1, t);
+    u.cityGain!.value = 1.2 * (1 - 0.9 * over); u.moonK!.value = 0.35 * (1 - 0.85 * over);
+    e.clouds.material.uniforms.k!.value = 1 - 0.8 * over; e.clouds.material.uniforms.moonK!.value = 0.45 * (1 - 0.85 * over);
     e.air.material.uniforms.k!.value = 1;
     const sun = new THREE.Vector3(0.62, 0.42, -0.66).normalize();
-    const dawn = 1 - smoothstep(this.bar(15) + 0.5, this.bar(15) + 1.2, t);
+    const dawn = 1 - smoothstep(b15 + 0.5, b15 + 1.2, t);
     (u.sun!.value as THREE.Vector3).copy(sun); u.dawn!.value = dawn;
     (e.air.material.uniforms.sun!.value as THREE.Vector3).copy(sun); e.air.material.uniforms.dawn!.value = dawn;
     const ac = r.autoClear;
@@ -580,6 +610,29 @@ export default class CosmosDeck extends Scene {
     r.clearDepth();
     r.render(this.eScene, cam);
     r.autoClear = ac;
+    // the lights that become the ceiling's stickers (where the outro's camera will see them)
+    const on = smoothstep(b16 - 1.0, b16 - 0.2, t);
+    if (on > 0) {
+      const au = this.ctx.audio, tEndO = au.downbeats.filter((d) => d <= au.duration - 0.3).pop() ?? au.duration - 1.5;
+      const v = outroView(t, b16, tEndO, this.dive), oc = this.oCam;
+      aim(oc, v.pos, v.look, v.roll, v.up);
+      oc.fov = v.fov; oc.aspect = AS; oc.updateProjectionMatrix(); oc.updateMatrixWorld();
+      const P = this.lights.u.uP!.value as THREE.Vector4[];
+      const tanH = Math.tan((v.fov / 2) * Math.PI / 180);
+      let n = 0;
+      const q = new THREE.Vector3();
+      for (const st of this.stickers) {
+        q.set(st.u, CEIL_Y - 0.012, st.v);
+        const dist = q.distanceTo(v.pos);
+        q.project(oc);
+        if (q.z > 1 || n >= 50) continue;
+        P[n++]!.set(q.x * AS, q.y, st.r / dist / tanH, 1.0 + 0.06 * Math.sin(t * 3 + n));
+      }
+      this.lights.u.uN!.value = n;
+      this.lights.u.uRes!.value = 1 - smoothstep(b16 - 0.8, b16 + 0.2, t);
+      this.lights.u.uK!.value = on;
+      this.lights.render(r, target);
+    }
   }
 
   render(f: Frame, out: THREE.WebGLRenderTarget): PostOverrides {
@@ -620,7 +673,7 @@ export default class CosmosDeck extends Scene {
   }
 
   override dispose() {
-    for (const p of [this.warp, this.neb, this.nebC, this.hole, this.xf]) p.mat.dispose();
+    for (const p of [this.warp, this.neb, this.nebC, this.hole, this.xf, this.lights]) p.mat.dispose();
     for (const rt of [this.volRT, this.holeRT, this.rtA, this.rtB]) rt.dispose();
     this.tex.dispose();
   }
