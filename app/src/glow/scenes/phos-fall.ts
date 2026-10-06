@@ -217,7 +217,7 @@ export default class PhosFall extends Scene {
     const P = this.P.ctx, Lc = this.L.ctx;
     const kick = f.a.kick;
     const [tP, tW, tG, tM] = [this.tPrism, this.tWater, this.tG, this.tM];
-    const flare = smoothstep(this.tEnd - 1.15, this.tEnd - 0.04, t) ** 1.6;
+    const flare = smoothstep(this.tEnd - 0.75, this.tEnd - 0.04, t) ** 1.6;
     const G = 1 - flare;
     const intro = smoothstep(0, 0.8, tau);
     const sP = smoothstep(tP, tP + 0.35, t) * (1 - smoothstep(tW - 0.05, tW + 0.08, t));

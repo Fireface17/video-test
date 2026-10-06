@@ -51,7 +51,7 @@ interface TLine { line: Line; rows: { pieces: Piece[]; y: number; size: number }
 const COMP = /* glsl */ `
 uniform sampler2D P, TL, TD;
 uniform vec2 C; uniform float Z, R; uniform vec2 F;
-uniform float expo, blur, textK, darkK, fade;
+uniform float expo, blur, textK, darkK, fade, warp, wT;
 uniform vec3 grade;
 const float ASP = ${AS.toFixed(6)};
 vec3 plateAt(vec2 s) {
@@ -70,6 +70,19 @@ void main() {
     col /= 10.0;
   } else col = plateAt(s);
   col *= grade * expo;
+  // the warp: thin gold streaks racing out from the centre (the build of the drop's last bars)
+  if (warp > 0.002) {
+    float rr = length(s), aa = atan(s.y, s.x);
+    float N = 240.0, u = (aa / 6.2831853 + 0.5) * N, cell = floor(u), fc = fract(u) - 0.5;
+    if (hash11(cell + 11.0) > 0.45) {
+      float sp = 0.7 + 1.6 * hash11(cell + 3.1);
+      float head = fract(hash11(cell * 1.7) + wT * sp * 0.55) * 2.6;
+      float len = 0.06 + 0.45 * warp * head;
+      float ad = abs(fc - (hash11(cell + 7.0) - 0.5) * 0.5) * 6.2831853 / N * rr;
+      float st = smoothstep(head - len, head, rr) * step(rr, head) * exp(-ad * ad / (0.0016 * 0.0016));
+      col += vec3(1.0, 0.82, 0.55) * st * warp * 1.6 * smoothstep(0.15, 0.5, rr) * (0.4 + 0.6 * hash11(cell + 5.0));
+    }
+  }
   // the darkness cut out behind the words: highlights compressed, then pulled down
   float m = clamp(texture(TD, vUv).r * 1.3, 0.0, 1.0) * darkK;
   col = col / (1.0 + col * 3.0 * m);
@@ -94,7 +107,7 @@ export default class CosmosDeck extends Scene {
     this.comp = new FSPass(COMP, {
       P: { value: null }, TL: { value: this.TL.texture }, TD: { value: this.TD.texture },
       C: { value: new THREE.Vector2() }, Z: { value: 1 }, R: { value: 0 }, F: { value: new THREE.Vector2(1, 1) },
-      expo: { value: 1 }, blur: { value: 0 }, textK: { value: 1 }, darkK: { value: 0.8 }, fade: { value: 1 }, grade: { value: new THREE.Vector3(1, 1, 1) },
+      expo: { value: 1 }, blur: { value: 0 }, warp: { value: 0 }, wT: { value: 0 }, textK: { value: 1 }, darkK: { value: 0.8 }, fade: { value: 1 }, grade: { value: new THREE.Vector3(1, 1, 1) },
     });
     this.tEnd = end;
 
@@ -266,6 +279,9 @@ export default class CosmosDeck extends Scene {
     U.textK!.value = txt ? 1.25 : 0;
     U.darkK!.value = txt ? 1 : 0;
     U.fade!.value = 1;
+    // the warp builds through the every-beat section and peaks in the roll
+    U.warp!.value = s.e <= 0.5 ? 0 : clamp((s.e - 0.6) / 0.4) * 0.75 + (s.e >= 1 ? 0.25 : 0);
+    U.wT!.value = t;
     this.comp.render(this.ctx.renderer, out);
     void u;
     const fi = frameIdx(t), sh = (2 + 6 * s.e) * slam;

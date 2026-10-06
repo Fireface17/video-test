@@ -73,7 +73,7 @@ vec3 starLayer(vec2 p, float cell, float dens, float seed, float blue) {
   float mag = 0.1 + 0.45 * m * m * m + 2.6 * pow(m, 16.0);
   float rad = 0.72 + 0.8 * pow(m, 6.0);
   float r2 = dot(d, d);
-  vec3 tint = starTint(clamp(hash12(id + seed * 7.7) * (0.75 + 0.45 * blue), 0.0, 1.0));
+  vec3 tint = mix(vec3(1.0, 0.95, 0.9), starTint(clamp(hash12(id + seed * 7.7) * (0.75 + 0.45 * blue), 0.0, 1.0)), 0.45 + 0.4 * m);
   return tint * mag * exp(-r2 / (rad * rad));
 }
 vec3 starfield(vec2 p, float dens, float seed, float blue) {
@@ -267,10 +267,13 @@ vec3 plate(vec2 p) {
   bg += starfield(p, 0.6, 7.0, 0.3) * 0.7;
   // the pillars: three columns with billowing edges and knobbly tops
   float n1 = fbv(p * 5.0 + 2.0, 6) - 0.5, n2 = fbv(p * 18.0 + 5.0, 5) - 0.5, n3 = fbv(p * 50.0 + 1.0, 4) - 0.5;
-  float d = pillar(p, -0.9, 0.14, 0.66, 0.19, 0.0);
-  d = smin(d, pillar(p, 0.08, -0.06, 0.08, 0.13, 2.0), 0.1);
-  d = smin(d, pillar(p, 0.98, -0.16, 0.36, 0.16, 4.0), 0.1);
-  d += n1 * 0.16 + n2 * 0.045 + n3 * 0.012;
+  float d = pillar(p, -0.9, 0.14, 0.66, 0.24, 0.0);
+  d = smin(d, pillar(p, 0.08, -0.06, 0.08, 0.17, 2.0), 0.1);
+  d = smin(d, pillar(p, 0.98, -0.16, 0.36, 0.2, 4.0), 0.1);
+  // small evaporating globules off the tops
+  d = min(d, length((p - vec2(-0.62, 0.86)) * vec2(1.0, 0.8)) - 0.035);
+  d = min(d, length((p - vec2(0.36, 0.3)) * vec2(1.0, 0.75)) - 0.025);
+  d += n1 * 0.21 + n2 * 0.06 + n3 * 0.014;
   float inside = smoothstep(PX * 1.2, -PX * 1.2, d);
   float tx = fbv(p * 12.0 + 3.0, 6);
   float sub = exp(min(d, 0.0) / 0.03);
@@ -576,7 +579,8 @@ vec3 plate(vec2 p) {
   vec3 col = vec3(0.0015, 0.003, 0.01);
   col += starfield(p, 0.6, 121.0, 0.6) * 0.75;
   float n = fbv(q * 5.0 + 3.0, 6);
-  float ring = exp(-pow((rho - 1.0) / 0.2, 2.0)) * (0.5 + 1.0 * n);
+  float rf = pow(ridge(q * 7.0 + 2.0, 6), 3.0);
+  float ring = exp(-pow((rho - 1.0) / 0.2, 2.0)) * (0.3 + 0.7 * n + 1.1 * rf);
   col += vec3(1.0, 0.36, 0.08) * ring * 1.1 + vec3(1.0, 0.7, 0.35) * exp(-pow((rho - 0.9) / 0.1, 2.0)) * n * 0.7;
   col += vec3(0.12, 0.55, 0.75) * exp(-rho * rho * 2.5) * 0.55 * (0.6 + 0.6 * fbv(q * 8.0, 4));
   // cometary knots on the inner edge: bright heads, tails pointing away from the star
