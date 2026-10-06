@@ -118,9 +118,22 @@ export default class PhosChorus extends Scene {
 
   private makeConstellation(l: Line) {
     const text = l.words.map((w) => w.w).join(' ');
+    // two rows: the words up to the middle of the line, then the rest, both centred
+    const k0 = l.words.slice(0, Math.ceil(l.words.length / 2)).map((w) => w.w).join(' ').length + 1;
     let st = strokeText(text, 'readable', 190);
-    st = strokeText(text, 'readable', Math.min(420, 190 * 1640 / st.width));
-    const ox = CX - st.width / 2, oy = CY + st.capHeight * 0.5;
+    const rowRange = (lo: number, hi: number) => {
+      let x0 = Infinity, x1 = -Infinity;
+      st.strokes.forEach((pts, si) => { const ci = st.charOf[si]!; if (ci >= lo && ci < hi) for (const p of pts) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); } });
+      return [x0, x1] as const;
+    };
+    const r1 = rowRange(0, k0), w1 = r1[1] - r1[0];
+    st = strokeText(text, 'readable', Math.min(300, 190 * 1500 / Math.max(1, w1)));
+    const R1 = rowRange(0, k0), R2 = rowRange(k0, 1e9), lead = st.capHeight * 1.9;
+    st.strokes.forEach((pts, si) => {
+      const second = st.charOf[si]! >= k0, dx = second ? -(R2[0] + R2[1]) / 2 : -(R1[0] + R1[1]) / 2, dy = second ? lead : 0;
+      for (const p of pts) { p.x += dx; p.y += dy; }
+    });
+    const ox = CX, oy = CY - lead * 0.5 + st.capHeight * 0.5;
     const stars: { x: number; y: number; s: number; len: number; stroke: number }[] = [];
     st.strokes.forEach((pts, si) => {
       let run = 0, last = 0;

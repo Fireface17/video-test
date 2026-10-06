@@ -129,28 +129,30 @@ void main() {
   float deep = 1.0 - smoothstep(0.08, 0.3, uZ);  // 1 when zoomed far in
 
   // ---- structure of the disk
-  float r = length(q), th = atan(q.y, q.x);
+  float r = length(q);
+  float arm = 0.0, edge = 0.0, disk = 0.0, bulge = 0.0, dens = 0.0, dust = 0.0, ab = 1.0, cl = 0.0, neb = 0.0, hue = 0.0;
+  if (r < 1.25) {
+  float th = atan(q.y, q.x);
   float warp = (fbm3(q * 2.3 + uSeed) - 0.5) * 0.9 * smoothstep(0.05, 0.6, r);
   float ph = th - 2.3 * log(r + 0.03) + uPat + warp * 0.6;
   float armA = pow(0.5 + 0.5 * cos(2.0 * ph), 2.5);
   float armB = pow(0.5 + 0.5 * cos(4.0 * ph + 1.7 + 2.0 * warp), 3.0) * smoothstep(0.25, 0.55, r);
-  float arm = clamp(armA + 0.35 * armB, 0.0, 1.0);
-  float edge = 1.0 - smoothstep(0.75, 1.2, r);
-  float disk = exp(-r * 2.4) * edge;
-  float bulge = 1.0 * exp(-r * 16.0) + 0.5 * exp(-r * r * 500.0);
-  float dens = (disk * (0.15 + 1.1 * arm) + bulge) * uGalaxy;
+  arm = clamp(armA + 0.35 * armB, 0.0, 1.0);
+  edge = 1.0 - smoothstep(0.75, 1.2, r);
+  disk = exp(-r * 2.4) * edge;
+  bulge = 1.0 * exp(-r * 16.0) + 0.5 * exp(-r * r * 500.0);
+  dens = (disk * (0.15 + 1.1 * arm) + bulge) * uGalaxy;
 
   // dust lanes along the inner edge of the arms
   float lane = pow(0.5 + 0.5 * cos(2.0 * ph - 0.9), 5.0);
   float dFine = fbm3(q * 20.0 + uSeed * 3.0);
-  float dust = lane * clamp((dFine - 0.22) * 2.6, 0.0, 1.0) * smoothstep(0.06, 0.22, r) * edge;
+  dust = lane * clamp((dFine - 0.22) * 2.6, 0.0, 1.0) * smoothstep(0.06, 0.22, r) * edge;
   if (deep > 0.0) dust *= mix(1.0, 0.25 + 1.5 * fbm5(q * 170.0 + 5.0), deep);
-  float ab = exp(-2.8 * dust);
+  ab = exp(-2.8 * dust);
 
   // clusters
-  vec2 cc = q / 0.11; vec2 cid = floor(cc);
-  float cl = 0.0;
-  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+  vec2 cc = q / 0.11; vec2 cid = floor(cc) + step(0.5, fract(cc)) - 1.0;
+  for (int j = 0; j <= 1; j++) for (int i = 0; i <= 1; i++) {
     vec2 g = cid + vec2(float(i), float(j));
     if (hash12(g + 5.0) < 0.8) continue;
     vec2 hh = hash22(g + 31.0);
@@ -163,10 +165,12 @@ void main() {
 
   // gas and nebulae
   float gas = fbm3(q * 7.0 + uSeed * 2.0);
-  float neb = pow(arm, 1.5) * smoothstep(0.45, 0.8, gas) * (1.0 - 0.85 * dust) * smoothstep(0.1, 0.3, r) * (1.0 - smoothstep(0.7, 1.0, r));
+  neb = pow(arm, 1.5) * smoothstep(0.45, 0.8, gas) * (1.0 - 0.85 * dust) * smoothstep(0.1, 0.3, r) * (1.0 - smoothstep(0.7, 1.0, r));
   if (deep > 0.0) neb *= mix(1.0, 0.3 + 1.5 * fbm5(q * 75.0 + 11.0), deep);
   neb *= uGalaxy;
-  float hue = noise(q * 3.0 + 9.0);
+  hue = noise(q * 3.0 + 9.0);
+
+  }
 
   vec3 diff = vec3(0.0);
   vec3 diskCol = mix(cCore * 0.8, cArm, smoothstep(0.04, 0.45, r));
@@ -185,7 +189,7 @@ void main() {
   // ---- stars in layers
   float sd = dens * ab * (1.0 + 10.0 * cl);
   vec3 stars = vec3(0.0);
-  for (int i = 0; i < 7; i++) {
+  if (sd > 0.002) for (int i = 0; i < 7; i++) {
     float cell = 0.3 * pow(0.3333, float(i));
     float cpx = cell / pxw;
     float w = smoothstep(7.0, 18.0, cpx) * (1.0 - smoothstep(400.0, 1000.0, cpx));
