@@ -15,7 +15,7 @@
 // star (the outro starts from stars).
 import * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../../engine/scene';
-import { clamp, smoothstep } from '../../engine/util';
+import { clamp, hash, smoothstep, frameIdx } from '../../engine/util';
 import { col } from '../lib/palette';
 import { armAt, clusterNear, galaxyMaterial, type Cfg, type Look } from './cosmos-shader';
 import { StarText } from './cosmos-text';
@@ -78,6 +78,7 @@ export default class Cosmos extends Scene {
     this.text = new StarText(ctx.lyrics, this.t0, this.t1, tint, hot);
     this.scene.add(this.text.group, this.motif.group);
     this.buildShots();
+    this.punchUp();
   }
 
   override async init() { await this.text.init(); }
@@ -138,6 +139,26 @@ export default class Cosmos extends Scene {
     }
   }
 
+  /** hard-hitting version of the list: flights are short whips into each downbeat; long holds get an extra reframe on a bar */
+  private punchUp() {
+    const bl = 1.58, out: Key[] = [];
+    this.keys.forEach((k, i) => {
+      const nx = this.keys[i + 1];
+      out.push({ ...k, fl: Math.min(k.fl, 0.55) });
+      if (nx && i < this.keys.length - 2 && nx.t - k.t > 1.9 * bl) {
+        const n = Math.floor((nx.t - k.t) / bl + 0.01);
+        for (let j = 1; j < n; j++) {
+          const u = j / n, odd = j % 2;
+          out.push({
+            t: k.t + (nx.t - k.t) * u, c: [k.c[0] + (nx.c[0] - k.c[0]) * 0.3 * u, k.c[1] + (nx.c[1] - k.c[1]) * 0.3 * u],
+            z: Math.sqrt(k.z * nx.z) * (odd ? 0.7 : 1.5), rot: k.rot + (odd ? 0.9 : -0.7) * j, tilt: k.tilt, fl: 0.4, dz: -0.12, dr: odd ? 0.15 : -0.15,
+          });
+        }
+      }
+    });
+    this.keys = out.filter((k, i) => i === 0 || k.t > out[i - 1]!.t + 0.2);
+  }
+
   /** the camera at song time t */
   private camAt(t: number): Cam {
     const ks = this.keys;
@@ -157,7 +178,8 @@ export default class Cosmos extends Scene {
     const dep = Math.max(a.t, b.t - b.fl);
     if (t < dep) return hold(a, (t - a.t) / Math.max(1e-3, dep - a.t));
     const A = hold(a, 1);
-    const e = quint((t - dep) / Math.max(1e-3, b.t - dep));
+    const x = clamp((t - dep) / Math.max(1e-3, b.t - dep));
+    const e = Math.pow(x, 2.4) * (1 - 0.0) ; // accelerates into the downbeat: a speed ramp into the hit
     const z = Math.exp(Math.log(A.z) + (Math.log(b.z) - Math.log(A.z)) * e);
     // the centre follows the zoom: straight at the target
     const g = Math.abs(Math.log(b.z / A.z)) > 0.05 ? (1 / z - 1 / A.z) / (1 / b.z - 1 / A.z) : e;
@@ -181,9 +203,9 @@ export default class Cosmos extends Scene {
     U.uT!.value = t;
     U.uKick!.value = kick;
     U.uPulseR!.value = age * 0.9;
-    U.uPulseA!.value = 0.8 * Math.pow(Math.max(0, 1 - age / 1.2), 1.5);
+    U.uPulseA!.value = 1.3 * Math.pow(Math.max(0, 1 - age / 1.2), 1.5);
     // exposure: the kicks breathe it; drop 1 whites out into the cut, drop 3 converges into one star
-    let expo = 1 + 0.18 * kick;
+    let expo = 1 + 0.35 * kick;
     if (this.n === 1) expo *= 1 + 2.2 * smoothstep(this.bar(7) + 0.45, this.t1, t);
     else { expo *= 1 - 0.3 * smoothstep(this.bar(14) + 1.0, this.bar(16) - 0.2, t); U.uGalaxy!.value = 1 - smoothstep(this.bar(14) + 1.2, this.bar(16) - 0.7, t); }
     U.uExpo!.value = expo;
@@ -213,11 +235,23 @@ export default class Cosmos extends Scene {
     U.uSun!.value.set(fx.sun[0], fx.sun[1], fx.sun[2], fx.sun[3]);
     U.uShock!.value.set(fx.shock[0], fx.shock[1], fx.shock[2], fx.shock[3]);
 
+    // punch: every kick pushes in and shakes; every new framing lands with a slam and a flash; snares strobe
+    let since = 9;
+    for (const k of this.keys) if (k.t <= t) since = t - k.t;
+    const slam = Math.exp(-since / 0.14);
+    const snare = Math.min(1, f.a.snare);
+    const fi = frameIdx(t), sh = 6 * kick + 10 * slam;
+    const post = {
+      zoom: 1 + 0.05 * kick + 0.07 * slam,
+      shake: [(hash(fi, 1) - 0.5) * 2 * sh, (hash(fi, 2) - 0.5) * 2 * sh] as [number, number],
+      flash: 0.1 * snare + 0.12 * slam + 0.05 * kick,
+    };
     const r = this.ctx.renderer;
     r.setRenderTarget(out);
     r.setClearColor(0x000000, 1);
     r.clear(true, true, true);
     r.render(this.scene, this.cam);
+    return post;
   }
 
   /** where the core of the galaxy is on screen (ndc) */

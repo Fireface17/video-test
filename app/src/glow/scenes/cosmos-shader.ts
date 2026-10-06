@@ -145,7 +145,7 @@ void main() {
 
   // dust lanes along the inner edge of the arms
   float lane = pow(0.5 + 0.5 * cos(2.0 * ph - 0.9), 5.0);
-  float dFine = fbm3(q * 20.0 + uSeed * 3.0);
+  float dFine = fbm3(rot2(q, -uT * 0.05 / (r + 0.25)) * 20.0 + uSeed * 3.0);
   dust = lane * clamp((dFine - 0.22) * 2.6, 0.0, 1.0) * smoothstep(0.06, 0.22, r) * edge;
   if (deep > 0.0) dust *= mix(1.0, 0.25 + 1.5 * fbm5(q * 170.0 + 5.0), deep);
   ab = exp(-2.8 * dust);
@@ -164,7 +164,7 @@ void main() {
   cl *= smoothstep(0.25, 0.6, arm) * edge * smoothstep(0.08, 0.2, r) * uGalaxy;
 
   // gas and nebulae
-  float gas = fbm3(q * 7.0 + uSeed * 2.0);
+  float gas = fbm3(rot2(q, uT * 0.03 / (r + 0.3)) * 7.0 + uSeed * 2.0);
   neb = pow(arm, 1.5) * smoothstep(0.45, 0.8, gas) * (1.0 - 0.85 * dust) * smoothstep(0.1, 0.3, r) * (1.0 - smoothstep(0.7, 1.0, r));
   if (deep > 0.0) neb *= mix(1.0, 0.3 + 1.5 * fbm5(q * 75.0 + 11.0), deep);
   neb *= uGalaxy;
@@ -176,13 +176,42 @@ void main() {
   vec3 diskCol = mix(cCore * 0.8, cArm, smoothstep(0.04, 0.45, r));
   diff += diskCol * dens * 0.5 * ab * mix(1.0, 0.22, deep);
   diff += mix(cNeb1, cNeb2, smoothstep(0.3, 0.7, hue)) * neb * 1.15;
-  diff += cHot * cl * 0.55 * ab;
+  diff += cHot * cl * 0.55 * ab * (0.7 + 0.5 * sin(uT * 5.0 + floor(q.x * 9.0) * 1.7 + floor(q.y * 9.0) * 2.3));
   diff += cCore * bulge * 0.6 * ab * uGalaxy * mix(1.0, 0.5, deep);
   // a wave of light running out along the arms on the beat
   float wv = exp(-pow((r - uPulseR) / 0.08, 2.0)) * uPulseA;
   diff += cArm * wv * (0.3 + arm) * disk * 2.2;
   diff += cUv * uKick * 0.05 * (neb + arm * disk + bulge * 0.2);
 
+  // nebulae in the shapes of the clip's motifs: a star sticker, and two stars joined by a thread of gas
+  {
+    vec2 a = q - vec2(-0.62, 0.42);
+    if (dot(a, a) < 0.1) {
+      float d = sdStar5(rot2(a, 0.3), 0.16, 0.45);
+      float f = 0.4 + 0.9 * fbm3(rot2(q, uT * 0.05) * 28.0 + 3.0);
+      diff += mix(cNeb1, cNeb2, 0.3) * (exp(-abs(d) / 0.010) * 1.1 + exp(-max(d, 0.0) / 0.05) * 0.25 * step(d, 0.0) + 0.25 * exp(-max(d, 0.0) / 0.04)) * f * (1.0 - 0.7 * deep) * uGalaxy;
+    }
+    vec2 b1 = q - vec2(0.5, -0.55), b2 = q - vec2(0.78, -0.36);
+    if (dot(b1, b1) < 0.3) {
+      float d1 = sdStar5(rot2(b1, 0.1), 0.08, 0.45), d2 = sdStar5(rot2(b2, -0.2), 0.06, 0.45);
+      vec2 ab2 = vec2(0.28, 0.19); float hh = clamp(dot(b1, ab2) / dot(ab2, ab2), 0.0, 1.0);
+      float d3 = length(b1 - ab2 * hh + vec2(0.0, 0.03 * sin(hh * 3.14159))) - 0.004;
+      float dd = min(min(d1, d2), d3);
+      float f = 0.4 + 0.9 * fbm3(rot2(q, -uT * 0.05) * 30.0 + 8.0);
+      diff += mix(cNeb2, cHot, 0.35) * (exp(-abs(dd) / 0.008) * 1.0 + 0.3 * exp(-max(dd, 0.0) / 0.035)) * f * (1.0 - 0.7 * deep) * uGalaxy;
+    }
+    // distant galaxies
+    for (int k = 0; k < 2; k++) {
+      vec2 c0 = k == 0 ? vec2(2.3, 0.95) : vec2(-2.4, -1.05);
+      vec2 g = q - c0;
+      if (dot(g, g) < 0.5) {
+        g = rot2(g, k == 0 ? 0.6 : -0.4); g.y /= (k == 0 ? 0.45 : 0.6);
+        float gr = length(g), gt = atan(g.y, g.x);
+        float ga = exp(-gr * 7.0) * (0.25 + 0.9 * pow(0.5 + 0.5 * cos(2.0 * (gt - 2.6 * log(gr + 0.04))), 2.0)) + 1.5 * exp(-gr * gr * 700.0);
+        diff += mix(cArm, cCore, 0.4) * ga * 0.5 * (1.0 - 0.8 * deep);
+      }
+    }
+  }
   diff = (1.0 - exp(-diff * 1.3)) * 1.35;
   vec3 col = cBg + diff;
 
