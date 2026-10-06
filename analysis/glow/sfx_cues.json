@@ -1,0 +1,2200 @@
+{
+ "song": "Glowing In The Dark (Fireface17)",
+ "duration": 227.734,
+ "key": "G# minor",
+ "bounds": {
+  "verse1": 18.419,
+  "pre1": 30.806,
+  "chorus1": 43.604,
+  "drop1": 70.379,
+  "drop1mid": 83.17,
+  "verse2": 95.158,
+  "pre2": 107.539,
+  "build2": 108.736,
+  "chorus2": 120.316,
+  "break2": 147.051,
+  "bridge": 159.002,
+  "chorus3": 171.694,
+  "drop3": 188.322,
+  "outro": 213.599,
+  "end": 227.734
+ },
+ "levels": "rel_db = level of the cue's loudest 400 ms relative to the music's RMS around it (sfx.py)",
+ "cues": [
+  {
+   "t": 0.0,
+   "kind": "room_tone",
+   "rel_db": -30,
+   "scene": "intro",
+   "note": "bedroom at night: air, a far city (fades out as the ceiling dissolves)",
+   "dur": 15.421,
+   "fade_in": 1.2,
+   "fade_out": 1.0,
+   "bus": "bed",
+   "send": "room"
+  },
+  {
+   "t": 0.026,
+   "kind": "sticker_tick",
+   "rel_db": -22,
+   "scene": "intro",
+   "note": "sticker 1 lights",
+   "seed": 0,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 0.426,
+   "kind": "sticker_tick",
+   "rel_db": -24,
+   "scene": "intro",
+   "note": "sticker 2 lights",
+   "seed": 1,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 0.826,
+   "kind": "sticker_tick",
+   "rel_db": -26,
+   "scene": "intro",
+   "note": "sticker 3 lights",
+   "seed": 2,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 1.226,
+   "kind": "sticker_tick",
+   "rel_db": -28,
+   "scene": "intro",
+   "note": "sticker 4 lights",
+   "seed": 3,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 4.5,
+   "kind": "car_pass_far",
+   "rel_db": -24,
+   "scene": "intro",
+   "note": "a car passes in the street below (its headlights sweep the ceiling)",
+   "dur": 4.0,
+   "dir": 1,
+   "bus": "bed",
+   "send": "room"
+  },
+  {
+   "t": 8.8263,
+   "kind": "sticker_peel",
+   "rel_db": -22,
+   "scene": "intro",
+   "note": "a lit sticker comes loose",
+   "dur": 0.35,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 9.971,
+   "kind": "swish",
+   "rel_db": -21,
+   "scene": "intro",
+   "note": "...and falls past the lens",
+   "dur": 0.5,
+   "dir": 1,
+   "bright": 0.6,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 10.55,
+   "kind": "car_pass_far",
+   "rel_db": -24,
+   "scene": "intro",
+   "note": "a car passes in the street below (its headlights sweep the ceiling)",
+   "dur": 3.5,
+   "dir": -1,
+   "bus": "bed",
+   "send": "room"
+  },
+  {
+   "t": 14.301,
+   "kind": "chime",
+   "rel_db": -20,
+   "scene": "intro",
+   "note": "the light joins their hands (gold flash)",
+   "notes": [
+    "G#5",
+    "D#6",
+    "B6"
+   ],
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 14.971,
+   "kind": "shimmer",
+   "rel_db": -24,
+   "scene": "intro",
+   "note": "the light writes the title above us",
+   "dur": 1.501,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 15.021,
+   "kind": "whoosh_up",
+   "rel_db": -17,
+   "scene": "intro",
+   "note": "lift-off: the ceiling dissolves, we climb into the sky",
+   "dur": 0.6,
+   "tail": 1.6,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 16.422,
+   "kind": "neon_on",
+   "rel_db": -21,
+   "scene": "intro",
+   "note": "FIREFACE17 switches on in neon (flickerOn, 4 flickers)",
+   "dur": 0.7,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 17.699,
+   "kind": "space_drone",
+   "rel_db": -26,
+   "scene": "intro",
+   "note": "out in space before the turn",
+   "dur": 1.2,
+   "fade_in": 0.4,
+   "fade_out": 0.3,
+   "root": "G#1",
+   "bus": "bed",
+   "send": "hall",
+   "t0": 16.022
+  },
+  {
+   "t": 18.419,
+   "kind": "car_bed",
+   "rel_db": -17,
+   "scene": "highway",
+   "note": "night drive: engine hum (G#), tyres on wet asphalt, rain; stalls with the blackout",
+   "dur": 12.387,
+   "stall": 30.456,
+   "inside": [
+    [
+     24.809,
+     26.011
+    ],
+    [
+     30.406,
+     30.806
+    ]
+   ],
+   "gauge": [
+    20.815,
+    21.613
+   ],
+   "bus": "bed",
+   "send": "room"
+  },
+  {
+   "t": 18.469,
+   "kind": "whoosh_dive",
+   "rel_db": -12,
+   "scene": "intro",
+   "note": "the camera swings over and dives at the night Earth into the highway (whip cut)",
+   "dur": 1.0,
+   "tail": 0.45,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 19.319,
+   "kind": "car_pass",
+   "rel_db": -19,
+   "scene": "highway",
+   "note": "drone chase: a car in the next lane goes by",
+   "dir": 1,
+   "dur": 2.2,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 20.935,
+   "kind": "dash_chime",
+   "rel_db": -20,
+   "scene": "highway",
+   "note": "macro on the fuel gauge: the low-fuel lamp",
+   "note_hz": 622.254,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 21.519,
+   "kind": "car_pass",
+   "rel_db": -21,
+   "scene": "highway",
+   "note": "the truck's marker lights pass",
+   "dir": -1,
+   "dur": 2.8,
+   "big": 1,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 24.809,
+   "kind": "wiper",
+   "rel_db": -24,
+   "scene": "highway",
+   "note": "wiper sweep (inside the car)",
+   "dur": 0.66,
+   "bus": "fx",
+   "send": "room",
+   "stuck": 0
+  },
+  {
+   "t": 26.06,
+   "kind": "wiper",
+   "rel_db": -24,
+   "scene": "highway",
+   "note": "wiper sweep (inside the car)",
+   "dur": 0.66,
+   "bus": "fx",
+   "send": "room",
+   "stuck": 0
+  },
+  {
+   "t": 27.29,
+   "kind": "led_buzz",
+   "rel_db": -20,
+   "scene": "highway",
+   "note": "\"sank\": the LED sun glitches; electric buzz until it dies",
+   "dur": 0.505,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 27.364,
+   "kind": "elec_zap",
+   "rel_db": -16,
+   "scene": "highway",
+   "note": "LED screen hit 1: tearing, dead blocks (kick)",
+   "seed": 0,
+   "big": 0,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 27.581,
+   "kind": "elec_zap",
+   "rel_db": -16,
+   "scene": "highway",
+   "note": "LED screen hit 2: tearing, dead blocks (kick)",
+   "seed": 1,
+   "big": 0,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 27.759,
+   "kind": "elec_zap",
+   "rel_db": -14,
+   "scene": "highway",
+   "note": "LED screen hit 3: tearing, dead blocks (kick)",
+   "seed": 2,
+   "big": 1,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 27.795,
+   "kind": "power_down",
+   "rel_db": -16,
+   "scene": "highway",
+   "note": "the screen dies module by module: discharge and power-down whine",
+   "dur": 1.3,
+   "root": "G#2",
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 30.436,
+   "kind": "blackout",
+   "rel_db": -12,
+   "scene": "highway",
+   "note": "the blackout catches up: breakers clunk (station LEDs, canopy, pumps, shop), mains die",
+   "taps": [
+    30.436,
+    30.456,
+    30.476,
+    30.496,
+    30.516
+   ],
+   "dur": 1.6,
+   "bus": "impact",
+   "send": "hall"
+  },
+  {
+   "t": 30.456,
+   "kind": "engine_stall",
+   "rel_db": -14,
+   "scene": "highway",
+   "note": "the engine stalls and the dash dies",
+   "dur": 1.1,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 30.806,
+   "kind": "rev_swell",
+   "rel_db": -20,
+   "scene": "highway",
+   "note": "the push into the dashboard star sticker, the last light in the car (hard cut)",
+   "dur": 0.29,
+   "bright": 1.0,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 30.975,
+   "kind": "sticker_tick",
+   "rel_db": -24,
+   "scene": "pre1",
+   "note": "sticker letters land: PUT",
+   "seed": 10,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 31.35,
+   "kind": "sticker_tick",
+   "rel_db": -25,
+   "scene": "pre1",
+   "note": "sticker letters land: YOUR",
+   "seed": 11,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 31.6,
+   "kind": "sticker_tick",
+   "rel_db": -26,
+   "scene": "pre1",
+   "note": "sticker letters land: HANDS",
+   "seed": 12,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 31.965,
+   "kind": "sticker_tick",
+   "rel_db": -27,
+   "scene": "pre1",
+   "note": "sticker letters land: UP",
+   "seed": 13,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 36.535,
+   "kind": "sticker_peel",
+   "rel_db": -21,
+   "scene": "pre1",
+   "note": "on \"let it all go\" the stickers peel off the letters and float up",
+   "dur": 1.1,
+   "many": 1,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 37.285,
+   "kind": "sparkle",
+   "rel_db": -25,
+   "scene": "pre1",
+   "note": "...floating up",
+   "dur": 1.4,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 39.77,
+   "kind": "gold_sweep",
+   "rel_db": -19,
+   "scene": "pre1",
+   "note": "\"into gold\": a front sweeps the frame, recharging everything gold",
+   "dur": 0.49,
+   "tail": 0.6,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 43.604,
+   "kind": "riser",
+   "rel_db": -15,
+   "scene": "pre1",
+   "note": "HERE WE GO: the slab is crushed into one white-hot point (riser into chorus 1)",
+   "dur": 0.534,
+   "root": "G#2",
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 43.604,
+   "kind": "rev_cymbal",
+   "rel_db": -17,
+   "scene": "pre1",
+   "note": "reverse cymbal into the ignition",
+   "dur": 1.6,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 43.604,
+   "kind": "impact",
+   "rel_db": -10,
+   "scene": "chorus1",
+   "note": "the pre-chorus's point DETONATES: shrapnel of stickers",
+   "size": 0.8,
+   "bus": "impact",
+   "send": "hall"
+  },
+  {
+   "t": 43.604,
+   "kind": "sparkle",
+   "rel_db": -22,
+   "scene": "chorus1",
+   "note": "sticker shrapnel",
+   "dur": 1.2,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 48.035,
+   "kind": "uv_flash",
+   "rel_db": -21,
+   "scene": "chorus1",
+   "note": "GLOWING: a UV flash charges everything",
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 49.46,
+   "kind": "swish",
+   "rel_db": -17,
+   "scene": "chorus1",
+   "note": "TAKE: whip pan to the right",
+   "dur": 0.28,
+   "dir": 1,
+   "bright": 0.8,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 51.195,
+   "kind": "shatter",
+   "rel_db": -16,
+   "scene": "chorus1",
+   "note": "BROKEN shatters on the downbeat (shards fly, the frame shakes)",
+   "size": 0.7,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 52.791,
+   "kind": "swirl",
+   "rel_db": -21,
+   "scene": "chorus1",
+   "note": "STAR: the shards burst into stickers that fly into the word",
+   "dur": 0.421,
+   "tail": 0.3,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 59.543,
+   "kind": "whoosh",
+   "rel_db": -17,
+   "scene": "chorus1",
+   "note": "DOWN: the world rolls 180 degrees",
+   "dur": 0.45,
+   "tail": 0.5,
+   "dir": -1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 60.525,
+   "kind": "thump",
+   "rel_db": -16,
+   "scene": "chorus1",
+   "note": "LOUD: full frame, hard shake",
+   "bus": "impact",
+   "send": "room"
+  },
+  {
+   "t": 61.45,
+   "kind": "charge_front",
+   "rel_db": -22,
+   "scene": "chorus1",
+   "note": "WAKE: a town of dead stickers wakes, a charge front runs out",
+   "dur": 0.9,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 70.375,
+   "kind": "switch_click",
+   "rel_db": -14,
+   "scene": "drop1a",
+   "note": "the light switch",
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 70.379,
+   "kind": "riser",
+   "rel_db": -17,
+   "scene": "chorus1",
+   "note": "IN THE DARK: everything collapses into the centre point (riser into drop 1)",
+   "dur": 0.689,
+   "root": "G#2",
+   "noise_only": 1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 70.379,
+   "kind": "implode",
+   "rel_db": -16,
+   "scene": "chorus1",
+   "note": "the last 0.35 s: everything is sucked into the point",
+   "dur": 0.5,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 70.379,
+   "kind": "impact",
+   "rel_db": -8,
+   "scene": "drop1a",
+   "note": "DROP 1: the light goes on (the switch, first hit)",
+   "size": 1.0,
+   "bus": "impact",
+   "send": "hall"
+  },
+  {
+   "t": 70.379,
+   "kind": "sub_drop",
+   "rel_db": -9,
+   "scene": "drop1a",
+   "note": "drop 1 sub drop",
+   "dur": 1.6,
+   "f0": 103.8262,
+   "f1": 51.9131,
+   "bus": "impact",
+   "send": "none"
+  },
+  {
+   "t": 80.173,
+   "kind": "sticker_peel",
+   "rel_db": -19,
+   "scene": "drop1a",
+   "note": "bar 7: the lamp is gone, the stickers come off the ceiling",
+   "dur": 1.2,
+   "many": 1,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 83.17,
+   "kind": "swirl",
+   "rel_db": -17,
+   "scene": "drop1a",
+   "note": "bar 8: they swirl into the two arms of the star-dust spiral",
+   "dur": 1.598,
+   "tail": 0.6,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 83.17,
+   "kind": "space_drone",
+   "rel_db": -22,
+   "scene": "cosmos1",
+   "note": "the galaxy: deep space drone (G# minor), wide",
+   "dur": 12.588,
+   "fade_in": 1.0,
+   "fade_out": 0.9,
+   "root": "G#1",
+   "bus": "bed",
+   "send": "hall",
+   "t0": 83.17
+  },
+  {
+   "t": 84.768,
+   "kind": "whoosh",
+   "rel_db": -19,
+   "scene": "cosmos1",
+   "note": "cosmos flight: punch into the core",
+   "dur": 0.55,
+   "tail": 0.5,
+   "dir": -1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 86.367,
+   "kind": "supernova",
+   "rel_db": -10,
+   "scene": "cosmos1",
+   "note": "the supernova (hardest hit of the drop's first half)",
+   "bus": "impact",
+   "send": "hall"
+  },
+  {
+   "t": 87.967,
+   "kind": "whoosh",
+   "rel_db": -19,
+   "scene": "cosmos1",
+   "note": "cosmos flight: fly down an arm into a cluster",
+   "dur": 0.55,
+   "tail": 0.5,
+   "dir": 1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 89.31,
+   "kind": "star_join",
+   "rel_db": -19,
+   "scene": "cosmos1",
+   "note": "\"take my hand\" 1: two stars curve in and join",
+   "dur": 1.5,
+   "seed": 0,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 89.568,
+   "kind": "whoosh",
+   "rel_db": -19,
+   "scene": "cosmos1",
+   "note": "cosmos flight: reframe on the bar",
+   "dur": 0.55,
+   "tail": 0.5,
+   "dir": -1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 91.168,
+   "kind": "whoosh",
+   "rel_db": -19,
+   "scene": "cosmos1",
+   "note": "cosmos flight: across a dust lane to the next cluster",
+   "dur": 0.55,
+   "tail": 0.5,
+   "dir": 1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 92.67,
+   "kind": "star_join",
+   "rel_db": -19,
+   "scene": "cosmos1",
+   "note": "\"take my hand\" 2: two stars curve in and join",
+   "dur": 1.5,
+   "seed": 1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 94.361,
+   "kind": "whoosh",
+   "rel_db": -19,
+   "scene": "cosmos1",
+   "note": "cosmos flight: dive into the core",
+   "dur": 0.55,
+   "tail": 0.5,
+   "dir": -1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 95.158,
+   "kind": "riser",
+   "rel_db": -19,
+   "scene": "cosmos1",
+   "note": "the dive into the white core, white-out for the cut to verse 2",
+   "dur": 0.347,
+   "root": "G#2",
+   "noise_only": 1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 105.65,
+   "kind": "bulb_on",
+   "rel_db": -23,
+   "scene": "verse2",
+   "note": "marquee of sticker bulbs: LIGHT switches on",
+   "seed": 0,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 106.195,
+   "kind": "bulb_on",
+   "rel_db": -23,
+   "scene": "verse2",
+   "note": "marquee of sticker bulbs: UP switches on",
+   "seed": 1,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 106.29,
+   "kind": "bulb_on",
+   "rel_db": -23,
+   "scene": "verse2",
+   "note": "marquee of sticker bulbs: THE switches on",
+   "seed": 2,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 106.55,
+   "kind": "bulb_on",
+   "rel_db": -23,
+   "scene": "verse2",
+   "note": "marquee of sticker bulbs: SPOT switches on",
+   "seed": 3,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 109.137,
+   "kind": "whoosh",
+   "rel_db": -17,
+   "scene": "pre2",
+   "note": "UP is thrown out of frame: the camera whips down",
+   "dur": 0.3,
+   "tail": 0.35,
+   "dir": -1,
+   "bright": 0.9,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 111.283,
+   "kind": "fall_whoosh",
+   "rel_db": -21,
+   "scene": "pre2",
+   "note": "(felt low): the echo falls through the floor, the camera dives after it",
+   "dur": 0.55,
+   "tail": 0.4,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 116.049,
+   "kind": "odometer",
+   "rel_db": -22,
+   "scene": "pre2",
+   "note": "PAIN -> GOLD: the letters roll like an odometer",
+   "dur": 0.44,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 116.489,
+   "kind": "gold_sweep",
+   "rel_db": -21,
+   "scene": "pre2",
+   "note": "GOLD lands with an inversion",
+   "dur": 0.25,
+   "tail": 0.5,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 119.21,
+   "kind": "whoosh",
+   "rel_db": -18,
+   "scene": "pre2",
+   "note": "HERE WE GO: the camera dives through the O",
+   "dur": 0.3,
+   "tail": 0.4,
+   "dir": 1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 120.316,
+   "kind": "riser",
+   "rel_db": -15,
+   "scene": "pre2",
+   "note": "the last dive hits the light inside the last O (riser into chorus 2)",
+   "dur": 1.046,
+   "root": "G#2",
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 120.316,
+   "kind": "rev_cymbal",
+   "rel_db": -17,
+   "scene": "pre2",
+   "note": "reverse cymbal into chorus 2",
+   "dur": 1.6,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 120.316,
+   "kind": "impact",
+   "rel_db": -11,
+   "scene": "chorus2",
+   "note": "chorus 2: violet light cut onto the scope",
+   "size": 0.6,
+   "bus": "impact",
+   "send": "hall"
+  },
+  {
+   "t": 120.316,
+   "kind": "crt_hum",
+   "rel_db": -27,
+   "scene": "chorus2",
+   "note": "analog CRT hum under the whole chorus",
+   "dur": 26.785,
+   "fade_in": 0.4,
+   "fade_out": 0.15,
+   "root": "G#2",
+   "bus": "bed",
+   "send": "room"
+  },
+  {
+   "t": 120.336,
+   "kind": "crt_on",
+   "rel_db": -17,
+   "scene": "chorus2",
+   "note": "POWER ON: the tube lights from a flat line (degauss thunk, the flyback whine)",
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 124.18,
+   "kind": "crt_zap",
+   "rel_db": -20,
+   "scene": "chorus2",
+   "note": "a Lissajous burst marks line 2",
+   "seed": 2,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 127.45,
+   "kind": "crt_zap",
+   "rel_db": -20,
+   "scene": "chorus2",
+   "note": "a Lissajous burst marks line 3",
+   "seed": 3,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 130.35,
+   "kind": "crt_zap",
+   "rel_db": -20,
+   "scene": "chorus2",
+   "note": "a Lissajous burst marks line 4",
+   "seed": 4,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 133.965,
+   "kind": "crt_zap",
+   "rel_db": -20,
+   "scene": "chorus2",
+   "note": "a Lissajous burst marks line 5",
+   "seed": 5,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 137.17,
+   "kind": "crt_zap",
+   "rel_db": -20,
+   "scene": "chorus2",
+   "note": "a Lissajous burst marks line 6",
+   "seed": 6,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 140.185,
+   "kind": "crt_zap",
+   "rel_db": -20,
+   "scene": "chorus2",
+   "note": "a Lissajous burst marks line 7",
+   "seed": 7,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 143.38,
+   "kind": "crt_zap",
+   "rel_db": -20,
+   "scene": "chorus2",
+   "note": "a Lissajous burst marks line 8",
+   "seed": 8,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 144.42,
+   "kind": "crt_zap",
+   "rel_db": -22,
+   "scene": "chorus2",
+   "note": "glo- freeze frame 1",
+   "seed": 20,
+   "short": 1,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 145.04,
+   "kind": "crt_zap",
+   "rel_db": -22,
+   "scene": "chorus2",
+   "note": "glo- freeze frame 2",
+   "seed": 21,
+   "short": 1,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 145.42,
+   "kind": "crt_zap",
+   "rel_db": -22,
+   "scene": "chorus2",
+   "note": "glo- freeze frame 3",
+   "seed": 22,
+   "short": 1,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 147.051,
+   "kind": "crt_off",
+   "rel_db": -15,
+   "scene": "break2",
+   "note": "the scope collapses like a tube (to a line, to a dot): CRT power-off",
+   "dur": 0.8,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 148.215,
+   "kind": "sticker_slap",
+   "rel_db": -19,
+   "scene": "break2",
+   "note": "the dot's afterglow becomes the first sticker",
+   "seed": 0,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 149.209,
+   "kind": "sticker_slap",
+   "rel_db": -22,
+   "scene": "break2",
+   "note": "stickers slapped on around it (hit 1)",
+   "seed": 1,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 149.412,
+   "kind": "sticker_slap",
+   "rel_db": -23,
+   "scene": "break2",
+   "note": "stickers slapped on around it (hit 2)",
+   "seed": 2,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 149.812,
+   "kind": "sticker_slap",
+   "rel_db": -24,
+   "scene": "break2",
+   "note": "stickers slapped on around it (hit 3)",
+   "seed": 3,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 156.431,
+   "kind": "power_down",
+   "rel_db": -21,
+   "scene": "break2",
+   "note": "the band drops out: the whole ceiling goes dead",
+   "dur": 0.5,
+   "root": "G#3",
+   "small": 1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 156.578,
+   "kind": "rev_swell",
+   "rel_db": -18,
+   "scene": "break2",
+   "note": "...recharged at once on the hit after it (into the blaze)",
+   "dur": 0.147,
+   "bright": 0.7,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 156.578,
+   "kind": "sparkle",
+   "rel_db": -19,
+   "scene": "break2",
+   "note": "the giant star blazes",
+   "dur": 1.4,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 156.895,
+   "kind": "sticker_peel",
+   "rel_db": -20,
+   "scene": "break2",
+   "note": "the star sticker shivers and lets go",
+   "dur": 0.35,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 159.002,
+   "kind": "fall_wind",
+   "rel_db": -21,
+   "scene": "bridge",
+   "note": "falling through space: wind and air rush, gathering speed toward the gold light",
+   "dur": 12.692,
+   "bus": "bed",
+   "send": "hall"
+  },
+  {
+   "t": 159.202,
+   "kind": "space_drone",
+   "rel_db": -27,
+   "scene": "bridge",
+   "note": "nebula sheets rushing up past us",
+   "dur": 12.492,
+   "fade_in": 1.5,
+   "fade_out": 0.3,
+   "root": "G#1",
+   "bus": "bed",
+   "send": "hall",
+   "t0": 159.002
+  },
+  {
+   "t": 159.352,
+   "kind": "fall_whoosh",
+   "rel_db": -18,
+   "scene": "break2",
+   "note": "...and falls: the bridge's fall takes over",
+   "dur": 2.157,
+   "tail": 0.6,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 162.885,
+   "kind": "swell",
+   "rel_db": -24,
+   "scene": "bridge",
+   "note": "the space turns every colour",
+   "dur": 0.8,
+   "tail": 1.2,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 164.03,
+   "kind": "swell",
+   "rel_db": -24,
+   "scene": "bridge",
+   "note": "the space turns deep blue",
+   "dur": 0.8,
+   "tail": 1.2,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 165.82,
+   "kind": "swell",
+   "rel_db": -24,
+   "scene": "bridge",
+   "note": "the space turns gold",
+   "dur": 0.8,
+   "tail": 1.2,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 171.694,
+   "kind": "riser",
+   "rel_db": -16,
+   "scene": "bridge",
+   "note": "the gold light below takes the frame (riser into chorus 3)",
+   "dur": 2.6,
+   "root": "G#2",
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 171.694,
+   "kind": "swell",
+   "rel_db": -18,
+   "scene": "chorus3",
+   "note": "chorus 3 opens on the bridge's gold",
+   "dur": 0.2,
+   "tail": 1.6,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 172.45,
+   "kind": "impact",
+   "rel_db": -11,
+   "scene": "chorus3",
+   "note": "BE: the drums come in and the gold SHATTERS",
+   "size": 0.7,
+   "bus": "impact",
+   "send": "hall"
+  },
+  {
+   "t": 172.45,
+   "kind": "shatter",
+   "rel_db": -14,
+   "scene": "chorus3",
+   "note": "a carpet of gold stickers blows out from the centre",
+   "size": 1.0,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 174.088,
+   "kind": "swish",
+   "rel_db": -22,
+   "scene": "chorus3",
+   "note": "the survivors fly back in (batch 1, on the snare)",
+   "dur": 0.3,
+   "dir": 1,
+   "bright": 0.5,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 174.264,
+   "kind": "swish",
+   "rel_db": -22,
+   "scene": "chorus3",
+   "note": "the survivors fly back in (batch 2, on the snare)",
+   "dur": 0.3,
+   "dir": -1,
+   "bright": 0.5,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 175.68,
+   "kind": "whoosh",
+   "rel_db": -21,
+   "scene": "chorus3",
+   "note": "flight through the line: the camera lands on GLOWING",
+   "dur": 0.35,
+   "tail": 0.3,
+   "dir": 1,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 176.44,
+   "kind": "whoosh",
+   "rel_db": -21,
+   "scene": "chorus3",
+   "note": "flight through the line: the camera lands on DARK,",
+   "dur": 0.35,
+   "tail": 0.3,
+   "dir": 1,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 177.765,
+   "kind": "whoosh",
+   "rel_db": -21,
+   "scene": "chorus3",
+   "note": "flight through the line: the camera lands on HAND",
+   "dur": 0.35,
+   "tail": 0.3,
+   "dir": 1,
+   "bus": "fx",
+   "send": "room"
+  },
+  {
+   "t": 178.806,
+   "kind": "shatter",
+   "rel_db": -16,
+   "scene": "chorus3",
+   "note": "BROKEN (made of stickers) is blown apart on the kick",
+   "size": 0.6,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 180.12,
+   "kind": "swirl",
+   "rel_db": -20,
+   "scene": "chorus3",
+   "note": "the pieces swirl (BECOMES)...",
+   "dur": 0.63,
+   "tail": 0.1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 180.12,
+   "kind": "chime",
+   "rel_db": -18,
+   "scene": "chorus3",
+   "note": "...and slam together into one GIANT STAR",
+   "notes": [
+    "G#4",
+    "D#5",
+    "B5",
+    "F#6"
+   ],
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 185.668,
+   "kind": "phos_hum",
+   "rel_db": -23,
+   "scene": "chorus3",
+   "note": "the band drops out: GLOWING glows on alone, fades to green afterglow",
+   "dur": 2.289,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 188.322,
+   "kind": "riser",
+   "rel_db": -15,
+   "scene": "chorus3",
+   "note": "IN THE DARK!: the last kick blows the frame to gold-white (riser into drop 3)",
+   "dur": 0.765,
+   "root": "G#2",
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 188.322,
+   "kind": "rev_cymbal",
+   "rel_db": -16,
+   "scene": "chorus3",
+   "note": "reverse cymbal into drop 3",
+   "dur": 1.8,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 188.322,
+   "kind": "impact",
+   "rel_db": -7,
+   "scene": "drop3",
+   "note": "DROP 3: the gold finale hits",
+   "size": 1.0,
+   "bus": "impact",
+   "send": "hall"
+  },
+  {
+   "t": 188.322,
+   "kind": "sub_drop",
+   "rel_db": -8,
+   "scene": "drop3",
+   "note": "drop 3 sub drop",
+   "dur": 1.8,
+   "f0": 103.8262,
+   "f1": 51.9131,
+   "bus": "impact",
+   "send": "none"
+  },
+  {
+   "t": 188.322,
+   "kind": "warp",
+   "rel_db": -18,
+   "scene": "drop3",
+   "note": "WARP: star tunnel, gold gas rushing past (kicks surge the speed)",
+   "dur": 3.166,
+   "inside": 0,
+   "kicks": [
+    [
+     187.871,
+     0.452
+    ],
+    [
+     188.288,
+     1.0
+    ],
+    [
+     188.51,
+     0.568
+    ],
+    [
+     188.691,
+     0.693
+    ],
+    [
+     189.19,
+     0.521
+    ],
+    [
+     189.493,
+     0.905
+    ],
+    [
+     190.088,
+     0.89
+    ],
+    [
+     190.284,
+     0.991
+    ],
+    [
+     190.477,
+     0.575
+    ],
+    [
+     191.471,
+     0.972
+    ]
+   ],
+   "bus": "bed",
+   "send": "hall"
+  },
+  {
+   "t": 191.488,
+   "kind": "nebula",
+   "rel_db": -21,
+   "scene": "drop3",
+   "note": "NEBULA: a corridor between cloud walls lit from within",
+   "dur": 6.327,
+   "kicks": [
+    [
+     191.471,
+     0.972
+    ],
+    [
+     191.624,
+     0.551
+    ],
+    [
+     191.802,
+     0.533
+    ],
+    [
+     192.069,
+     0.955
+    ],
+    [
+     192.483,
+     0.58
+    ],
+    [
+     192.654,
+     0.869
+    ],
+    [
+     192.87,
+     0.511
+    ],
+    [
+     193.065,
+     0.58
+    ],
+    [
+     193.253,
+     0.822
+    ],
+    [
+     193.414,
+     0.82
+    ],
+    [
+     194.041,
+     1.0
+    ],
+    [
+     194.44,
+     0.583
+    ],
+    [
+     194.638,
+     0.922
+    ],
+    [
+     194.997,
+     0.578
+    ],
+    [
+     195.172,
+     0.547
+    ],
+    [
+     195.354,
+     0.642
+    ],
+    [
+     195.621,
+     0.499
+    ],
+    [
+     195.823,
+     0.986
+    ],
+    [
+     196.412,
+     0.929
+    ],
+    [
+     196.611,
+     0.982
+    ],
+    [
+     197.204,
+     0.542
+    ],
+    [
+     197.483,
+     0.495
+    ],
+    [
+     197.645,
+     0.531
+    ],
+    [
+     197.8,
+     0.926
+    ]
+   ],
+   "bus": "bed",
+   "send": "hall"
+  },
+  {
+   "t": 191.588,
+   "kind": "whoosh",
+   "rel_db": -16,
+   "scene": "drop3",
+   "note": "IRIS: the warp's vanishing point opens onto the next world, we fly through",
+   "dur": 0.65,
+   "tail": 0.5,
+   "dir": 1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 193.111,
+   "kind": "swish",
+   "rel_db": -23,
+   "scene": "drop3",
+   "note": "downbeat roll whip in the nebula",
+   "dur": 0.36,
+   "dir": -1,
+   "bright": 0.3,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 194.693,
+   "kind": "swish",
+   "rel_db": -23,
+   "scene": "drop3",
+   "note": "downbeat roll whip in the nebula",
+   "dur": 0.36,
+   "dir": 1,
+   "bright": 0.3,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 196.274,
+   "kind": "swish",
+   "rel_db": -23,
+   "scene": "drop3",
+   "note": "downbeat roll whip in the nebula",
+   "dur": 0.36,
+   "dir": -1,
+   "bright": 0.3,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 197.815,
+   "kind": "hole_rumble",
+   "rel_db": -16,
+   "scene": "drop3",
+   "note": "BLACK HOLE: deep rumble, the disk flares on the kicks",
+   "dur": 4.737,
+   "fall": 0,
+   "root": "G#0",
+   "kicks": [
+    [
+     197.483,
+     0.495
+    ],
+    [
+     197.645,
+     0.531
+    ],
+    [
+     197.8,
+     0.926
+    ],
+    [
+     198.19,
+     0.5
+    ],
+    [
+     198.365,
+     0.944
+    ],
+    [
+     198.535,
+     0.518
+    ],
+    [
+     198.984,
+     0.848
+    ],
+    [
+     199.187,
+     0.518
+    ],
+    [
+     199.373,
+     0.878
+    ],
+    [
+     199.576,
+     0.979
+    ],
+    [
+     199.774,
+     0.985
+    ],
+    [
+     199.972,
+     1.0
+    ],
+    [
+     200.139,
+     0.419
+    ],
+    [
+     200.921,
+     0.987
+    ],
+    [
+     201.149,
+     0.599
+    ],
+    [
+     201.358,
+     0.837
+    ],
+    [
+     201.54,
+     0.578
+    ],
+    [
+     201.749,
+     0.915
+    ],
+    [
+     201.971,
+     0.538
+    ],
+    [
+     202.145,
+     0.929
+    ],
+    [
+     202.336,
+     0.516
+    ],
+    [
+     202.54,
+     0.879
+    ]
+   ],
+   "bus": "bed",
+   "send": "hall"
+  },
+  {
+   "t": 197.915,
+   "kind": "implode",
+   "rel_db": -15,
+   "scene": "drop3",
+   "note": "COLLAPSE: the nebula's light is pulled into one point, the black hole appears",
+   "dur": 0.75,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 197.915,
+   "kind": "thump",
+   "rel_db": -14,
+   "scene": "drop3",
+   "note": "...the hole's flash",
+   "deep": 1,
+   "bus": "impact",
+   "send": "hall"
+  },
+  {
+   "t": 199.395,
+   "kind": "whoosh",
+   "rel_db": -18,
+   "scene": "drop3",
+   "note": "the camera swoops around the hole to the next angle",
+   "dur": 0.45,
+   "tail": 0.5,
+   "dir": -1,
+   "low": 1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 200.974,
+   "kind": "whoosh",
+   "rel_db": -18,
+   "scene": "drop3",
+   "note": "the camera swoops around the hole to the next angle",
+   "dur": 0.45,
+   "tail": 0.5,
+   "dir": 1,
+   "low": 1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 202.552,
+   "kind": "warp",
+   "rel_db": -17,
+   "scene": "drop3",
+   "note": "WARP: star tunnel, gold gas rushing past (kicks surge the speed)",
+   "dur": 1.579,
+   "inside": 0,
+   "kicks": [
+    [
+     202.145,
+     0.929
+    ],
+    [
+     202.336,
+     0.516
+    ],
+    [
+     202.54,
+     0.879
+    ],
+    [
+     202.731,
+     0.492
+    ],
+    [
+     202.931,
+     0.902
+    ],
+    [
+     203.322,
+     1.0
+    ],
+    [
+     203.721,
+     0.933
+    ],
+    [
+     204.114,
+     0.925
+    ]
+   ],
+   "bus": "bed",
+   "send": "hall"
+  },
+  {
+   "t": 202.652,
+   "kind": "whoosh",
+   "rel_db": -16,
+   "scene": "drop3",
+   "note": "LENS: the hole's shadow grows over the frame; the next world is inside it",
+   "dur": 0.7,
+   "tail": 0.5,
+   "dir": -1,
+   "low": 1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 204.131,
+   "kind": "nebula",
+   "rel_db": -21,
+   "scene": "drop3",
+   "note": "NEBULA: a corridor between cloud walls lit from within",
+   "dur": 1.58,
+   "kicks": [
+    [
+     203.721,
+     0.933
+    ],
+    [
+     204.114,
+     0.925
+    ],
+    [
+     204.36,
+     0.503
+    ],
+    [
+     204.509,
+     0.87
+    ],
+    [
+     204.717,
+     0.496
+    ],
+    [
+     204.878,
+     0.917
+    ],
+    [
+     205.112,
+     0.455
+    ],
+    [
+     205.293,
+     0.869
+    ],
+    [
+     205.501,
+     0.589
+    ],
+    [
+     205.7,
+     0.891
+    ]
+   ],
+   "bus": "bed",
+   "send": "hall"
+  },
+  {
+   "t": 204.231,
+   "kind": "whoosh",
+   "rel_db": -16,
+   "scene": "drop3",
+   "note": "IRIS: the warp's vanishing point opens onto the next world, we fly through",
+   "dur": 0.6,
+   "tail": 0.5,
+   "dir": 1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 205.711,
+   "kind": "hole_rumble",
+   "rel_db": -16,
+   "scene": "drop3",
+   "note": "BLACK HOLE: deep rumble, the disk flares on the kicks",
+   "dur": 1.578,
+   "fall": 0,
+   "root": "G#0",
+   "kicks": [
+    [
+     205.293,
+     0.869
+    ],
+    [
+     205.501,
+     0.589
+    ],
+    [
+     205.7,
+     0.891
+    ],
+    [
+     205.888,
+     0.516
+    ],
+    [
+     206.092,
+     0.868
+    ],
+    [
+     206.299,
+     0.442
+    ],
+    [
+     206.477,
+     0.921
+    ],
+    [
+     206.682,
+     0.485
+    ],
+    [
+     206.882,
+     0.887
+    ],
+    [
+     207.077,
+     0.574
+    ],
+    [
+     207.271,
+     0.939
+    ]
+   ],
+   "bus": "bed",
+   "send": "hall"
+  },
+  {
+   "t": 205.811,
+   "kind": "implode",
+   "rel_db": -17,
+   "scene": "drop3",
+   "note": "COLLAPSE: the nebula's light is pulled into one point, the black hole appears",
+   "dur": 0.6,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 205.811,
+   "kind": "thump",
+   "rel_db": -14,
+   "scene": "drop3",
+   "note": "...the hole's flash",
+   "deep": 1,
+   "bus": "impact",
+   "send": "hall"
+  },
+  {
+   "t": 207.289,
+   "kind": "nebula",
+   "rel_db": -21,
+   "scene": "drop3",
+   "note": "NEBULA: a corridor between cloud walls lit from within",
+   "dur": 1.578,
+   "kicks": [
+    [
+     206.882,
+     0.887
+    ],
+    [
+     207.077,
+     0.574
+    ],
+    [
+     207.271,
+     0.939
+    ],
+    [
+     207.67,
+     0.854
+    ],
+    [
+     207.858,
+     0.548
+    ],
+    [
+     208.061,
+     0.959
+    ],
+    [
+     208.436,
+     0.976
+    ],
+    [
+     208.632,
+     0.557
+    ],
+    [
+     208.843,
+     0.917
+    ]
+   ],
+   "bus": "bed",
+   "send": "hall"
+  },
+  {
+   "t": 207.389,
+   "kind": "whoosh",
+   "rel_db": -16,
+   "scene": "drop3",
+   "note": "LENS: the hole's shadow grows over the frame; the next world is inside it",
+   "dur": 0.6,
+   "tail": 0.5,
+   "dir": -1,
+   "low": 1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 208.867,
+   "kind": "hole_rumble",
+   "rel_db": -16,
+   "scene": "drop3",
+   "note": "BLACK HOLE: deep rumble, the disk flares on the kicks",
+   "dur": 1.579,
+   "fall": 1,
+   "root": "G#0",
+   "kicks": [
+    [
+     208.436,
+     0.976
+    ],
+    [
+     208.632,
+     0.557
+    ],
+    [
+     208.843,
+     0.917
+    ],
+    [
+     209.043,
+     0.538
+    ],
+    [
+     209.236,
+     0.9
+    ],
+    [
+     209.42,
+     0.561
+    ],
+    [
+     209.632,
+     0.936
+    ],
+    [
+     209.813,
+     0.593
+    ],
+    [
+     210.027,
+     0.918
+    ],
+    [
+     210.216,
+     0.613
+    ],
+    [
+     210.42,
+     0.888
+    ]
+   ],
+   "bus": "bed",
+   "send": "hall"
+  },
+  {
+   "t": 208.967,
+   "kind": "implode",
+   "rel_db": -17,
+   "scene": "drop3",
+   "note": "COLLAPSE: the nebula's light is pulled into one point, the black hole appears",
+   "dur": 0.6,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 208.967,
+   "kind": "thump",
+   "rel_db": -14,
+   "scene": "drop3",
+   "note": "...the hole's flash",
+   "deep": 1,
+   "bus": "impact",
+   "send": "hall"
+  },
+  {
+   "t": 210.446,
+   "kind": "warp",
+   "rel_db": -17,
+   "scene": "drop3",
+   "note": "WARP: star tunnel, gold gas rushing past (kicks surge the speed)",
+   "dur": 0.9,
+   "inside": 1,
+   "kicks": [
+    [
+     210.027,
+     0.918
+    ],
+    [
+     210.216,
+     0.613
+    ],
+    [
+     210.42,
+     0.888
+    ],
+    [
+     210.823,
+     0.765
+    ],
+    [
+     211.194,
+     0.886
+    ]
+   ],
+   "bus": "bed",
+   "send": "hall"
+  },
+  {
+   "t": 210.446,
+   "kind": "fall_in",
+   "rel_db": -12,
+   "scene": "drop3",
+   "note": "we fall into the hole (spaghetti whoosh into the dark inside)",
+   "dur": 1.579,
+   "bus": "impact",
+   "send": "hall"
+  },
+  {
+   "t": 210.546,
+   "kind": "whoosh",
+   "rel_db": -16,
+   "scene": "drop3",
+   "note": "LENS: the hole's shadow grows over the frame; the next world is inside it",
+   "dur": 0.45,
+   "tail": 0.5,
+   "dir": -1,
+   "low": 1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 211.346,
+   "kind": "whoosh",
+   "rel_db": -15,
+   "scene": "drop3",
+   "note": "inside, a warp: its vanishing point opens onto the Earth",
+   "dur": 0.7,
+   "tail": 0.4,
+   "dir": 1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 211.346,
+   "kind": "earth_dive",
+   "rel_db": -15,
+   "scene": "drop3",
+   "note": "the dive at New York: wind, atmosphere, re-entry roar (lib/dive.ts altitude curve)",
+   "dur": 3.053,
+   "keys": [
+    [
+     211.346,
+     150
+    ],
+    [
+     212.024,
+     24
+    ],
+    [
+     212.904,
+     2.5
+    ],
+    [
+     213.599,
+     0.25
+    ],
+    [
+     214.399,
+     0.02
+    ]
+   ],
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 213.099,
+   "kind": "room_tone",
+   "rel_db": -28,
+   "scene": "outro",
+   "note": "back in bed: the room's air",
+   "dur": 14.635,
+   "fade_in": 1.6,
+   "fade_out": 0.3,
+   "bus": "bed",
+   "send": "room"
+  },
+  {
+   "t": 217.499,
+   "kind": "car_pass_far",
+   "rel_db": -25,
+   "scene": "outro",
+   "note": "a car passes below (headlights across the ceiling)",
+   "dur": 4.2,
+   "dir": 1,
+   "bus": "bed",
+   "send": "room"
+  },
+  {
+   "t": 219.57,
+   "kind": "chime",
+   "rel_db": -20,
+   "scene": "outro",
+   "note": "\"take my hand\": the light joins the two hands again",
+   "notes": [
+    "B4",
+    "F#5",
+    "D#6"
+   ],
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 226.199,
+   "kind": "sticker_tick",
+   "rel_db": -22,
+   "scene": "outro",
+   "note": "the two last stars merge and go out on the final downbeat",
+   "seed": 40,
+   "soft": 1,
+   "bus": "fx",
+   "send": "hall"
+  },
+  {
+   "t": 226.319,
+   "kind": "window_light",
+   "rel_db": -17,
+   "scene": "outro",
+   "note": "in the dark, a warm light comes on across the street: her lantern (click, warm hum)",
+   "dur": 1.415,
+   "bus": "fx",
+   "send": "room"
+  }
+ ]
+}
