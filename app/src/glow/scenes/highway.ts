@@ -532,7 +532,9 @@ export default class Highway extends Scene {
 
     // ---- the story clock: the screen, the blackout, our car's power
     const ss = this.screenState(t);
-    const scrVisible = t > T.l2 - 0.5;
+    // the screen exists from its line until it dies: two frames after its last flash it is gone for good (no dark slab,
+    // left standing over the road in the later shots)
+    const scrVisible = t > T.l2 - 0.5 && t < Math.min(T.l3, T.dead + 0.1);
     const scrCenter = new THREE.Vector3(0, SCR.y0 + SCR.h * 0.45, -this.scrU);
     const scrDir = scrCenter.clone().sub(pos).normalize();
     const dB = this.blackBehind(t);
