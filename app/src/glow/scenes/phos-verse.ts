@@ -3,14 +3,19 @@
 // sung word leaves faint afterimages all over the screen, the chatter of a crowded room. 2: "friends" and "we've"
 // cling (a bright tether, they slide together and hold their charge) while the rest of the room decays. 3: a night
 // sky of dust stars and a flat phosphor moon; an ink blot grows over it, putting the stars out one by one.
-// 4: in the dark a spotlight snaps on at "light", and recharges every ghost it touches; it opens to the pre-chorus.
+// 4: in the dark, LIGHT UP THE SPOT is a marquee of sticker bulbs, switched on word by word as sung, then running on
+// the beat into the pre-chorus (white-hot on its last beat).
 import type * as THREE from 'three';
 import { Scene, type Frame, type PostOverrides } from '../../engine/scene';
 import type { Line } from '../../engine/lyrics';
 import { clamp, ease, lerp, mulberry32, noise1, prog, smoothstep } from '../../engine/util';
 import { W, H } from '../../engine/gl';
 import { Glow2D, PHOS, VIOLET, WHITE, CYAN, lit, placeLine, setFont, FAM, drawSticker, starPath, type Placed } from './phos-b-kit';
-import { measure } from '../../engine/type';
+import { F, measure } from '../../engine/type';
+import type { AudioData } from '../../engine/audio';
+
+const GOLDISH: [number, number, number] = [255, 214, 120];
+const f_kick = (audio: AudioData, t: number) => audio.hit('kick', t, 0.09) * (1 - 0) ;
 
 interface Ghost { x: number; y: number; size: number; rot: number; t0: number; i0: number; tau: number; text: string; phase: number }
 interface Blot { x: number; y: number; r: number; t0: number; t1: number; seed: number }
@@ -108,7 +113,8 @@ export default class PhosVerse extends Scene {
     g.begin();
     const kick = f.a.kick;
     c.save();
-    { const zz = 1.015 + 0.05 * f.p + 0.006 * kick, rr = 0.012 * Math.sin(t * 0.5);
+    const punch4 = d.words.reduce((v, w) => Math.max(v, t >= w.start ? Math.pow(0.5, (t - w.start) / 0.07) : 0), 0) * (t > d.start - 0.1 ? 0.04 : 0);
+    { const zz = (1.015 + 0.05 * f.p + 0.006 * kick) * (1 + punch4), rr = 0.012 * Math.sin(t * 0.5);
       c.translate(W / 2 + 14 * Math.sin(t * 0.35), H / 2 + 9 * Math.cos(t * 0.3)); c.rotate(rr); c.scale(zz, zz); c.translate(-W / 2, -H / 2); }
 
     // --- galaxy dust: the afterglow of the previous scene, going out
@@ -177,7 +183,7 @@ export default class PhosVerse extends Scene {
       let I = gh.i0 * Math.exp(-age / gh.tau) * smoothstep(0, 0.1, age) * (0.78 + 0.22 * Math.sin(t * 3 + gh.phase)) * (1 - 0.9 * hide);
       I += 0.1 * kick * Math.exp(-age / gh.tau) * (1 - hide);
       const dd = Math.hypot(gh.x - SPOT.x, gh.y - SPOT.y);
-      const inside = 1 - smoothstep(spotR - 40, spotR + 10, dd);
+      const inside = spotR > 0 ? 1 - smoothstep(spotR - 40, spotR + 10, dd) : 0;
       I = Math.max(I, 0.2 * spotCharge * inside);
       if (t > d.start - 0.3 && Math.abs(gh.y - 540) < 210 && Math.abs(gh.x - 960) < 760) I *= 0.08;
       if (I < 0.006) continue;
@@ -232,7 +238,8 @@ export default class PhosVerse extends Scene {
   }
 
   private spotRadius(t: number) {
-    if (t < this.tSpot) return 0;
+    // (no spotlight any more: the marquee lights the spot; ghosts no longer recharge in a disc)
+    if (t < 1e9) return 0;
     const snap = ease.outBack(prog(t, this.tSpot, this.tSpot + 0.22));
     const open = ease.inCubic(prog(t, this.L[3]!.end, this.ctx.end + 0.2));
     return 430 * snap + 40 * prog(t, this.tSpot, this.ctx.end) + 900 * open;
@@ -296,37 +303,73 @@ export default class PhosVerse extends Scene {
     void fade; void rest;
   }
 
-  private drawLine4(c: CanvasRenderingContext2D, t: number, d: Line, R: number, charge: number) {
-    const start = d.start;
-    if (t < start - 0.05) return;
-    // before the light: "Then we'll" in the dark at a low charge
-    const hold = 1 - smoothstep(this.ctx.end - 0.4, this.ctx.end + 0.2, t) * 0;
-    if (R > 1) {
-      const gr = c.createRadialGradient(SPOT.x, SPOT.y, R * 0.55, SPOT.x, SPOT.y, R);
-      const wash = 0.13 + 0.07 * Math.sin(t * 2.4);
-      gr.addColorStop(0, lit(PHOS, wash)); gr.addColorStop(0.85, lit(PHOS, wash * 0.9)); gr.addColorStop(1, lit(PHOS, 0.02));
-      c.fillStyle = gr;
-      c.beginPath(); c.arc(SPOT.x, SPOT.y, R, 0, Math.PI * 2); c.fill();
-      // hard rim and a ring of recharge running outwards
-      const ringAge = t - this.tSpot;
-      c.lineWidth = 4; c.strokeStyle = lit(PHOS, 0.9 * (1 - 0.5 * smoothstep(0.3, 2, ringAge)), 0.5);
-      c.beginPath(); c.arc(SPOT.x, SPOT.y, Math.min(R, 440 + 40 * prog(t, this.tSpot, this.ctx.end)), 0, Math.PI * 2); c.stroke();
-      if (ringAge < 1.2) {
-        const rr = 440 + ringAge * 1500;
-        c.lineWidth = 7 * (1 - ringAge / 1.2); c.strokeStyle = lit(VIOLET, 0.8 * (1 - ringAge / 1.2), 0.3);
-        c.beginPath(); c.arc(SPOT.x, SPOT.y, rr, 0, Math.PI * 2); c.stroke();
+  /** the marquee: LIGHT UP THE SPOT spelled in a regular grid of sticker bulbs (sampled once) */
+  private bulbs: { x: number; y: number; wi: number; u: number; g: number }[] = [];
+  private makeBulbs(d: Line) {
+    const fam = F.archivo(100, 900), size = 250, step = 19;
+    const rows: [number[], number][] = [[[2, 3], 560], [[4, 5], 860]];
+    let gu = 0;
+    for (const [idx, y] of rows) {
+      const texts = idx.map((i) => d.words[i]!.w.toUpperCase().replace(/[,.]/g, ''));
+      const ws = texts.map((t) => measure(t, fam, size)), gap = size * 0.3, tw = ws.reduce((a, b) => a + b, 0) + gap * (ws.length - 1);
+      let x0 = 960 - tw / 2;
+      idx.forEach((wi, k) => {
+        const cw = Math.ceil(ws[k]!) + 4, ch = Math.ceil(size * 1.0);
+        const cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+        const cc = cv.getContext('2d', { willReadFrequently: true })!;
+        cc.font = `${size}px "${fam}"`; cc.fillStyle = '#fff'; cc.textBaseline = 'alphabetic'; cc.fillText(texts[k]!, 2, ch - 4);
+        const data = cc.getImageData(0, 0, cw, ch).data;
+        for (let yy = step / 2; yy < ch; yy += step) for (let xx = step / 2; xx < cw; xx += step) {
+          if (data[(Math.round(yy) * cw + Math.round(xx)) * 4 + 3]! > 140)
+            this.bulbs.push({ x: x0 + xx - 2, y: y - (ch - 4) + yy, wi, u: xx / cw, g: (x0 + xx) / W + gu });
+        }
+        x0 += ws[k]! + gap;
+      });
+      gu += 0.5;
+    }
+  }
+
+  /**
+   * "Then we'll light up the spot": no spotlight. THEN WE'LL is said low in the dark; the rest of the line is a marquee
+   * of sticker bulbs, dead until it is sung: each word switches on in a fast chase on its onset. After the line the
+   * lights RUN (a marquee chase on the beat, faster into the build, every kick a hit of the whole sign), and in the
+   * last beat they go white-hot into the pre-chorus.
+   */
+  private drawLine4(c: CanvasRenderingContext2D, t: number, d: Line, _R: number, _charge: number) {
+    if (t < d.start - 0.05) return;
+    if (!this.bulbs.length) this.makeBulbs(d);
+    const { audio, end } = this.ctx;
+    // THEN WE'LL: small, low charge
+    const fam = F.archivo(100, 700);
+    const head = d.words.slice(0, 2);
+    const ht = head.map((w) => w.w.toUpperCase()).join(' ');
+    const age0 = t - head[0]!.start;
+    c.save(); setFont(c, 84, fam);
+    c.fillStyle = lit(WHITE, 0.55 + 0.35 * Math.exp(-age0 / 0.3), 0.6 * Math.exp(-age0 / 0.1));
+    c.fillText(ht, 960 - measure(ht, fam, 84) / 2, 330);
+    c.restore();
+    const lineEnd = d.words[d.words.length - 1]!.end;
+    const run = prog(t, lineEnd - 0.1, lineEnd + 0.25);
+    const beat = audio.beatAt(t), speed = t > end - 0.85 ? 2 : 1;
+    const kick = f_kick(audio, t);
+    const hot = ease.inQuad(prog(t, end - 0.75, end + 0.1));
+    for (const b of this.bulbs) {
+      const w = d.words[b.wi]!, tOn = w.start + 0.17 * b.u;
+      let I = 0.025, h = 0;
+      if (t >= tOn) {
+        const a = t - tOn;
+        I = 1; h = 0.25 + 0.75 * Math.pow(0.5, a / 0.06);
+        if (run > 0) {
+          const ch = 0.5 + 0.5 * Math.cos(Math.PI * 2 * (b.g * 6 - beat * speed));
+          I = lerp(I, 0.35 + 0.65 * Math.pow(ch, 2), run);
+          h = lerp(h, 0.9 * Math.pow(ch, 4), run);
+        }
+        I = Math.min(1, I + 0.35 * kick); h = Math.max(h, 0.4 * kick, hot);
+        I = lerp(I, 1, hot);
       }
-      if (ringAge < 0.2) { c.fillStyle = lit(WHITE, 0.4 * (1 - ringAge / 0.2), 0.5); c.fillRect(0, 0, W, H); }
+      starPath(c, b.x, b.y, I > 0.1 ? 9.4 : 7, 0.46, 0);
+      c.fillStyle = lit(b.wi >= 4 ? GOLDISH : PHOS, I, h);
+      c.fill();
     }
-    for (const p of this.l4) {
-      const age = t - p.word.start;
-      if (age < 0) continue;
-      const lit0 = p.word.start >= this.tSpot - 0.01 ? 1 : 0.42 + 0.58 * charge;
-      const I = lit0 * (0.78 + 0.22 * Math.exp(-age / 0.5)) * hold;
-      this.word(c, p, Math.min(1, I), 0.6 * Math.exp(-age / 0.14) + (charge * 0.15), PHOS);
-    }
-    // the light's star: a sticker that wakes at the spot's centre, small and charged
-    const sa = smoothstep(this.tSpot + 0.2, this.tSpot + 0.7, t) * (1 - smoothstep(this.ctx.end - 0.7, this.ctx.end - 0.2, t));
-    if (sa > 0.01) drawSticker(c, SPOT.x, 880, 30 * clamp(sa + 0.001, 0, 1), 0.8 * sa);
   }
 }
