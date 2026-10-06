@@ -32,6 +32,7 @@ export default class PhosFinal extends Scene {
   consLinks: [number, number][] = [];
   wall: { w: string; x: number; y: number; gi: number }[] = [];
   wallFont = '';
+  t = 0;
   bg: { x: number; y: number; r: number; ph: number; k: number; col: [number, number, number] }[] = [];
 
   override async init() {
@@ -139,11 +140,18 @@ export default class PhosFinal extends Scene {
 
   /** One word of Tilt Neon in light. `heat` 1 = just struck (white-hot), decays to the held glow. */
   drawWord(c: CanvasRenderingContext2D, wr: WordRun, ox: number, oy: number, size: number, heat: number, col: [number, number, number], a: number, fn?: (gi: number) => { dx: number; dy: number; rot: number; s: number }) {
+    void 0;
     const sc = size / 100;
     const hot = mix3(col, WHITE, 0.25 + 0.7 * heat);
+    const sage = this.t - wr.w.start;
+    const slam = sage < 0 ? 0 : 1 + 1.5 * Math.exp(-sage / 0.09) - 0 * a;
+    if (sage >= 0 && sage < 0.25) a = a * clamp(sage / 0.04);
+    const slamX = sage >= 0 ? 1 : 1;
+    void slamX;
     wr.g.forEach((g, gi) => {
-      const o = fn ? fn(gi) : { dx: 0, dy: 0, rot: 0, s: 1 };
+      let o = fn ? fn(gi) : { dx: 0, dy: 0, rot: 0, s: 1 };
       if (o.s <= 0.001) return;
+      o = { ...o, s: o.s * (slam || 1) };
       c.save();
       c.translate(ox + wr.x + (g.x + g.w / 2) * sc + o.dx, oy + o.dy);
       c.rotate(o.rot); c.scale(sc * o.s, sc * o.s); c.translate(-g.w / 2, 0);
@@ -176,11 +184,22 @@ export default class PhosFinal extends Scene {
     const fs = Math.exp(-lt / 0.45), fe = smoothstep(this.ctx.end - 0.52, this.ctx.end - 0.02, t) ** 1.4;
     const flare = Math.max(fs * smoothstep(-0.02, 0.0, 1), fe);
     const G = 1 - flare;
-    const kick = f.a.kick;
+    const kick = f.a.kick, snare = f.a.snare;
+    this.t = t;
+    const L4s = Ls[4]!;
+    const build = smoothstep(L4s.start, L4s.words[5]!.start, t);
+    const bar = Math.floor(f.bar);
+    const FR: [number, number, number, number][] = [[1, 0, 0, 0], [1.1, -50, 24, 0.035], [0.94, 36, -22, -0.03], [1.16, 10, 36, -0.02], [1.04, -30, -30, 0.045]];
+    const fr = FR[((bar % FR.length) + FR.length) % FR.length]!;
+    const drift = 1 + 0.07 * f.barPhase + 0.03 * build;
+    const camS = fr[0] * drift * (1 + (0.05 + 0.05 * build) * kick);
+    const shk = (3 + 9 * build) * kick;
+    const camX = fr[1] * (1 - f.barPhase * 0.5) + Math.sin(t * 43) * shk, camY = fr[2] + Math.cos(t * 39) * shk, camR = fr[3] * (1 - f.barPhase) + 0.01 * Math.sin(t * 0.9);
     const win = (i: number) => smoothstep(Ls[i]!.start - 0.4, Ls[i]!.start - 0.05, t) * (i + 1 < Ls.length ? 1 - smoothstep(Ls[i + 1]!.start - 0.35, Ls[i + 1]!.start - 0.02, t) : 1);
     const heatOf = (w: Word) => (t < w.start ? 0 : Math.exp(-(t - w.start) / 0.55));
     const goldOf = (w: Word): [number, number, number] => mix3(PHOS, GOLD, smoothstep(w.start, w.start + 0.6, t));
 
+    for (const c of [P, Lc]) { c.save(); c.translate(CX + camX, CY + camY); c.rotate(camR); c.scale(camS, camS); c.translate(-CX, -CY); }
     // --- night sky of gold dust, a UV breath on every kick
     Lc.save();
     Lc.globalCompositeOperation = 'lighter';
@@ -215,7 +234,7 @@ export default class PhosFinal extends Scene {
             const mk = (tt: number) => (gi: number) => {
               const ph = au.beatAt(tt) + gi * 0.07 + gwi * 0.11;
               const hop = Math.pow(Math.abs(Math.sin(Math.PI * ph)), 1.7);
-              return { dx: Math.sin(TAU * ph * 0.5) * 9 * big, dy: -hop * 52 * big, rot: Math.sin(TAU * ph * 0.5 + gi * 0.9) * 0.15 * big, s: pop * (1 + 0.1 * hop * big) };
+              return { dx: Math.sin(TAU * ph * 0.5) * 9 * big, dy: -hop * 52 * big, rot: Math.sin(TAU * ph * 0.5 + gi * 0.9) * 0.15 * big, s: 1 + 0.1 * hop * big };
             };
             for (let k = 3; k >= 1; k--) this.drawWord(Lc, wr, ox, row.y, row.size, 0, mix3(PHOS, GOLD, 0.25), 0.2 * (1 - k / 4), mk(t - k * 0.07));
             this.drawWord(Lc, wr, ox, row.y, row.size, heatOf(w), GOLD, 1, mk(t));
@@ -420,19 +439,44 @@ export default class PhosFinal extends Scene {
             const pop = ease.outBack(prog(t, wr.w.start, wr.w.start + 0.3));
             const big = wr.w === L4.words[5] ? 1 + 0.12 * Math.exp(-(t - tD) / 0.4) : 1;
             const live = wr.w === L4.words[2] ? 1 : 0;
-            this.drawWord(Lc, wr, ox, row.y, row.size * big, heatOf(wr.w) + live * 0.25 * (0.5 + 0.5 * Math.sin(t * 6)), GOLD, a, (gi) => ({ dx: 0, dy: live * Math.sin(t * 5 - gi * 0.8) * 9, rot: live * Math.sin(t * 4 + gi) * 0.03, s: pop }));
+            this.drawWord(Lc, wr, ox, row.y, row.size * big, heatOf(wr.w) + live * 0.25 * (0.5 + 0.5 * Math.sin(t * 6)), GOLD, a, (gi) => ({ dx: 0, dy: live * Math.sin(t * 5 - gi * 0.8) * 9, rot: live * Math.sin(t * 4 + gi) * 0.03, s: 1 }));
           });
         });
         Lc.restore();
       }
     }
 
+    // gold particles burst on every beat (bigger on downbeats), strobes on snares, a build into the flare
+    {
+      const au = this.ctx.audio;
+      Lc.save(); Lc.globalCompositeOperation = 'lighter'; Lc.globalAlpha = G;
+      const b0 = Math.floor(au.beatAt(t));
+      for (let k = 0; k < 3; k++) {
+        const bi = b0 - k, tb = au.timeOfBeat(bi), age = t - tb;
+        if (tb < this.ctx.start || age > 1.1) continue;
+        const rr = mulberry32(bi * 97 + 3);
+        const down = bi % 4 === 0 ? 1 : 0;
+        const n = 22 + 26 * down + ((60 * build) | 0);
+        const ox = CX + (rr() - 0.5) * 900, oy = CY + (rr() - 0.5) * 360;
+        for (let i = 0; i < n; i++) {
+          const ang = rr() * TAU, v = 250 + rr() * 1100 * (1 + 0.6 * down), sz = 2 + rr() * 6;
+          const d = 1 - Math.exp(-age * 3.2);
+          const x = ox + Math.cos(ang) * v * d * 0.45, y = oy + Math.sin(ang) * v * d * 0.45 + 260 * age * age;
+          Lc.fillStyle = rgba(rr() > 0.5 ? GOLD : [255, 236, 170], 0.9 * Math.exp(-age / 0.5));
+          Lc.beginPath(); Lc.arc(x, y, sz * (1 - age * 0.5), 0, TAU); Lc.fill();
+        }
+      }
+      // strobe on the snare, faster and harder as it builds
+      Lc.fillStyle = rgba([255, 226, 150], 1); Lc.globalAlpha = G * (0.18 + 0.25 * build) * snare; Lc.fillRect(-400, -400, 2720, 1880);
+      Lc.restore();
+    }
+    for (const c of [P, Lc]) c.restore();
     // gold: the bridge's last frame, draining; and the flare into the drop
     if (flare > 0) { Lc.save(); Lc.globalCompositeOperation = 'lighter'; Lc.globalAlpha = 1; Lc.fillStyle = rgba(GOLD, flare); Lc.fillRect(0, 0, 1920, 1080); Lc.restore(); }
 
     clearRT(renderer, out, [0, 0, 0], 1);
     comp.draw(renderer, this.P.upload(), out, { mode: 'normal', opacity: 1 - flare });
     comp.draw(renderer, this.L.upload(), out, { mode: 'add', opacity: FLARE_OPACITY });
-    return { bloom: 0.85, vignette: 0.35, ca: 0.8, grain: 0.05 };
+    return { bloom: 0.85 + 0.4 * build, vignette: 0.35, ca: 0.8 + 3 * snare + 2 * build * kick, grain: 0.05, zoom: 1 + 0.012 * kick, flash: 0.1 * snare + 0.12 * Math.max(0, kick - 0.7) * build };
   }
 }

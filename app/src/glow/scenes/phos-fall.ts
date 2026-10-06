@@ -239,7 +239,7 @@ export default class PhosFall extends Scene {
       const rise = prog(t, tG, tG + 2.2, ease.outCubic);
       const topY = lerp(1500, -250, rise) * (1 - molten) + -400 * molten;
       const gg = Lc.createLinearGradient(0, topY, 0, topY + 900);
-      gg.addColorStop(0, rgba(GOLD, 0)); gg.addColorStop(0.35, rgba(GOLD, 0.55)); gg.addColorStop(1, rgba([255, 230, 150], 0.9));
+      gg.addColorStop(0, rgba(GOLD, 0)); gg.addColorStop(0.35, rgba(GOLD, 0.4)); gg.addColorStop(1, rgba([255, 214, 120], 0.6));
       Lc.fillStyle = gg; Lc.fillRect(-400, topY, 2720, 2400);
       // a wavy bright surface line
       Lc.beginPath();
@@ -249,7 +249,7 @@ export default class PhosFall extends Scene {
     if (molten > 0) {
       for (let i = 0; i < 7; i++) {
         const bx = CX + Math.sin(t * 0.7 + i * 1.9) * 720, by = CY + Math.cos(t * 0.9 + i * 2.7) * 380;
-        radial(Lc, bx, by, 520 + 120 * Math.sin(t + i), i % 2 ? GOLD : [255, 150, 40], 0.5 * molten);
+        radial(Lc, bx, by, 520 + 120 * Math.sin(t + i), i % 2 ? GOLD : [255, 150, 40], 0.26 * molten);
       }
     }
     // the prism
