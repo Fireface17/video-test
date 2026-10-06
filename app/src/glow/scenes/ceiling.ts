@@ -87,7 +87,11 @@ function plaster(): THREE.Texture {
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
     const i = y * n + x;
     // fine grain + soft blotches (sprayed plaster)
-    const b = noise1(x * 0.02 + noise1(y * 0.02, 3) * 2, 5) * 10 + noise1(y * 0.013, 9) * 6;
+    // (made seamless — blended with its copies a tile away — because the ceiling repeats it three times: the seams
+    //  showed as straight strips down the ceiling)
+    const B = (X: number, Y: number) => noise1(X * 0.02 + noise1(Y * 0.02, 3) * 2, 5) * 10 + noise1(Y * 0.013, 9) * 6;
+    const wx = x / n, wy = y / n;
+    const b = (B(x, y) * (1 - wx) + B(x - n, y) * wx) * (1 - wy) + (B(x, y - n) * (1 - wx) + B(x - n, y - n) * wx) * wy;
     const v = 196 + b + (rnd() + rnd() + rnd() - 1.5) * 16;
     img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = clamp(v, 0, 255);
     img.data[i * 4 + 3] = 255;
@@ -611,6 +615,9 @@ export default class Ceiling extends Scene {
     cam.far = 500;
     cam.updateProjectionMatrix();
     S.render(this.ctx.renderer, out);
-    return { bloom: 0.95, bloomThreshold: 0.75, bloomRadius: 0.85, halation: 0.14, vignette: 0.5, grain: 0.05, ca: 0.5 };
+    // (the engine applies this scene's post to the whole dissolve from drop 3: at first it is drop 3's own, easing
+    //  to the outro's, or the picture jumps on the dissolve's first frame)
+    const h = 1 - smoothstep(this.ctx.start - 0.7, this.ctx.start + 1.0, t), m = (a: number, b: number) => a + (b - a) * h;
+    return { bloom: m(0.95, 0.7), bloomThreshold: m(0.75, 0.85), bloomRadius: m(0.85, 0.75), halation: m(0.14, 0.25), vignette: m(0.5, 0.35), grain: m(0.05, 0.055), ca: m(0.5, 0.8) };
   }
 }
