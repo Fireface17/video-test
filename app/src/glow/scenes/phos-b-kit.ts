@@ -41,9 +41,7 @@ export class Glow2D {
     this.glow.clear('#000');
     g.globalCompositeOperation = 'lighter';
     const b = o.blur ?? 1;
-    g.filter = `blur(${5 * b}px)`;
-    g.drawImage(this.main.canvas, 0, 0, W / 2, H / 2);
-    g.filter = `blur(${20 * b}px)`;
+    g.filter = `blur(${11 * b}px)`;
     g.drawImage(this.main.canvas, 0, 0, W / 2, H / 2);
     g.filter = 'none';
     this.main.upload(); this.glow.upload();
