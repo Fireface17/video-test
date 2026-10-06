@@ -174,7 +174,7 @@ void main() {
 
   vec3 diff = vec3(0.0);
   vec3 diskCol = mix(cCore * 0.8, cArm, smoothstep(0.04, 0.45, r));
-  diff += diskCol * dens * 0.5 * ab * mix(1.0, 0.4, deep);
+  diff += diskCol * dens * 0.5 * ab * mix(1.0, 0.22, deep);
   diff += mix(cNeb1, cNeb2, smoothstep(0.3, 0.7, hue)) * neb * 1.15;
   diff += cHot * cl * 0.55 * ab;
   diff += cCore * bulge * 0.6 * ab * uGalaxy * mix(1.0, 0.5, deep);
