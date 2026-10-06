@@ -57,8 +57,8 @@ export function makeTimeline(ly: Lyrics, au: AudioData): TimelineEntry[] {
     E('intro', 'ceiling', 0, b.verse1, { params: { mode: 'intro' } }),
     // the camera tilts down out of the sky onto the road
     E('highway', 'highway', b.verse1, b.pre1, X('whip', 0.5, { dir: [0, 1] })),
-    // the blackout: his hands glowing on the dead car's wheel dissolve into his palms glowing on a dark roof
-    E('snap1', 'phos-pre', b.pre1, b.chorus1, { params: { n: 1 }, ...X('crossfade', 0.4) }),
+    // a hard cut: the highway pushes into the glow-in-the-dark sticker on the dead car's dashboard; the pre-chorus opens on it
+    E('snap1', 'phos-pre', b.pre1, b.chorus1, { params: { n: 1 } }),
     // a hard cut on the ignition: the pre-chorus's point detonates in the chorus's first frame
     E('chorus1', 'phos-chorus', b.chorus1, b.drop1),
     // the drop hits: punch through the chorus's flash into the living city (people dance on balconies and roofs)
@@ -77,10 +77,10 @@ export function makeTimeline(ly: Lyrics, au: AudioData): TimelineEntry[] {
     E('bridge', 'phos-fall', b.bridge, b.chorus3, X('crossfade', 0.5)),
     // the bridge ends in warm gold and the final chorus opens on the very same gold (a hard cut), which drains to its afterglow
     E('chorus3', 'phos-final', b.chorus3, b.drop3),
-    // the wall of the song's words burns to gold: a flash of light into the deck of cosmic plates, cut on the kicks
+    // the wall of the song's words burns to gold: a hard cut into the gold space of the last drop (no words: a flight
+    // through light, cut and transformed on the kicks)
     E('drop3', 'cosmos-deck', b.drop3, b.outro),
-    // the flight ends at the Earth: we fall at it, through the clouds, and land at night on the sand where the two
-    // figures of stars lie (the ceiling outro's timing, on the sand)
-    E('outro', 'cosmos-ending', b.outro, b.end, X('crossfade', 0.5)),
+    // stars to stars: the flight's last stars cross-fade into the stars on the ceiling
+    E('outro', 'ceiling', b.outro, b.end, { params: { mode: 'outro' }, ...X('crossfade', 1.4) }),
   ];
 }

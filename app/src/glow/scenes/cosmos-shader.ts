@@ -93,6 +93,9 @@ uniform vec4 uSun;        // xy centre (ndc), z strength, w radius scale
 uniform vec3 cSun;
 uniform vec4 uShock;      // xy centre (ndc), z radius, w amplitude
 uniform vec3 cShock;
+uniform vec4 uFlow, uFlowN;  // screen flow (uv -> uv a shutter earlier: mat2 rows), of the disk and of the near layer
+uniform vec2 uFlowC, uFlowNC;
+uniform vec2 uNC; uniform float uNZ; // the near layer's camera
 
 float hash12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 vec2 hash22(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973)); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.xx + p3.yz) * p3.zy); }
@@ -120,8 +123,21 @@ float sdStar5(vec2 p, float r, float rf) {
 }
 vec2 rot2(vec2 p, float a) { float c = cos(a), s = sin(a); return vec2(c * p.x - s * p.y, s * p.x + c * p.y); }
 
+// a star blurred along its motion: distance (px) from the pixel to the segment the star swept in the shutter;
+// dv = pixel - star (px), m = the motion (px, capped by the caller); returns (d^2, energy kept per pixel)
+vec2 streak(vec2 dv, vec2 m, float rad) {
+  float mm = dot(m, m);
+  float tt = mm > 1e-4 ? clamp(-dot(dv, m) / mm, 0.0, 1.0) : 0.0;
+  vec2 dq = dv + tt * m;
+  return vec2(dot(dq, dq), rad / (rad + 0.5 * sqrt(mm)));
+}
+vec2 capLen(vec2 v, float L) { float l = length(v); return l > L ? v * (L / l) : v; }
+
 void main() {
   vec2 uv = vUv;
+  // the motion of this pixel's point over the shutter, in px
+  vec2 mot = (uv - (mat2(uFlow.x, uFlow.z, uFlow.y, uFlow.w) * uv + uFlowC)) * uRes.y * 0.5;
+  vec2 motN = (uv - (mat2(uFlowN.x, uFlowN.z, uFlowN.y, uFlowN.w) * uv + uFlowNC)) * uRes.y * 0.5;
   vec2 pr = rot2(uv, uRot) * uZ;
   vec2 P = uC + pr;                              // plane coords (upright, for the stickers)
   vec2 q = uC + vec2(pr.x, pr.y / uCt);          // plane coords of the tilted disk
@@ -130,7 +146,7 @@ void main() {
 
   // ---- structure of the disk
   float r = length(q);
-  float arm = 0.0, edge = 0.0, disk = 0.0, bulge = 0.0, dens = 0.0, dust = 0.0, ab = 1.0, cl = 0.0, neb = 0.0, hue = 0.0;
+  float arm = 0.0, edge = 0.0, disk = 0.0, bulge = 0.0, dens = 0.0, dust = 0.0, ab = 1.0, cl = 0.0, clT = 0.0, neb = 0.0, hue = 0.0;
   if (r < 1.25) {
   float th = atan(q.y, q.x);
   float warp = (fbm3(q * 2.3 + uSeed) - 0.5) * 0.9 * smoothstep(0.05, 0.6, r);
@@ -162,9 +178,12 @@ void main() {
     vec2 cp = (g + 0.2 + 0.6 * hh) * 0.11;
     float rc = 0.012 + 0.02 * hash12(g + 9.0);
     vec2 dd = q - cp;
-    cl += exp(-dot(dd, dd) / (rc * rc));
+    // (each cluster twinkles on its own phase: a twinkle keyed to a fixed grid of cells lit the clusters in squares)
+    float e = exp(-dot(dd, dd) / (rc * rc));
+    cl += e; clT += e * (0.7 + 0.5 * sin(uT * 5.0 + hash12(g + 71.0) * 40.0));
   }
-  cl *= smoothstep(0.25, 0.6, arm) * edge * smoothstep(0.08, 0.2, r) * uGalaxy;
+  float clK = smoothstep(0.25, 0.6, arm) * edge * smoothstep(0.08, 0.2, r) * uGalaxy;
+  cl *= clK; clT *= clK;
 
   // gas and nebulae
   float gas = fbm3(rot2(q, (uT - uT0) * 0.03 / (r + 0.3)) * 7.0 + uSeed * 2.0);
@@ -179,7 +198,7 @@ void main() {
   vec3 diskCol = mix(cCore * 0.8, cArm, smoothstep(0.04, 0.45, r));
   diff += diskCol * dens * 0.5 * ab * mix(1.0, 0.22, deep);
   diff += mix(cNeb1, cNeb2, smoothstep(0.3, 0.7, hue)) * neb * 1.15;
-  diff += cHot * cl * 0.55 * ab * (0.7 + 0.5 * sin(uT * 5.0 + floor(q.x * 9.0) * 1.7 + floor(q.y * 9.0) * 2.3));
+  diff += cHot * clT * 0.55 * ab;
   diff += cCore * bulge * 0.6 * ab * uGalaxy * mix(1.0, 0.5, deep);
   // a wave of light running out along the arms on the beat
   float wv = exp(-pow((r - uPulseR) / 0.08, 2.0)) * uPulseA;
@@ -229,15 +248,19 @@ void main() {
     float cpx = cell / pxw;
     float w = smoothstep(7.0, 18.0, cpx) * (1.0 - smoothstep(400.0, 1000.0, cpx));
     if (w <= 0.0) continue;
-    vec2 pc = q / cell + vec2(i * 13.7, i * 7.3);
+    // (each octave on its own rotated lattice, never every cell filled: a full lattice showed as a grid of dots)
+    vec2 pc = rot2(q, i * 1.3) / cell + vec2(i * 13.7, i * 7.3);
     vec2 id = floor(pc), f = fract(pc);
     vec3 hh = vec3(hash12(id), hash12(id + 17.1), hash12(id + 43.7));
     float kk = cpx > 40.0 ? 1.0 : 0.7;
-    if (hh.x < clamp(sd * kk, 0.0, 1.0)) {
-      vec2 sp = 0.3 + 0.4 * hash22(id + 3.3);
+    if (hh.x < clamp(sd * kk, 0.0, 0.45)) {
+      vec2 sp = 0.35 + 0.3 * hash22(id + 3.3);
       vec2 dv = (f - sp) * cpx;
-      float d2 = dot(dv, dv);
       float rad = mix(0.9, 2.4, hh.y * hh.y) * (1.0 + 0.7 * smoothstep(20.0, 200.0, cpx));
+      // (streaked along the flow, capped so the streak stays inside the star's own cell)
+      vec2 ml = rot2(rot2(mot, uRot) * vec2(1.0, 1.0 / uCt), i * 1.3); // the motion in this lattice's frame
+      vec2 st = streak(dv, capLen(ml, 0.1 * cpx), rad);
+      float d2 = st.x;
       float mag = 0.25 + 3.0 * pow(hh.z, 4.0);
       float tw = 0.82 + 0.18 * sin(uT * 3.0 + hh.z * 40.0);
       vec3 sc = mix(cStarA, cStarB, hh.y);
@@ -250,7 +273,9 @@ void main() {
         vec2 a = abs(dv);
         spk = 0.5 * (exp(-a.y * 2.0) * exp(-a.x * 3.0 / L) + exp(-a.x * 2.0) * exp(-a.y * 3.0 / L));
       }
-      stars += sc * (core + halo + spk * 0.8) * mag * tw * w * (1.0 + 0.8 * uKick * hh.y);
+      // (everything a star adds stays inside its own cell: halos cut at the cell's edges read as soft squares)
+      float win = 1.0 - smoothstep(0.15 * cpx, 0.24 * cpx, length(dv) - 0.1 * cpx * step(0.5, dot(ml, ml)) * clamp(-dot(normalize(dv + 1e-5), normalize(ml + 1e-5)), 0.0, 1.0));
+      stars += sc * ((core + halo) * st.y + spk * 0.8 * st.y * st.y) * mag * tw * w * win * (1.0 + 0.8 * uKick * hh.y);
     }
   }
   col += stars;
@@ -267,10 +292,42 @@ void main() {
       vec2 pc = pb / cell + float(i) * 5.1, id = floor(pc), f = fract(pc);
       vec3 hh = vec3(hash12(id + 2.0), hash12(id + 19.1), hash12(id + 41.7));
       if (hh.x < 0.12) {
-        vec2 dv = (f - (0.3 + 0.4 * hash22(id + 8.8))) * cpx;
-        float d2 = dot(dv, dv);
+        vec2 dv = (f - (0.35 + 0.3 * hash22(id + 8.8))) * cpx;
+        vec2 st = streak(dv, capLen(rot2(mot, uRot) * 0.4, 0.1 * cpx), 1.2);
         float m = 0.25 + 0.9 * hh.z * hh.z;
-        col += mix(cStarA, cStarB, hh.y) * exp(-d2 / 1.6) * m * w * (0.85 + 0.15 * sin(uT * 2.0 + hh.y * 50.0));
+        float win = 1.0 - smoothstep(0.22 * cpx, 0.34 * cpx, length(dv));
+        col += mix(cStarA, cStarB, hh.y) * exp(-st.x / 1.6) * st.y * m * w * win * (0.85 + 0.15 * sin(uT * 2.0 + hh.y * 50.0));
+      }
+    }
+  }
+
+  // ---- the near layer: sparse stars and faint dust between us and the disk, on their own (nearer) camera, so
+  // they sweep past faster than the galaxy in every move; streaked along their own flow
+  {
+    vec2 pn = uNC + rot2(uv, uRot) * uNZ;
+    float pxn = 2.0 * uNZ / uRes.y;
+    float i0n = ceil(log(0.5 / (420.0 * pxn)) / log(3.0));
+    for (int k = 0; k < 2; k++) {
+      float i = i0n + float(k);
+      float cell = 0.5 * pow(0.3333333, i);
+      float cpx = cell / pxn;
+      float w = smoothstep(50.0, 110.0, cpx) * (1.0 - smoothstep(260.0, 420.0, cpx));
+      if (w <= 0.0) continue;
+      vec2 pc = pn / cell + vec2(i * 7.7, i * 3.1), id = floor(pc), f = fract(pc);
+      vec3 hh = vec3(hash12(id + 91.0), hash12(id + 23.4), hash12(id + 57.1));
+      vec2 dv = (f - (0.35 + 0.3 * hash22(id + 4.4))) * cpx;
+      vec2 mn = rot2(motN, uRot);
+      float al = step(0.5, dot(mn, mn)) * clamp(-dot(normalize(dv + 1e-5), normalize(mn + 1e-5)), 0.0, 1.0);
+      float win = 1.0 - smoothstep(0.15 * cpx, 0.24 * cpx, length(dv) - 0.1 * cpx * al);
+      if (hh.x < 0.3) {
+        float rad = (1.2 + 2.2 * hh.y * hh.y) * sqrt(cpx / 120.0);
+        vec2 st = streak(dv, capLen(mn, 0.1 * cpx), rad);
+        float mag = (0.5 + 2.0 * pow(hh.z, 3.0)) * (1.0 + 0.6 * uKick);
+        col += mix(cStarA, cHot, hh.z) * (exp(-st.x / (rad * rad)) + 0.08 * exp(-st.x / (rad * rad * 12.0))) * st.y * mag * w * win;
+      } else if (hh.x > 0.86) {
+        // a faint wisp of dust, out of focus
+        float d = length(dv) / (0.11 * cpx);
+        col += mix(cNeb1, cUv, hh.y) * 0.035 * exp(-d * d) * w * win * (0.6 + 0.4 * uKick);
       }
     }
   }
@@ -325,8 +382,11 @@ void main() {
     float sr = uSun.w;
     col += cSun * uSun.z * (exp(-d * d / (0.012 * sr * sr)) * 1.6 + 0.45 * exp(-d / (0.22 * sr)) + 0.06 * exp(-d / (0.9 * sr)));
     float ds = length(uv - uShock.xy);
-    float wd = 0.03 + 0.07 * uShock.z;
-    col += cShock * uShock.w * exp(-pow((ds - uShock.z) / wd, 2.0)) * (0.5 + 0.5 * exp(-ds * 0.6));
+    // (a broad, uneven wave of light: a clean thin ring read as a drawn circle)
+    float wd = 0.07 + 0.16 * uShock.z;
+    vec2 sv = uv - uShock.xy;
+    float sa = noise(sv / (ds + 1e-4) * 2.5 + 7.0 + uShock.z);
+    col += cShock * uShock.w * 0.55 * exp(-pow((ds - uShock.z) / wd, 2.0)) * (0.35 + 0.9 * sa) * (0.5 + 0.5 * exp(-ds * 0.6));
   }
 
   col *= uExpo * (1.0 - 0.28 * dot(uv * vec2(0.5, 0.9), uv * vec2(0.5, 0.9)));
@@ -355,6 +415,9 @@ export function galaxyMaterial(look: Look) {
       uScrim: { value: new THREE.Vector4(0, -0.6, 1, 0.3) }, uScrimK: { value: 0 },
       uSun: { value: new THREE.Vector4(0, 0, 0, 1) }, cSun: { value: C(look.sun) },
       uShock: { value: new THREE.Vector4(0, 0, 0, 0) }, cShock: { value: C(look.shock) },
+      uFlow: { value: new THREE.Vector4(1, 0, 0, 1) }, uFlowC: { value: new THREE.Vector2() },
+      uFlowN: { value: new THREE.Vector4(1, 0, 0, 1) }, uFlowNC: { value: new THREE.Vector2() },
+      uNC: { value: new THREE.Vector2() }, uNZ: { value: 1 },
     },
   });
 }

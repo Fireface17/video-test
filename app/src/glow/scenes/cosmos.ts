@@ -3,30 +3,41 @@
 // (cosmos-shader.ts). The camera is a 2D flight (centre, zoom, roll, tilt) between a few deliberate shots on a
 // list of keyframes that land on downbeats; between them it holds with a slow settle and flies on a quintic
 // ease (the centre moves in proportion to the zoom, so every dive goes straight at its target).
-// The lyrics of the drop are star-text (cosmos-text.ts): each word ignites as it is sung.
+// No words in the drops: the lyrics are only heard (and "take my hand" is shown as two stars joining).
 //
 // Drop 1 (cyan): out of the star-dust spiral of the scene before — punch into the core, pull back through
-// ten octaves to the whole galaxy, fly down an arm into a cluster; "Take my hand" (1): two stars trailing
-// streams of light curve in from the sides and join on "hand" (cosmos-motif.ts); across a dust lane to the
+// ten octaves to the whole galaxy, a supernova, fly down an arm into a cluster; "Take my hand" (1): two stars
+// trailing streams of light curve in from the sides and join on "hand" (cosmos-fx.ts); across a dust lane to the
 // next cluster, "Take my hand" (2): the same from the corners; then a dive into the core, white, for the cut.
-// Drop 3 is now cosmos-deck.ts (a deck of painted plates cut on the kicks); the n = 3 path below is kept but unused.
-// (Formerly) Drop 3 (gold, the finale): core punch, the golden galaxy at full power, an arm, a nebula, an oblique view,
-// a dust lane, a huge pull-back that makes the galaxy a small spiral in a field of stars, a push to the core
-// where two stars (gold and phosphor) join into a sun with a shockwave, then everything converges into one
-// star (the outro starts from stars).
+// Every kick surges the camera in; every move streaks the stars along their motion (the shader is given the
+// frame's flow), and a near layer of stars flies past faster than the galaxy (parallax), so the flights read in
+// depth. Everything over the galaxy is analytic and soft (no sprites, no meshes): nothing reads as pasted in.
+// (Drop 3 is cosmos-deck.ts.)
 import * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../../engine/scene';
 import { clamp, hash, smoothstep, frameIdx } from '../../engine/util';
 import { col } from '../lib/palette';
 import { armAt, clusterNear, galaxyMaterial, type Cfg, type Look } from './cosmos-shader';
-import { StarText } from './cosmos-text';
-import { Details, type Nova } from './cosmos-details';
-import { Motif, type Fx, type Join } from './cosmos-motif';
+import { CosmosFx, type Fx, type Join } from './cosmos-fx';
 import { NovaFx } from './cosmos-nova';
 
 const ASP = 16 / 9;
 const quint = (x: number) => { x = clamp(x); return x * x * x * (x * (x * 6 - 15) + 10); };
 const sm3 = (u: number) => u * u * (3 - 2 * u);
+type Cam0 = { c: [number, number]; z: number; rot: number; tilt: number };
+/** the screen flow from camera A back to camera B (B = A a shutter earlier): uv_B = M uv_A + c; tilted = the disk's
+ *  plane (y foreshortened by cos tilt) */
+function flow(A: Cam0, B: Cam0, tilted: boolean) {
+  const ctA = tilted ? Math.cos(A.tilt) : 1, ctB = tilted ? Math.cos(B.tilt) : 1;
+  // uv -> plane: q = cA + D_A^-1 R(rA) uv zA;  plane -> uv: R(-rB) D_B (q - cB) / zB
+  const fwd = (u: number, v: number): [number, number] => {
+    const x = (Math.cos(A.rot) * u - Math.sin(A.rot) * v) * A.z, y = (Math.sin(A.rot) * u + Math.cos(A.rot) * v) * A.z / ctA;
+    const qx = A.c[0] + x - B.c[0], qy = (A.c[1] + y - B.c[1]) * ctB;
+    return [(Math.cos(-B.rot) * qx - Math.sin(-B.rot) * qy) / B.z, (Math.sin(-B.rot) * qx + Math.cos(-B.rot) * qy) / B.z];
+  };
+  const o = fwd(0, 0), ex = fwd(1, 0), ey = fwd(0, 1);
+  return { M: [ex[0] - o[0], ey[0] - o[0], ex[1] - o[1], ey[1] - o[1]] as [number, number, number, number], c: o };
+}
 
 interface Key {
   t: number; c: [number, number]; z: number; rot: number; tilt: number;
@@ -55,16 +66,14 @@ export default class Cosmos extends Scene {
   mat: THREE.ShaderMaterial;
   scene = new THREE.Scene();
   cam = new THREE.OrthographicCamera(-ASP, ASP, 1, -1, 0.1, 10);
-  text!: StarText;
-  motif = new Motif();
-  details!: Details;
-  novae: Nova[] = [];
+  fx: CosmosFx;
   pulsar: [number, number] = [0.8, 0.5];
   /** drop 1's supernova: when, where (world), the camera zoom then */
   sn: { t: number; at: [number, number]; z: number } | null = null;
   snFx: NovaFx;
   keys: Key[] = [];
-  joins: { ev: Join; slot: number }[] = [];
+  kicks: [number, number][] = [];
+  joins: { ev: Join }[] = [];
   bars: number[] = [];
   look: Look & { cfg: Cfg };
   t0: number;
@@ -84,16 +93,14 @@ export default class Cosmos extends Scene {
     this.scene.add(quad);
     const tint = this.n === 1 ? col('#BFEFFF') : col('#FFE6A8');
     const hot = this.n === 1 ? col('#FFFFFF') : col('#FFF4D8');
-    this.text = new StarText(ctx.lyrics, this.t0, this.t1, tint, hot);
-    this.details = new Details(ctx.audio.beats, this.t0, this.t1, tint, hot, this.n === 3 ? 0.55 : 0.3);
+    this.fx = new CosmosFx(ASP, hot, tint, 0.3);
     this.snFx = new NovaFx(ASP, { hot: col('#FFFFFF').multiplyScalar(1.4), shell: col('#7FE3FF').multiplyScalar(1.1), gas: col('#2E8CFF'), gas2: col('#9B5CFF') });
-    this.scene.add(this.details.pts, this.text.group, this.motif.group, this.snFx.mesh);
+    this.scene.add(this.fx.mesh, this.snFx.mesh);
+    this.kicks = ctx.audio.events('kick', this.t0 - 1, this.t1 + 1);
     this.buildShots();
     this.punchUp();
     this.buildNovae();
   }
-
-  override async init() { await this.text.init(); }
 
   /** downbeat bar k of the drop (bar 0 = the downbeat at the section start) */
   private bar(k: number) { return this.bars[k] ?? this.bars[this.bars.length - 1]! + (k - this.bars.length + 1) * 1.58; }
@@ -125,28 +132,10 @@ export default class Cosmos extends Scene {
       hands.forEach((l, i) => {
         const hand = l.words[l.words.length - 1]!;
         this.joins.push({
-          slot: 0,
           ev: i === 0
             ? { t: hand.start + 0.04, dur: 1.5, L: { S: [-2.4, -0.3], C: [-1.1, 0.85] }, R: { S: [2.4, -0.3], C: [1.1, 0.85] }, M: [0, 0.2], cL, cR, cJ, keep: 1.9 }
             : { t: hand.start + 0.04, dur: 1.5, L: { S: [-2.4, 0.95], C: [-0.7, -0.15] }, R: { S: [2.4, -0.55], C: [0.7, 0.75] }, M: [0, 0.2], cL, cR, cJ, keep: 1.7 },
         });
-      });
-    } else {
-      const A = onArm(0.62, 1, -0.3), Bm = onArm(0.35, 0, 0.4), D = onArm(0.26, 1, 0.1);
-      this.keys = [
-        { t: B(0), c: [0, 0], z: 0.12, rot: 0, tilt: 0.1, fl: 0, dz: 0.2 },
-        { t: B(2), c: [0, 0], z: 0.95, rot: 0.35, tilt: 0.35, fl: 1.9, dz: -0.1, dr: 0.2 },
-        { t: B(4), c: A.c, z: 0.14, rot: A.rot, tilt: 0.3, fl: 1.5, dz: -0.1, dr: -0.06 },
-        { t: B(6), c: Bm.c, z: 0.075, rot: Bm.rot, tilt: 0.2, fl: 1.4, dz: -0.12, dr: 0.08 },
-        { t: B(8), c: [0.04, 0], z: 0.6, rot: 2.0, tilt: 0.8, fl: 1.5, dz: -0.1, dr: 0.12 },
-        { t: B(9), c: D.c, z: 0.04, rot: D.rot, tilt: 0.15, fl: 1.1, dz: -0.15, dr: 0.06 },
-        { t: B(11), c: [0, 0], z: 1.9, rot: 0.6, tilt: 0.55, fl: 2.2, dz: -0.08, dr: 0.1 },
-        { t: B(13), c: [0, 0], z: 0.25, rot: 0.9, tilt: 0.25, fl: 2.0, dz: -0.1, dr: 0.1 },
-        { t: B(16), c: [0, 0], z: 0.003, rot: 1.2, tilt: 0.1, fl: 2.4 },
-      ];
-      this.joins.push({
-        slot: 0,
-        ev: { t: B(13), dur: 1.6, L: { S: [-2.4, 0.5], C: [-1.3, -0.45] }, R: { S: [2.4, 0.5], C: [1.3, -0.45] }, M: [0, 0.04], cL: col('#FFC247'), cR: col('#B6FF6A'), cJ: col('#FFF2C8'), keep: 3.4, size: 0.2 },
       });
     }
   }
@@ -156,14 +145,14 @@ export default class Cosmos extends Scene {
     const bl = 1.58, out: Key[] = [];
     this.keys.forEach((k, i) => {
       const nx = this.keys[i + 1];
-      out.push({ ...k, fl: Math.min(k.fl, 0.55) });
+      out.push({ ...k, fl: Math.min(k.fl, 0.55), dz: (k.dz ?? 0) - 0.12, dr: (k.dr ?? 0) * 1.6 });
       if (nx && i < this.keys.length - 2 && nx.t - k.t > 1.9 * bl) {
         const n = Math.floor((nx.t - k.t) / bl + 0.01);
         for (let j = 1; j < n; j++) {
           const u = j / n, odd = j % 2;
           out.push({
             t: k.t + (nx.t - k.t) * u, c: [k.c[0] + (nx.c[0] - k.c[0]) * 0.3 * u, k.c[1] + (nx.c[1] - k.c[1]) * 0.3 * u],
-            z: Math.sqrt(k.z * nx.z) * (odd ? 0.7 : 1.5), rot: k.rot + (odd ? 0.9 : -0.7) * j, tilt: k.tilt, fl: 0.4, dz: -0.12, dr: odd ? 0.15 : -0.15,
+            z: Math.sqrt(k.z * nx.z) * (odd ? 0.7 : 1.5), rot: k.rot + (odd ? 0.9 : -0.7) * j, tilt: k.tilt, fl: 0.4, dz: -0.25, dr: odd ? 0.25 : -0.25,
           });
         }
       }
@@ -173,26 +162,36 @@ export default class Cosmos extends Scene {
 
   private buildNovae() {
     const cfg = this.look.cfg, B = (k: number) => this.bar(k);
-    const at = (r: number, k: number): [number, number] => { const a = armAt(cfg, r, k), c = clusterNear(a.x, a.y, 0.12); return c ? [c.x, c.y] : [a.x, a.y]; };
-    if (this.n === 1) {
-      // one supernova, on the hardest hit of the drop's first half, where the camera lands for it
-      this.novae = [];
-      // placed off the core (where the sky behind it is dark), to the right of the frame's centre
-      const t = B(2) + 0.0, c = this.camAt(t + 0.05);
-      const u: [number, number] = [0.42, 0.1];
-      const pr = [(Math.cos(c.rot) * u[0] - Math.sin(c.rot) * u[1]) * c.z, (Math.sin(c.rot) * u[0] + Math.cos(c.rot) * u[1]) * c.z];
-      this.sn = { t, at: [c.c[0] + pr[0]!, c.c[1] + pr[1]! / Math.cos(c.tilt)], z: c.z };
-    }
-    else this.novae = [
-      { t: B(5) + 0.02, at: at(0.55, 0), scale: 1 }, { t: B(8) + 0.02, at: at(0.7, 1), scale: 1.2 },
-      { t: B(10) + 0.02, at: at(0.3, 0), scale: 1.2 }, { t: B(12) + 0.02, at: [0.35, 0.2], scale: 2.2 },
-    ];
+    // one supernova, on the hardest hit of the drop's first half, where the camera lands for it; placed off the
+    // core (where the sky behind it is dark), to the right of the frame's centre
+    const t = B(2) + 0.0, c = this.camAt(t + 0.05);
+    const u: [number, number] = [0.42, 0.1];
+    const pr = [(Math.cos(c.rot) * u[0] - Math.sin(c.rot) * u[1]) * c.z, (Math.sin(c.rot) * u[0] + Math.cos(c.rot) * u[1]) * c.z];
+    this.sn = { t, at: [c.c[0] + pr[0]!, c.c[1] + pr[1]! / Math.cos(c.tilt)], z: c.z };
     const a = armAt(cfg, 0.8, 1);
     this.pulsar = [a.x + 0.05, a.y + 0.05];
   }
 
-  /** the camera at song time t */
+  /** every kick surges the camera in (a fast push, a slower release): 0..~1 */
+  private surge(t: number) {
+    let s = 0;
+    for (const [te, k] of this.kicks) {
+      const a = t - te;
+      if (a < -0.03) break;
+      if (a > 0.9) continue;
+      s += Math.min(1, k) * smoothstep(-0.03, 0.03, a) * Math.exp(-Math.max(0, a) / 0.22);
+    }
+    return Math.min(1.3, s);
+  }
+
+  /** the camera at song time t, with the kicks' surges */
   private camAt(t: number): Cam {
+    const c = this.camBase(t);
+    return { ...c, z: c.z * Math.exp(-0.13 * this.surge(t)), rot: c.rot + 0.03 * this.surge(t - 0.04) };
+  }
+
+  /** the camera at song time t (the shot list) */
+  private camBase(t: number): Cam {
     const ks = this.keys;
     const hold = (k: Key, u: number): Cam => {
       const e = sm3(clamp(u));
@@ -239,8 +238,7 @@ export default class Cosmos extends Scene {
     U.uPulseA!.value = 1.3 * Math.pow(Math.max(0, 1 - age / 1.2), 1.5);
     // exposure: the kicks breathe it; drop 1 whites out into the cut, drop 3 converges into one star
     let expo = 1 + 0.35 * kick;
-    if (this.n === 1) expo *= 1 + 2.2 * smoothstep(this.bar(7) + 0.45, this.t1, t);
-    else { expo *= 1 - 0.3 * smoothstep(this.bar(14) + 1.0, this.bar(16) - 0.2, t); U.uGalaxy!.value = 1 - smoothstep(this.bar(14) + 1.2, this.bar(16) - 0.7, t); }
+    expo *= 1 + 2.2 * smoothstep(this.bar(7) + 0.45, this.t1, t);
     // the supernova: its flash, then the galaxy looks dimmer next to it for a moment
     let snA = -9;
     if (this.sn) {
@@ -251,34 +249,23 @@ export default class Cosmos extends Scene {
     }
     U.uExpo!.value = expo;
 
-    // the lyrics and their scrim
-    const tx = this.text.update(t, kick);
-    U.uScrim!.value.set(0, this.text.y, tx.hw + 0.25, 0.32);
-    U.uScrimK!.value = 0.62 * tx.k;
+    // no words in the drops: no scrim
+    U.uScrimK!.value = 0;
 
-    // the small life
-    const cs = Math.cos(-cam.rot), sn = Math.sin(-cam.rot), ct = Math.cos(cam.tilt);
-    this.details.update(t, f.beatPhase, kick, {
-      z: cam.z,
-      uv: (x, y) => { const px = x - cam.c[0], py = (y - cam.c[1]) * ct; return [(cs * px - sn * py) / cam.z, (sn * px + cs * py) / cam.z]; },
-    }, this.novae, this.pulsar);
-    // events
+    // motion: the frame's flow (where each pixel's point of the disk was a shutter ago), for streaks; and the near
+    // layer of stars (its own camera: zooms and pans faster than the disk, i.e. nearer)
+    const prev = this.camAt(t - 1 / 40);
+    const fw = flow(cam, prev, true), near = (c: Cam): Cam => ({ c: [c.c[0] * 0.8 * Math.pow(c.z, 0.35), c.c[1] * 0.8 * Math.pow(c.z, 0.35)], z: 0.5 * Math.pow(c.z, 1.35), rot: c.rot, tilt: 0 });
+    const nc = near(cam), fn = flow(nc, near(prev), false);
+    U.uFlow!.value.set(...fw.M); U.uFlowC!.value.set(...fw.c);
+    U.uFlowN!.value.set(...fn.M); U.uFlowNC!.value.set(...fn.c);
+    U.uNC!.value.set(nc.c[0], nc.c[1]); U.uNZ!.value = nc.z;
+
+    // the small life: comets, the pulsar, "take my hand"
+    this.fx.update(t, out.height, au.beats, this.t0, this.t1, f.beatPhase, this.projUV(cam, this.pulsar));
     const fx: Fx = { sun: [0, 0, 0, 1], shock: [0, 0, 0, 0] };
-    this.motif.begin();
-    for (const j of this.joins) this.motif.join(j.ev, t, j.slot, fx);
-    if (this.n === 3) {
-      const c = this.coreUV(cam);
-      const tj = this.joins[0]!.ev.t;
-      // the merged star swells into the sun, and as everything converges only the star is left
-      const sun = smoothstep(tj, tj + 1.8, t) * (1 - smoothstep(this.bar(15), this.bar(16) - 0.3, t));
-      fx.sun[2] += 0.9 * sun;
-      fx.sun[3] = Math.max(fx.sun[3], 1) + sun * 0.6;
-      fx.sun[0] = c[0]; fx.sun[1] = c[1];
-      const lone = smoothstep(this.bar(14) + 0.6, this.bar(16) - 0.5, t);
-      if (lone > 0) this.motif.lone(0, 0, 0.15 + 0.015 * Math.sin(t * 2), col('#FFF2C8'), 1.7 * lone, t);
-      // (the explosion's own ring and the lyrics are over by then)
-    }
-    this.motif.end();
+    this.fx.begin();
+    for (const j of this.joins) this.fx.join(j.ev, t, fx);
     U.uSun!.value.set(fx.sun[0], fx.sun[1], fx.sun[2], fx.sun[3]);
     U.uShock!.value.set(fx.shock[0], fx.shock[1], fx.shock[2], fx.shock[3]);
 
@@ -291,7 +278,7 @@ export default class Cosmos extends Scene {
     const boom = snA >= 0 ? Math.exp(-snA / 0.12) : 0;
     const sh2 = sh + 22 * boom;
     const post = {
-      zoom: 1 + (this.n === 3 ? 0.07 : 0.05) * kick + 0.07 * slam + 0.09 * boom,
+      zoom: 1 + 0.04 * kick + 0.07 * slam + 0.09 * boom,
       shake: [(hash(fi, 1) - 0.5) * 2 * sh2, (hash(fi, 2) - 0.5) * 2 * sh2] as [number, number],
       flash: 0.012 * slam * (1 + snare) + 0.3 * (snA >= 0 ? Math.exp(-snA / 0.045) : 0),
       ca: 0.8 + 3 * boom,
@@ -311,17 +298,10 @@ export default class Cosmos extends Scene {
     return [(cs * px - sn * py) / c.z, (sn * px + cs * py) / c.z];
   }
 
-  /** where the core of the galaxy is on screen (ndc) */
-  private coreUV(c: Cam): [number, number] {
-    const px = -c.c[0], py = -c.c[1] * Math.cos(c.tilt);
-    const cs = Math.cos(-c.rot), sn = Math.sin(-c.rot);
-    return [(cs * px - sn * py) / c.z, (sn * px + cs * py) / c.z];
-  }
-
   override dispose() {
     this.mat.dispose();
-    this.text.dispose();
     this.snFx.dispose();
+    this.fx.dispose();
   }
 }
 void ASP;

@@ -1,9 +1,9 @@
 // The supernova of drop 1: an explosion that reads as one. Screen-space, additive, a pure function of its age:
 //   -0.14..0 s  the star swells
 //   0           a hard white core flash (core, glow over the whole frame, an anamorphic streak), gone in ~0.1 s
-//   then        a crisp shock shell racing out (fast, then slowing), a sharp bright rim, limb-brightened and
-//               filamentary behind the edge, turbulent gas inside; ejecta fingers poking past the shell with bright
-//               heads; thin light-echo rings racing ahead; debris sparks flung out on straight streaks.
+//   then        a soft, uneven shell of gas racing out (fast, then slowing), limb-brightened and filamentary,
+//               turbulent gas inside, a faint wide glow ahead; everything fades to zero smoothly (no hard rim,
+//               no thin rings, no streaks: over the galaxy they read as a picture or a dial pasted on the sky).
 import * as THREE from 'three';
 
 const VERT = /* glsl */ `
@@ -32,52 +32,26 @@ void main() {
   if (a >= 0.0) {
     float F = exp(-a / 0.05);
     col += cHot * F * (exp(-r * r / 0.003) * 30.0 + exp(-r / 0.12) * 3.0 + exp(-r / 0.7) * 0.45);
-    col += cHot * F * exp(-abs(p.y) / (0.008 + px)) * exp(-abs(p.x) / 1.6) * 3.0;
+    col += cHot * F * exp(-abs(p.y) / (0.008 + px)) * exp(-abs(p.x) / 0.7) * 2.5;
     vec2 cs = vec2(cos(th), sin(th));
-    float edgeN = vn(cs * 3.5 + 3.0) - 0.5 + 0.5 * (vn(cs * 9.0 + 11.0) - 0.5);
-    float Rs = 0.95 * (1.0 - exp(-a / 0.5)) * (1.0 + 0.07 * edgeN);
-    float inside = smoothstep(Rs + 1.5 * px, Rs - 1.5 * px, r);
-    float d = max(Rs - r, 0.0);
-    float decay = exp(-a / 2.4);
-    // the shell: thin, limb-brightened, filamentary just behind the edge
-    float thick = 0.012 + 0.03 * a;
-    if (inside > 0.0) {
-      float fil = pow(1.0 - abs(2.0 * vn(p * 11.0 + 7.0) - 1.0), 5.0) + 0.6 * pow(1.0 - abs(2.0 * vn(p * 27.0 + 3.0) - 1.0), 8.0);
-      col += cShell * inside * exp(-d / thick) * (0.6 + 1.8 * fil) * decay * 1.2;
-      // turbulent gas inside
-      float gas = fbm(p * 4.5 + vec2(a * 0.25, -a * 0.2));
-      col += mix(cGas, cGas2, smoothstep(0.35, 0.7, gas)) * inside * exp(-d / 0.22) * (0.04 + 0.7 * pow(gas, 3.0)) * decay;
-    }
-    // the rim: a sharp bright edge
-    col += cHot * exp(-abs(r - Rs) / (1.1 * px + 0.0012)) * decay * 1.1;
-    // ejecta fingers poking past the shell, with bright heads
-    float N = 150.0, sec = th / 6.2831853 * N, sid = floor(sec), sf = fract(sec) - 0.5;
-    if (hash11(sid * 1.31 + 4.0) > 0.8) {
-      float Lk = Rs * (1.03 + 0.2 * hash11(sid + 2.0));
-      float w = 0.003 + 0.005 * hash11(sid + 5.0);
-      float ad = abs(sf) * 6.2831853 / N * r;
-      float along = smoothstep(Rs * 0.75, Rs * 0.98, r) * smoothstep(Lk + px, Lk - 0.03, r);
-      float tang = exp(-pow(ad / w, 2.0));
-      col += cShell * tang * along * decay * 0.7;
-      col += cHot * exp(-pow(ad / (w * 1.8), 2.0) - pow((r - Lk) / 0.014, 2.0)) * decay * 2.0;
-    }
-    // light echoes: thin faint rings racing ahead
-    for (int k = 0; k < 2; k++) {
-      float Re = a * (k == 0 ? 1.9 : 1.35) + 0.05;
-      float w2 = 0.004 + 0.005 * a;
-      col += cShell * exp(-pow((r - Re) / w2, 2.0)) * 0.32 * exp(-a / 1.4) * (0.55 + 0.45 * vn(cs * 8.0 + float(k) * 5.0));
-    }
-    // debris: sparks on straight streaks
-    float M = 70.0, s2 = th / 6.2831853 * M, id2 = floor(s2), f2 = fract(s2) - 0.5;
-    if (hash11(id2 + 17.0) > 0.3) {
-      float v = 0.9 + 1.5 * hash11(id2 + 11.0);
-      float rp = v * (1.0 - exp(-a / 0.8)) * 1.1;
-      float off = (hash11(id2 + 13.0) - 0.5) * 0.6;
-      float ad2 = abs(f2 - off) * 6.2831853 / M * r;
-      float tail = 0.03 + 0.14 * exp(-a / 0.6);
-      float streak = smoothstep(rp - tail, rp, r) * smoothstep(rp + 2.0 * px, rp - px, r);
-      col += cHot * exp(-pow(ad2 / (1.4 * px + 0.0008), 2.0)) * streak * exp(-a / 1.6) * 2.2;
-    }
+    // (all soft: a hard rim, cell-noise filaments and pin-like fingers read as a picture pasted over the sky)
+    float edgeN = fbm(cs * 2.2 + 3.0) - 0.5;
+    float Rs = 0.95 * (1.0 - exp(-a / 0.5)) * (1.0 + 0.2 * edgeN);
+    float life = exp(-a / 1.0) * (1.0 - smoothstep(1.8, 3.0, a));
+    float w = 0.025 + 0.09 * Rs;
+    float inside = smoothstep(Rs + 0.6 * w, Rs - 0.8 * w, r);
+    // the shell: a soft limb-brightened band of gas, filamentary
+    float fil = fbm(p * 5.0 + vec2(0.3 * a, -0.2 * a));
+    float rid = pow(1.0 - abs(2.0 * fbm(p * 9.0 + 7.0 + 0.2 * a) - 1.0), 3.0);
+    float band = exp(-pow((r - Rs + 0.35 * w) / w, 2.0));
+    col += cShell * band * (0.35 + 1.4 * rid * fil) * (0.6 + 0.6 * smoothstep(-0.6, 0.8, cs.x + 0.4 * cs.y)) * life * 1.3;
+    col += cHot * exp(-pow((r - Rs + 0.1 * w) / (0.35 * w), 2.0)) * (0.3 + 0.7 * fil) * life * 0.55;
+    // turbulent gas inside
+    float gas = fbm(p * 3.2 + vec2(a * 0.25, -a * 0.2));
+    col += mix(cGas, cGas2, smoothstep(0.35, 0.7, gas)) * inside * (0.05 + 0.8 * pow(gas, 3.0)) * smoothstep(0.0, Rs, r + 0.2 * Rs) * life;
+    // a faint wide glow racing ahead (no thin rings, no radial debris streaks: they read as a dial drawn over the sky)
+    float Re = a * 1.6 + 0.05, w2 = 0.05 + 0.12 * a;
+    col += cShell * exp(-pow((r - Re) / w2, 2.0)) * 0.12 * exp(-a / 0.8) * (0.4 + 0.6 * fbm(cs * 2.5 + p * 2.0));
   }
   gl_FragColor = vec4(col, 1.0);
 }`;
@@ -100,7 +74,7 @@ export class NovaFx {
   }
   /** centre (ndc: x ±asp, y ±1), scale (ndc units of the final shell radius), age (s), output height in px */
   update(c: [number, number], s: number, age: number, hPx: number) {
-    const on = age > -0.16 && age < 6;
+    const on = age > -0.16 && age < 3.2;
     this.mesh.visible = on;
     if (!on) return;
     const U = this.mat.uniforms;
