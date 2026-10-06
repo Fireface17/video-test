@@ -3,9 +3,8 @@
 // point of light draws them as a constellation — two people, one raising a hand — and on the next downbeat
 // it joins their hands. The ceiling dissolves into the night sky, we fly up into space, the same light
 // writes the title, the artist's name switches on in neon, and the camera turns and dives at the night
-// Earth (into the highway). One sticker comes loose on the way and falls into his raised hand (he keeps it:
-// the star he carries through the video); out in the sky the constellation fills in as two people of stardust,
-// him in blue and her in rose. Outro: the same ceiling, every sticker lit; they go out on the beat, the light
+// Earth (into the highway). One sticker comes loose on the way and falls past the lens (the light the rest of
+// the video is made of); out in the sky the constellation shines on. Outro: the same ceiling, every sticker lit; they go out on the beat, the light
 // joins the two hands again on "take my hand", the two last stars drift together, merge, and go out on the
 // final downbeat — and in that dark a warm light comes on across the street: her lantern.
 import * as THREE from 'three';
@@ -19,8 +18,6 @@ import { LightTrail } from '../lib/lightpaint';
 import { displayTextGeometry, loadDisplayFont } from '../lib/fonts';
 import { flickerOn } from '../lib/neon';
 import { Earth } from '../lib/earth';
-import { RealFigure, glowBodyMaterial, loadBody } from '../lib/people';
-import { Stardust, StardustBody } from '../lib/stardust';
 import { StarStreaks } from './fall-stars';
 import { nebulaMap, nebulaSphere } from './fall-sky';
 
@@ -106,9 +103,7 @@ export default class Ceiling extends Scene {
   earth = new Earth();
   earthDir = new THREE.Vector3();
   dis = -1;
-  /** Intro: the constellation's two people of stardust; the hand that catches the falling sticker. */
-  dust?: Stardust;
-  hand?: RealFigure;
+  /** Intro: the sticker that comes loose and falls past the lens. */
   caught?: Sticker;
   tCatch = 0;
 
@@ -292,20 +287,7 @@ export default class Ceiling extends Scene {
       this.earthDir.set(-Math.cos(ph) * Math.sin(th), Math.cos(th), Math.sin(ph) * Math.sin(th));
       this.earth.quaternion.setFromUnitVectors(this.earthDir, new THREE.Vector3(0, 1, 0));
 
-      const [rp, mi] = await Promise.all([loadBody('rpm'), loadBody('michelle')]);
-      // the constellation's people of stardust (in the constellation's plane: they recede with it)
-      this.dust = new Stardust([new StardustBody(new RealFigure(rp, 'rpm', col('white')), 22000, 1), new StardustBody(new RealFigure(mi, 'michelle', col('white')), 22000, 2)], [2, 2, 2], { gain: 0.07 });
-      this.dust.visible = false;
-      this.con.add(this.dust);
-      // his hand, rising into view from the bed to catch a falling sticker: he lies on his back below the
-      // camera, head toward the top of the frame (+z), face up
-      const hand = new RealFigure(rp, 'rpm', col('cyan', 1.0), glowBodyMaterial(col('cyan', 1.0).lerp(col('white', 1), 0.2)));
-      hand.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 1, 0)));
-      hand.position.set(EYE.x + 0.02, EYE.y - 0.34, EYE.z - 0.62);
-      hand.visible = false;
-      this.hand = hand;
-      S.add(hand);
-      // the sticker that comes loose: a lit one low in the frame, falling on bar 6 into the open hand
+      // the sticker that comes loose: a lit one low in the frame, falling on bar 6 past the lens
       this.tCatch = this.B[6] ?? this.beatT(24);
       const cands = this.stickers.filter((x) => x.key.startsWith('s') && x.tOn < this.tCatch - 1.2 && Math.abs(x.u) < 0.7 && x.v < -0.25 && x.v > -1.0);
       this.caught = cands.sort((x, y) => y.r - x.r)[0] ?? this.stickers.find((x) => x.key.startsWith('s') && x.tOn < this.tCatch - 1.2);
@@ -313,49 +295,30 @@ export default class Ceiling extends Scene {
   }
 
   /**
-   * Intro: a lit sticker comes loose two beats before bar 6 and falls; his hand rises into the frame from
-   * below, open, palm up, catches it on the downbeat, closes round it (the light glows between the fingers)
-   * and takes it down out of view.
+   * Intro: a lit sticker comes loose two beats before bar 6 and falls, spinning lazily, straight at us and
+   * past the lens (the star that leaves the room: the light the rest of the video is made of).
    */
   private catchStar(t: number) {
-    const s = this.caught, h = this.hand;
-    if (!s || !h) return;
+    const s = this.caught;
+    if (!s) return;
     const tc = this.tCatch, beat = 60 / 151;
     const t0 = tc - 2 * beat;
-    // the camera (his eyes) rises a little over the first bars (see renderIntro); keep the body just below it
-    const camY = EYE.y + 0.25 * ease.inOutQuad(prog(t, 0, this.B[8] ?? this.beatT(32)));
-    h.position.y = camY - 0.22;
-    const palm = new THREE.Vector3(EYE.x + 0.06, camY + 0.27, EYE.z - 0.08);
-    const rise = ease.outCubic(prog(t, t0 - 0.9, t0 + 0.2)), down = ease.inOutCubic(prog(t, tc + 0.9, tc + 1.9));
-    h.visible = t > t0 - 0.9 && t < tc + 2.0;
-    if (!h.visible && t < t0) return;
-    const target = palm.clone().add(new THREE.Vector3(0.08 * (1 - rise), -0.4 * (1 - rise) - 0.45 * down, -0.06 * down));
-    // the catch pulls the hand down a little, like the star had weight
-    target.y -= 0.025 * Math.sin(Math.PI * clamp((t - tc) / 0.35)) * (t > tc ? 1 : 0);
-    h.time = t;
-    if (h.visible) {
-      h.reach(0, target, new THREE.Vector3(-0.6, -0.4, -0.7));
-      const close = ease.inOutCubic(prog(t, tc + 0.05, tc + 0.35));
-      h.setHand(0, 0.12 + 0.75 * close);
-      h.setHand(1, 0.3);
-    }
     if (t < t0) return;
-    // the sticker: falls (gravity, a lazy spin) into the palm; in the fist only its glow shows
+    const camY = EYE.y + 0.25 * ease.inOutQuad(prog(t, 0, this.B[8] ?? this.beatT(32)));
     const from = new THREE.Vector3(s.u, CEIL - 0.012, s.v);
-    const hp = h.hand(0).add(new THREE.Vector3(0, 0.03, 0));
-    const k = clamp((t - t0) / (tc - t0));
-    const p = from.clone().lerp(hp, k * k).add(new THREE.Vector3(0.05 * Math.sin(k * 3.1), 0, 0.03 * Math.sin(k * 2.3)).multiplyScalar(1 - k));
-    if (t >= tc) p.copy(hp);
+    // it passes just beside the lens, a little low in the frame
+    const by = new THREE.Vector3(EYE.x + 0.09, camY - 0.05, EYE.z - 0.05);
+    const k = clamp((t - t0) / (tc + 0.35 - t0));
+    const p = from.clone().lerp(by, k * k).add(new THREE.Vector3(0.06 * Math.sin(k * 3.1), 0, 0.04 * Math.sin(k * 2.3)).multiplyScalar(1 - k));
     s.mesh.position.copy(p);
-    s.mesh.rotation.set(Math.PI / 2 + k * 2.4, k * 1.3, s.seed + k * 3.0);
+    s.mesh.rotation.set(Math.PI / 2 + k * 3.4, k * 1.9, s.seed + k * 4.0);
     s.halo.position.copy(p).add(new THREE.Vector3(0, -0.01, 0));
-    const shut = prog(t, tc + 0.15, tc + 0.4);
-    s.mesh.visible = shut < 1 && h.visible;
-    s.halo.visible = h.visible;
+    const gone = k >= 1;
+    s.mesh.visible = s.halo.visible = !gone;
     s.mat.opacity = 1;
-    s.mat.emissiveIntensity = 1.1 + 2.5 * pulse(t, tc, 0.3);
-    s.hmat.uniforms.k!.value = (1.1 + 3 * pulse(t, tc, 0.35)) * (1 - 0.55 * shut) * (1 - down);
-    s.halo.scale.setScalar(s.r * 9 * (1 - 0.4 * shut));
+    s.mat.emissiveIntensity = 1.1 + 1.5 * k;
+    s.hmat.uniforms.k!.value = 1.1 + 2.2 * k;
+    s.halo.scale.setScalar(s.r * 9);
   }
 
   /** Time of beat k of this entry (k = 0 is the entry's first beat). */
@@ -438,11 +401,10 @@ export default class Ceiling extends Scene {
     this.join.reveal = prog(t, T9 - 0.12, T9) * this.join.total;
     // (an undrawn trail would still show its glowing tip at the start of the path)
     const joinFlash = pulse(t, T9, 0.3);
-    const fillK = ease.inOutCubic(prog(t, T9 + 0.05, T9 + 1.4));
-    // as the stardust bodies fill in, the pen's lines go (quicker): people, not a stick drawing
-    const lineK = ease.inOutQuad(prog(t, T9 + 0.1, T9 + 0.9));
+    // out in the sky the pen's lines fade and only the stars stay (a constellation, not a stick drawing)
+    const lineK = ease.inOutQuad(prog(t, T9 + 0.15, T9 + 1.0));
     this.body.gain = (1 + 0.5 * pulse(t, T9, 0.4)) * (1 - lineK);
-    this.join.gain = (1 + joinFlash * 2) * (1 - 0.7 * lineK);
+    this.join.gain = (1 + joinFlash * 2) * (1 - 0.8 * lineK);
     this.body.visible = this.body.reveal > 0 && lineK < 1;
     this.join.visible = this.join.reveal > 0;
     let pi = 0;
@@ -457,22 +419,7 @@ export default class Ceiling extends Scene {
     if (joinFlash > 0.01) { const m = this.join.pointAt(this.join.total / 2); this.pen.set(pi++, m.x, m.y, 0.002, col('gold', 3), joinFlash, 6); }
     this.pen.commit(pi);
     // after the dissolve the stickers live on as stars of the constellation, which recedes into the sky —
-    // and fills in as two people of stardust (him blue, her rose); the pen's lines fade out
     this.setConStars(t, prog(t, T9 + 0.2, T9 + 0.9));
-    const fill = fillK;
-    if (this.dust) {
-      const D = this.dust;
-      D.visible = fill > 0;
-      if (fill > 0) {
-        D.time = t * 3;
-        D.begin(cam);
-        const sway = (k: number) => new THREE.Vector3(0.012 * Math.sin(t * 1.3 + k), 0.01 * Math.sin(t * 1.1 + k * 2), 0);
-        const pts = (p: string) => JOINT_KEYS.map((k, i) => new THREE.Vector3(J[p + k]![0], J[p + k]![1], 0).add(sway(i * 0.7 + (p === 'b' ? 3 : 0)).multiplyScalar(i === 0 || i >= 4 ? 1 : 0.3)));
-        D.figure(pts('a'), 0, col('cyan', 1.5).lerp(col('white', 1.5), 0.35), 1, { color2: col('blue', 1.1), draw: fill, seed: 1 });
-        D.figure(pts('b'), 1, col('pink', 1.4).lerp(col('gold', 1.4), 0.25).lerp(col('white', 1.4), 0.2), 1, { color2: col('violet', 1.0), draw: fill, seed: 2 });
-        D.end();
-      }
-    }
 
     // ---- camera: in bed, looking up; lift-off at T9, the title, then turn and dive at the Earth ----
     const vUp = (x: number) => (x < T9 ? 0 : 55 * ease.inCubic(prog(x, T9, T9 + 1.6)) * (1 - prog(x, E - 1.15, E - 0.6)));
