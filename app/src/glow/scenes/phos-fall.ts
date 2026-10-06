@@ -19,7 +19,7 @@ export const mix3 = (a: [number, number, number], b: [number, number, number], k
   [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)];
 
 /** The gold that fills the frame at the bridge's end and the final chorus's start (same value both sides). */
-export const FLARE_OPACITY = 1.35;
+export const FLARE_OPACITY = 1.05;
 
 /** Path of a rounded-ish 5-point star (outer radius R). */
 export function starPath(c: CanvasRenderingContext2D | Path2D, x: number, y: number, R: number, rot = 0, inner = 0.46) {
@@ -82,6 +82,7 @@ function headAt(st: StrokeText, len: number): { x: number; y: number } {
     const s0 = st.startLen[i]!;
     const pts = st.strokes[i]!, L = st.lens[i]!;
     const tot = L[L.length - 1] ?? 0;
+    if (pts.length < 2) { if (len <= s0 || i === st.strokes.length - 1) return { x: pts[0]?.x ?? 0, y: pts[0]?.y ?? 0 }; continue; }
     if (len <= s0 + tot || i === st.strokes.length - 1) {
       const r = clamp(len - s0, 0, tot);
       let j = 1;
@@ -201,7 +202,7 @@ export default class PhosFall extends Scene {
     if (l1 > 0) {
       if (r2 && l1 >= r1.st.total - 0.5) {
         const tEnd1 = r1.times[r1.times.length - 1]![1], tS2 = r2.times[0]![0];
-        const q = prog(t, tEnd1, tS2, ease.inOutCubic);
+        const q = prog(t, tEnd1, Math.max(tS2, tEnd1 + 0.2), ease.inOutCubic);
         return { x: lerp(at(r1, r1.st.total).x, at(r2, 0).x, q), y: lerp(at(r1, r1.st.total).y, at(r2, 0).y, q) + Math.sin(q * Math.PI) * 60 };
       }
       return at(r1, l1);
