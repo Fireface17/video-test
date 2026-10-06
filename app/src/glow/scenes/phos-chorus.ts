@@ -71,9 +71,10 @@ export default class PhosChorus extends Scene {
       const m = this.moments[li];
       const words = l.words.map((w) => w.w);
       if (m === 'dance' || m === 'crack' || m === 'charge') {
-        const size = m === 'charge' ? 190 : 156;
-        const lay = layoutWords(words, size, { maxW: 1560 });
-        this.lay.set(l, { boxes: lay.boxes.map((b) => ({ ...b, y: b.y - lay.height * 0.5 + size * 0.34 })), height: lay.height, tl: words.map((w) => layout(w, PHOS_FONT, size)) });
+        const size = m === 'charge' ? 200 : m === 'dance' ? (li === 0 ? 190 : 180) : 156;
+        const ps = m === 'dance' ? (li === 0 ? [-130, -20] : [150, 60]) : [0, 0];
+        const lay = layoutWords(words, size, { maxW: m === 'charge' ? 1500 : m === 'dance' ? 1400 : 1560, lead: m === 'charge' ? 1.02 : 1.12 });
+        this.lay.set(l, { boxes: lay.boxes.map((b) => ({ ...b, x: b.x + ps[0]!, y: b.y - lay.height * 0.5 + size * 0.34 + ps[1]! })), height: lay.height, tl: words.map((w) => layout(w, PHOS_FONT, size)) });
       }
       if (m === 'crack') {
         const b = this.lay.get(l)!.boxes[l.words.findIndex((w) => /^broken/i.test(w.w))]!;
@@ -118,29 +119,32 @@ export default class PhosChorus extends Scene {
 
   private makeConstellation(l: Line) {
     const text = l.words.map((w) => w.w).join(' ');
-    // two rows: the words up to the middle of the line, then the rest, both centred
-    const k0 = l.words.slice(0, Math.ceil(l.words.length / 2)).map((w) => w.w).join(' ').length + 1;
+    // three big rows (Look how / beautiful / we are), each centred; the widest fills ~72% of the frame
+    const rowsW: string[][] = l.words.length >= 5 ? [l.words.slice(0, 2).map((w) => w.w), [l.words[2]!.w], l.words.slice(3).map((w) => w.w)] : [l.words.map((w) => w.w)];
+    const ks: number[] = []; let acc = 0;
+    rowsW.forEach((r) => { ks.push(acc); acc += r.join(' ').length + 1; });
+    const kOf = (ci: number) => { let r = 0; ks.forEach((k, i) => { if (ci >= k) r = i; }); return r; };
     let st = strokeText(text, 'readable', 190);
-    const rowRange = (lo: number, hi: number) => {
+    const rowRange = (ri: number) => {
       let x0 = Infinity, x1 = -Infinity;
-      st.strokes.forEach((pts, si) => { const ci = st.charOf[si]!; if (ci >= lo && ci < hi) for (const p of pts) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); } });
+      st.strokes.forEach((pts, si) => { if (kOf(st.charOf[si]!) === ri) for (const p of pts) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); } });
       return [x0, x1] as const;
     };
-    const r1 = rowRange(0, k0), w1 = r1[1] - r1[0];
-    st = strokeText(text, 'readable', Math.min(300, 190 * 1500 / Math.max(1, w1)));
-    const R1 = rowRange(0, k0), R2 = rowRange(k0, 1e9), lead = st.capHeight * 1.9;
+    const wmax = Math.max(...rowsW.map((_, i) => rowRange(i)[1] - rowRange(i)[0]));
+    st = strokeText(text, 'readable', Math.min(520, 190 * 1180 / Math.max(1, wmax)));
+    const R = rowsW.map((_, i) => rowRange(i)), lead = st.capHeight * 1.75;
     st.strokes.forEach((pts, si) => {
-      const second = st.charOf[si]! >= k0, dx = second ? -(R2[0] + R2[1]) / 2 : -(R1[0] + R1[1]) / 2, dy = second ? lead : 0;
+      const ri = kOf(st.charOf[si]!), dx = -(R[ri]![0] + R[ri]![1]) / 2, dy = ri * lead;
       for (const p of pts) { p.x += dx; p.y += dy; }
     });
-    const ox = CX, oy = CY - lead * 0.5 + st.capHeight * 0.5;
+    const ox = CX, oy = CY - (rowsW.length - 1) * lead * 0.5 + st.capHeight * 0.5;
     const stars: { x: number; y: number; s: number; len: number; stroke: number }[] = [];
     st.strokes.forEach((pts, si) => {
       let run = 0, last = 0;
       pts.forEach((p, k) => {
         if (k) run += Math.hypot(p.x - pts[k - 1]!.x, p.y - pts[k - 1]!.y);
         const end = k === 0 || k === pts.length - 1;
-        if (end || run - last > 34) { last = run; stars.push({ x: ox + p.x, y: oy + p.y, s: 6 + 8 * hash(si, k, 6) + (end ? 3 : 0), len: st.startLen[si]! + run, stroke: si }); }
+        if (end || run - last > 46) { last = run; stars.push({ x: ox + p.x, y: oy + p.y, s: 9 + 10 * hash(si, k, 6) + (end ? 4 : 0), len: st.startLen[si]! + run, stroke: si }); }
       });
     });
     this.con = { st, stars, ct: charTimes(st, l, 0.5), ox, oy };
@@ -159,6 +163,18 @@ export default class PhosChorus extends Scene {
     while (lo < hi) { const m = (lo + hi) >> 1; if (this.kick[m]![0] <= t) lo = m + 1; else hi = m; }
     const i = lo - 1 - back;
     return i >= 0 ? [this.kick[i]![0], this.kick[i]![1], i] : null;
+  }
+  /** fraction of the field that is visible: it thins out where the words need to breathe */
+  private dens(t: number): number {
+    const D: Record<string, number> = { dance: 0.55, lock: 0.2, crack: 0.5, constellation: 0.12, rise: 1, wave: 0.18, charge: 1 };
+    let cur = 0.6, prev = 0.6, t0 = 0;
+    this.lines.forEach((l, li) => { if (l.start - 0.3 <= t) { prev = cur; cur = D[this.moments[li] ?? 'dance'] ?? 0.6; t0 = l.start - 0.3; } });
+    return lerp(prev, cur, smoothstep(t0, t0 + 0.8, t));
+  }
+  /** save + a slow push-in (or pull-out) about the frame centre over the line */
+  private push(t: number, l: Line, amt: number) {
+    const c = this.st.L.ctx, k = 1 + amt * prog(t, l.start - 0.3, l.end, ease.inOutQuad);
+    c.save(); c.translate(CX, CY); c.scale(k, k); c.translate(-CX, -CY);
   }
   private fade(li: number, t: number) {
     const nx = this.lines[li + 1];
@@ -195,13 +211,13 @@ export default class PhosChorus extends Scene {
       const m = this.moments[li], fd = this.fade(li, t);
       if (!m || t < l.start - 0.45 || fd <= 0.003) return;
       switch (m) {
-        case 'dance': idx = this.dance(l, li, t, idx, fd, li > 3 ? 'cyan' : 'green'); break;
+        case 'dance': this.push(t, l, li === 0 ? 0.06 : -0.05); idx = this.dance(l, li, t, idx, fd, li > 3 ? 'cyan' : 'green'); c.restore(); break;
         case 'lock': idx = this.lock(l, t, idx, fd); break;
         case 'crack': idx = this.crack(l, li, t, idx, fd); break;
         case 'constellation': idx = this.constellation(l, t, idx, fd); break;
         case 'rise': idx = this.rise(l, t, idx, fd, cam); break;
         case 'wave': this.wave(l, t, fd); break;
-        case 'charge': idx = this.charge(l, li, t, idx, fd); break;
+        case 'charge': this.push(t, l, 0.07); idx = this.charge(l, li, t, idx, fd); c.restore(); break;
       }
     });
 
@@ -220,13 +236,18 @@ export default class PhosChorus extends Scene {
     const st = this.st, start = this.ctx.start;
     const burst = ease.outExpo(prog(t, start, start + 1.3));
     const big = this.tBig && t >= this.tBig ? [{ t: this.tBig, s: 1 }] : [];
+    const dens = this.dens(t);
     for (const b of this.bg) {
       const dep = 0.25 + 0.75 * (b.s / 25);
       let x = (b.x + b.vx * t + W * 40) % W, y = (b.y + b.vy * t - cam * dep * 0.6 + H * 400) % H;
       const bq = ease.outExpo(prog(t, start + 0.18 * b.k, start + 1.3));
       if (bq < 1) { x = lerp(IGN.x, x, bq); y = lerp(IGN.y, y, bq); }
+      // density waves: bands of stickers sweep across, thinning toward the vertical edges of the words
+      const wv = 0.55 + 0.45 * Math.sin(x * 0.0045 + y * 0.002 - t * 1.4);
+      const vis = clamp((dens * (0.6 + 0.8 * wv) - (b.k - 0.3) / 0.7) * 6, 0, 1);
+      if (vis <= 0.01) continue;
       const g = glowAt(t, this.uv.map((e) => ({ t: e.t, s: e.s! * (0.35 + 0.65 * b.k) })), { tau: 1.5 });
-      let level = 0.045 + g.level * 0.5, flash = g.flash * 0.15;
+      let level = (0.045 + g.level * 0.5) * vis, flash = g.flash * 0.15 * vis;
       if (big.length) { const gb = glowAt(t, [{ t: this.tBig, s: 0.55 + 0.45 * b.k }], { tau: 3.2 }); level = Math.max(level, gb.level); flash = Math.max(flash, gb.flash * 0.7); }
       if (burst < 1) level += 0.45 * (1 - burst);
       st.stars.set(idx++, x, y, b.s * lerp(0.3, 1, bq), b.r + t * 0.05 * (b.k - 0.5), { level, flash }, b.gold ? 'gold' : 'green', 0.5);
@@ -359,12 +380,12 @@ export default class PhosChorus extends Scene {
       if (t >= t1) len = b; else if (t > t0) { len = a + (b - a) * ((t - t0) / Math.max(1e-3, t1 - t0)); break; } else break;
     }
     // faint chart lines along the strokes
-    c.save(); c.lineWidth = 2.2; c.lineJoin = 'round';
+    c.save(); c.lineWidth = 4.5; c.lineJoin = 'round'; c.lineCap = 'round';
     con.st.strokes.forEach((pts, si) => {
       const s0 = con.st.startLen[si]!;
       if (s0 >= len) return;
       const age = t - this.penTime(con, s0);
-      c.strokeStyle = phosphorCss({ level: (0.55 * Math.exp(-age / 2.6) + 0.12) * fd, flash: 0 }, 'cyan');
+      c.strokeStyle = phosphorCss({ level: (0.8 * Math.exp(-age / 2.6) + 0.3) * fd, flash: 0 }, 'cyan');
       c.beginPath();
       const L = con.st.lens[si]!;
       pts.forEach((p, k) => { if (s0 + L[k]! > len) return; (k ? c.lineTo : c.moveTo).call(c, con.ox + p.x, con.oy + p.y); });
