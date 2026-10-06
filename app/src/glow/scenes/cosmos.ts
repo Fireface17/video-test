@@ -162,7 +162,7 @@ export default class Cosmos extends Scene {
       const A = onArm(0.58, 0, 0.3), Bm = onArm(0.4, 1, -0.35);
       this.keys = [
         // the star-dust spiral the drop opens on, matched (see matchSpiral): then into the core on bar 1
-        { t: B(0), c: [0, 0], z: 0.95, rot: 0, tilt: Math.acos(0.62 / 1.05), fl: 0, dz: -0.3 },
+        { t: B(0), c: [0, 0], z: 1.0, rot: 0, tilt: Math.acos(0.62 / 1.05), fl: 0, dz: -0.3 },
         { t: B(1), c: [0, 0], z: 0.12, rot: 0.3, tilt: 0.15, fl: 0.9, dz: 0.15 },
         { t: B(3), c: A.c, z: 0.15, rot: A.rot, tilt: 0.3, fl: 1.55, dz: -0.1, dr: -0.05 },
         { t: B(5), c: Bm.c, z: 0.11, rot: Bm.rot, tilt: 0.25, fl: 1.0, dz: -0.1, dr: 0.05 },
@@ -233,7 +233,7 @@ export default class Cosmos extends Scene {
     return { ...c, z: c.z * Math.exp(-0.13 * f * this.surge(t)), rot: c.rot + 0.03 * f * this.surge(t - 0.04) };
   }
 
-  private calm(t: number) { return 0.3 + 0.7 * smoothstep(this.bar(0) + 0.3, this.bar(0) + 0.9, t);
+  private calm(t: number) { return 0.15 + 0.85 * smoothstep(this.bar(0) + 0.4, this.bar(1) - 0.1, t);
   }
 
   /** the camera at song time t (the shot list) */
@@ -281,11 +281,11 @@ export default class Cosmos extends Scene {
     U.uMir!.value = -1;
     U.uPat!.value = this.look.cfg.pat + this.patAt(t);
     U.uT0!.value = this.t0 - 2.0;
-    U.uKick!.value = kick;
+    U.uKick!.value = kick * this.calm(t);
     U.uPulseR!.value = age * 0.9;
-    U.uPulseA!.value = 1.3 * Math.pow(Math.max(0, 1 - age / 1.2), 1.5);
+    U.uPulseA!.value = 1.3 * Math.pow(Math.max(0, 1 - age / 1.2), 1.5) * this.calm(t);
     // exposure: the kicks breathe it; drop 1 whites out into the cut, drop 3 converges into one star
-    let expo = 1 + 0.35 * kick;
+    let expo = 1 + 0.35 * kick * this.calm(t);
     expo *= 1 + 2.2 * smoothstep(this.bar(7) + 0.45, this.t1, t);
     // the supernova: its flash, then the galaxy looks dimmer next to it for a moment
     let snA = -9;
@@ -326,11 +326,18 @@ export default class Cosmos extends Scene {
     const fi = frameIdx(t), sh = 6 * kick * this.calm(t) + 10 * slam;
     const boom = snA >= 0 ? Math.exp(-snA / 0.12) : 0;
     const sh2 = sh + 22 * boom;
+    // (the engine applies the incoming scene's post to the whole dissolve: so while the spiral of phos-drop is
+    //  still on screen, and a while after, this is phos-drop's own closing post — its zoom, bloom, vignette — easing
+    //  to the drop's; a switch at the dissolve's first frame made the picture jump)
+    const hand = 1 - smoothstep(this.bar(0) - 0.25, this.bar(0) + 1.0, t);
+    const mixP = (a: number, b: number) => a + (b - a) * hand;
     const post = {
-      zoom: 1 + 0.04 * kick * this.calm(t) + 0.07 * slam + 0.09 * boom,
+      zoom: (1 + 0.04 * kick * this.calm(t) + 0.07 * slam + 0.09 * boom) * (1 + 0.06 * hand),
       shake: [(hash(fi, 1) - 0.5) * 2 * sh2, (hash(fi, 2) - 0.5) * 2 * sh2] as [number, number],
       flash: 0.012 * slam * (1 + snare) + 0.3 * (snA >= 0 ? Math.exp(-snA / 0.045) : 0),
       ca: 0.8 + 3 * boom,
+      bloom: mixP(0.55, 0.6), bloomThreshold: mixP(0.85, 0.68), bloomKnee: 0.5, bloomRadius: mixP(0.75, 0.8),
+      halation: mixP(0.25, 0.07), grain: mixP(0.055, 0.05), vignette: mixP(0.35, 0.55),
     };
     const r = this.ctx.renderer;
     r.setRenderTarget(out);
