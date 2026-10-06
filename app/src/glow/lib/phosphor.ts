@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------------------------- API
 // Palette / colour
 //   PH                     hex + linear colours: green (#B6FF6A), gold, violet (UV), cyan, white, dim
-//   Tone                   'green' | 'gold' | 'violet' | 'cyan' | [r,g,b] linear   (what hue a charge has)
+//   Tone                   'green' | 'gold' | 'violet' | 'cyan' | 'pink' | 'white' | [r,g,b] linear   (what hue a charge has)
 //   phosphorLin(g, tone)   linear rgb (HDR, may exceed 1) for a Glow {level, flash}
 //   phosphorCss(g, tone)   Canvas2D rgb() string (clamped 0..1 sRGB) for the same
 // Charge model (analytic afterglow)
@@ -25,6 +25,9 @@
 //                               to o.maxW), centred on x = 0, first baseline y = 0 (y down), spaced by o.gap
 //   drawWord(c, text, x, y, size, glow, tone, o)  fill one word / glyph with phosphor colour (o.align, o.alpha, o.rot)
 //   textPoints (re-exported)    jittered sample points inside text, for words made of stickers
+//   class StickerWord(text, size, step?, seed?)   a word as sticker targets: pts[{x,y,a,b}] (px from the word's left edge /
+//                               baseline; a,b = stable hashes 0..1), width. Scenes move the stickers (pure functions of t).
+//   mixTone(a, b, m)            linear colour between two tones (e.g. green -> gold wave)
 // Stars / stickers
 //   starPath(c, x, y, r, rot, inner)   Canvas2D 5-pointed star path (chubby sticker proportions)
 //   class StarField(max)    thousands of 5-pointed stickers, instanced quads, one draw call:
@@ -47,7 +50,7 @@ import type { Word } from '../../engine/lyrics';
 import { Layer2D, W, H } from '../../engine/gl';
 import { FSPass } from '../../engine/gl';
 import { measure, textPoints } from '../../engine/type';
-import { clamp } from '../../engine/util';
+import { clamp, hash } from '../../engine/util';
 import { lin } from './palette';
 
 export { textPoints };
@@ -61,8 +64,11 @@ export const PH = {
     green: lin('phosphor'), gold: lin('gold'), violet: lin('violet'), cyan: lin('cyan'), white: [1, 1, 1] as [number, number, number], pink: lin('pink'),
   },
 } as const;
-export type Tone = 'green' | 'gold' | 'violet' | 'cyan' | 'pink' | [number, number, number];
+export type Tone = 'green' | 'gold' | 'violet' | 'cyan' | 'pink' | 'white' | [number, number, number];
 const toneLin = (t: Tone): [number, number, number] => (typeof t === 'string' ? PH.lin[t] : t);
+
+/** Sine ease in-out (0..1). */
+export const inOutSine = (t: number) => 0.5 - 0.5 * Math.cos(Math.PI * clamp(t));
 
 export interface Glow { level: number; flash: number }
 export interface Charge { t: number; s?: number }
@@ -182,6 +188,22 @@ export function drawWord(c: CanvasRenderingContext2D, text: string, x: number, y
   c.restore();
 }
 
+/** Linear mix of two tones (m 0 -> a, 1 -> b). */
+export function mixTone(a: Tone, b: Tone, m: number): [number, number, number] {
+  const x = toneLin(a), y = toneLin(b);
+  return [x[0] + (y[0] - x[0]) * m, x[1] + (y[1] - x[1]) * m, x[2] + (y[2] - x[2]) * m];
+}
+
+/** A word as sticker targets (jittered grid inside the glyphs): `step` px apart (default size/15). */
+export class StickerWord {
+  pts: { x: number; y: number; a: number; b: number }[];
+  width: number;
+  constructor(public text: string, public size: number, public step = size / 15, seed = 1) {
+    this.pts = textPoints(text, PHOS_FONT, size, step, seed).map((p, i) => ({ x: p.x, y: p.y, a: hash(seed, i, 1), b: hash(seed, i, 2) }));
+    this.width = measure(text, PHOS_FONT, size);
+  }
+}
+
 // ---------------------------------------------------------------------------------------------- stars
 /** Canvas2D path of a chubby 5-pointed sticker star (outer radius r, point up at rot = 0). */
 export function starPath(c: CanvasRenderingContext2D | Path2D, x: number, y: number, r: number, rot = 0, inner = 0.46) {
@@ -285,7 +307,7 @@ const WASH = /* glsl */ `
   uniform float k; uniform vec3 col;
   void main() {
     vec2 p = vUv - 0.5; p.x *= 1.78;
-    float v = 0.35 + 0.65 * exp(-dot(p, p) * 1.6);
+    float v = 0.18 + 0.9 * smoothstep(0.1, 1.1, dot(p, p));   // UV lamps at the edges
     fragColor = vec4(col * k * v, 1.0);
   }`;
 
@@ -310,7 +332,7 @@ export class PhosphorStage {
     this.ctx.comp.draw(r, this.L.upload(), out, { mode: 'add', tint: [g, g, g] });
     const uv = o.uv ?? 0;
     if (uv > 0.002) {
-      this.wash.u.k!.value = uv * 0.5;
+      this.wash.u.k!.value = uv * 0.45;
       (this.wash.u.col!.value as THREE.Vector3).set(...(o.uvColor ?? [0.34, 0.2, 0.95]));
       this.wash.render(r, out);
     }

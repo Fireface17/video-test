@@ -57,11 +57,11 @@ export function makeTimeline(ly: Lyrics, au: AudioData): TimelineEntry[] {
     // the camera tilts down out of the sky onto the road
     E('highway', 'highway', b.verse1, b.pre1, X('whip', 0.5, { dir: [0, 1] })),
     // the blackout: his hands glowing on the dead car's wheel dissolve into his palms glowing on a dark roof
-    E('snap1', 'rooftop', b.pre1, b.chorus1, X('crossfade', 0.4)),
+    E('snap1', 'phos-pre', b.pre1, b.chorus1, { params: { n: 1 }, ...X('crossfade', 0.4) }),
     // the lanterns' star above his roof bursts: light; it rains down on the street and she is there, across it
-    E('chorus1', 'rooftops', b.chorus1, b.drop1, X('light', 0.36, { color: lin('#ffe2b0', 1.1) })),
+    E('chorus1', 'phos-chorus', b.chorus1, b.drop1, X('crossfade', 0.12)),
     // the drop hits: punch through the chorus's flash into the living city (people dance on balconies and roofs)
-    E('drop1a', 'citydrop', b.drop1, b.drop1mid, X('zoom', 0.5, { centre: [0.5, 0.5], color: lin('#fff1dc', 1.3) })),
+    E('drop1a', 'phos-drop', b.drop1, b.drop1mid, X('light', 0.2, { color: lin('#ffffff', 1.2) })),
     // the people's lights stream up into the sky: punch up through them into the galaxy they make
     E('drop1', 'cosmos', b.drop1mid, b.verse2, { params: { n: 1 }, ...X('zoom', 0.7, { centre: [0.5, 0.55], color: lin('cyan', 1.2) }) }),
     // verse 2 and the build: a night train of ghosts on their phones; they light up and pour out into the street
@@ -72,7 +72,7 @@ export function makeTimeline(ly: Lyrics, au: AudioData): TimelineEntry[] {
     E('break2', 'overpass', b.break2, b.bridge, X('crossfade', 0.9)),
     // the bridge goes on from where the break leaves them, on the edge hand in hand: a hard cut on the beat to the
     // reverse angle, and they jump
-    E('bridge', 'fall', b.bridge, b.chorus3),
+    E('bridge', 'phos-fall', b.bridge, b.chorus3, X('crossfade', 0.5)),
     // a golden star opens onto the final chorus: dawn on the rooftop, the whole city takes hands
     E('chorus3', 'dawn', b.chorus3, b.drop3, X('iris', 0.75, { color: lin('gold', 1.6), centre: [0.5, 0.5], seed: 0.3 })),
     E('drop3', 'cosmos', b.drop3, b.outro, { params: { n: 3 }, ...X('shatter', 0.9, { color: lin('gold', 1.4), centre: [0.5, 0.42] }) }),
