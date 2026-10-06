@@ -226,7 +226,7 @@ export default class PhosFinal extends Scene {
     if (hard > 0.01) { const ph = Math.round(t * 60); shake = [shake[0] + 24 * hard * Math.sin(ph * 2.1), shake[1] + 18 * hard * Math.cos(ph * 1.7)]; }
     // the last kick blows the frame to gold-white: the hard way into drop 3
     const blow = t >= this.tLast ? smoothstep(this.tLast, Math.min(end, this.tLast + 0.05), t) : 0;
-    const post: PostOverrides = { ...o, zoom: 1 + 0.25 * ease.inQuad(blow), shake, flash: Math.max(fx.flash as number, 1.6 * blow), bloom: 0.6, bloomThreshold: 0.68, halation: 0.07 };
+    const post: PostOverrides = { ...o, zoom: 1 + 0.25 * ease.inQuad(blow), shake, flash: Math.max(fx.flash as number, 1.6 * blow), bloom: 0.55, bloomThreshold: 0.75, halation: 0.06 };
     if (inv || goldOpen) { post.bloom = 0.25; post.halation = 0.04; if (!blow) post.flash = 0; }
     return post;
   }
@@ -345,7 +345,7 @@ export default class PhosFinal extends Scene {
       const d = D[i]!, dz = d.z - zc;
       if (t < d.w.start - 0.12 || dz < 140) continue;
       const sc = F / dz;
-      const passing = 1 - smoothstep(1.35, 2.6, sc);
+      const passing = 1 - smoothstep(1.2, 1.9, sc);
       if (passing <= 0.01) continue;
       const g = t >= d.w.start ? this.wg(t, d.w.start, 0.66) : { level: 0.18, flash: 0 };
       const x = CX + d.ox * sc, y = CY + d.oy * sc, size = d.size * sc;
