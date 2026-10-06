@@ -5,7 +5,7 @@
 // "and the blue", gold for "golden", the fall gathering speed toward a gold light below which, at the very end,
 // takes the frame (chorus 3 starts from that gold). Pure function of song time.
 import { Scene, type Frame, type PostOverrides } from '../../engine/scene';
-import { Layer2D, FSPass } from '../../engine/gl';
+import { Layer2D, FSPass, makeRT, W, H } from '../../engine/gl';
 import { strokeText, writtenLength, type StrokeText } from '../../engine/stroke';
 import type { Line } from '../../engine/lyrics';
 import { clamp, ease, hash, lerp, mulberry32, prog, smoothstep, TAU } from '../../engine/util';
@@ -150,6 +150,7 @@ export default class PhosFall extends Scene {
   tStart = 0; tEnd = 0;
   tCol = 0; tBlue = 0; tG = 0; tWith = 0; tM = 0;
   bg!: FSPass;
+  bgRT = makeRT(W / 2, H / 2);
   sky: { x: number; y: number; d: number; m: number; h: number }[] = [];
   streaks: { x: number; y: number; d: number; l: number; h: number }[] = [];
   debris: { x: number; y: number; d: number; r: number; spin: number; k: number; ph: number }[] = [];
@@ -272,7 +273,9 @@ export default class PhosFall extends Scene {
     const U = this.bg.u;
     U.uD!.value = D; U.uT!.value = tau;
     U.uC!.value = sC; U.uB!.value = sB; U.uG!.value = sG; U.uM!.value = sM; U.uKick!.value = kick;
-    this.bg.render(renderer, out);
+    // (the gas is soft: painted at half resolution, scaled up)
+    this.bg.render(renderer, this.bgRT);
+    comp.draw(renderer, this.bgRT.texture, out, { mode: 'replace' });
 
     this.P.clear();
     this.L.clear('#000');

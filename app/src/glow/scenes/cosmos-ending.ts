@@ -85,6 +85,7 @@ uniform vec4 uS[64]; uniform vec4 uSC[64]; uniform int nS;
 uniform vec4 uSeg[32]; uniform vec2 uSegK[32]; uniform int nSeg;
 uniform vec4 uJoin; uniform vec2 uJoinK;
 uniform float uT, uMoon, uSky;
+uniform sampler2D uLow; uniform vec2 uLowPx;
 const vec3 MOON = normalize(vec3(-0.34, 0.21, -0.92));
 
 float vn(vec2 p) { vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
@@ -93,14 +94,15 @@ float fb(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a 
 // dunes: long crests across the wind, warped; flat where the figures lie
 float Hd(vec2 p) {
   float r = length(p);
+  float near = 0.08 * sin(p.x * 0.35 + 1.0) * sin(p.y * 0.28) + 0.06 * (vn(p * 0.6) - 0.5);
+  if (r < 8.0) return near - 0.1;
   float flat0 = smoothstep(8.0, 45.0, r);
   vec2 q = p + 40.0 * vec2(vn(p * 0.004) - 0.5, vn(p * 0.004 + 7.0) - 0.5);
   float ph = dot(q, normalize(vec2(0.8, 0.6))) * 0.022 + 3.0 * vn(q * 0.006);
   float crest = pow(0.5 + 0.5 * sin(ph), 2.2);
-  float h = 22.0 * crest + 9.0 * vn(q * 0.011) + 3.0 * vn(q * 0.05);
+  float h = 22.0 * crest + 9.0 * vn(q * 0.011) + 3.0 * vn(q * 0.05) * smoothstep(400.0, 100.0, r);
   // a great dune behind the figures, its crest against the sky
   h += 17.0 * exp(-pow((p.y + 190.0 + 40.0 * sin(p.x * 0.012)) / 70.0, 2.0)) * smoothstep(-400.0, -100.0, p.y);
-  float near = 0.08 * sin(p.x * 0.35 + 1.0) * sin(p.y * 0.28) + 0.06 * (vn(p * 0.6) - 0.5);
   return h * flat0 + near * (1.0 - flat0) - 0.1;
 }
 vec3 skyBase(vec3 d) {
@@ -152,7 +154,20 @@ void main() {
   vec3 rd = normalize(cF + s.x * tanY * 1.77778 * cR + s.y * tanY * cU);
   vec3 ro = cPos;
   float t = 0.05, hit = 0.0, tp = 0.05, dp = 1.0;
-  for (int i = 0; i < 260; i++) {
+#if PASS == 1
+  // start from the quarter-resolution pass's distance (the nearest of the four texels around, minus a margin)
+  float tl = 1e9;
+  for (int j = 0; j < 9; j++) { vec2 o = vec2(float(j % 3) - 1.0, float(j / 3) - 1.0) * 1.5 * uLowPx; tl = min(tl, texture(uLow, vUv + o).r); }
+  if (tl > 5000.0 && rd.y > 0.12) { fragColor = vec4(sky(rd), 1.0); return; }
+  // (by the horizon a dune's edge can fall between the coarse samples: march those pixels in full)
+  bool edge = tl > 5000.0;
+  float tStart = 0.0;
+  t = edge ? 20.0 : max(0.05, tl * 0.86 - 0.2); tp = t; dp = (ro + rd * t).y - Hd((ro + rd * t).xz);
+  for (int i = 0; i < 64; i++) {
+    if (i == 30) edge = true;   // (not there yet: past a crest; go on in coarse steps)
+#else
+  for (int i = 0; i < 96; i++) {
+#endif
     vec3 p = ro + rd * t;
     float dh = p.y - Hd(p.xz);
     if (dh < 0.002 * t) {
@@ -161,11 +176,22 @@ void main() {
       hit = 1.0; break;
     }
     tp = t; dp = dh;
-    t += clamp(dh * 0.4, 0.02 + 0.012 * t, 4.0 + 0.03 * t);
+#if PASS == 1
+    t += edge ? clamp(dh * 0.5, 0.02 * t, 6.0 + 0.05 * t) : clamp(dh * 0.7, 0.005 + 0.012 * t, 2.0 + 0.03 * t);
+#else
+    t += clamp(dh * 0.5, 0.02 + 0.03 * t, 8.0 + 0.06 * t);
+#endif
     if (t > 3000.0) break;
   }
   // (a grazing ray that runs out of steps is ground near the horizon, not sky)
+#if PASS == 0
   if (hit < 0.5 && t < 3000.0) hit = 1.0;
+#else
+  if (hit < 0.5 && t < 3000.0 && rd.y < 0.0) hit = 1.0;
+#endif
+#if PASS == 0
+  fragColor = vec4(hit > 0.5 ? t : 1e4, 0.0, 0.0, 1.0); return;
+#endif
   vec3 col;
   if (hit < 0.5) { col = sky(rd); }
   else {
@@ -185,14 +211,15 @@ void main() {
     vec2 gc = floor(p.xz * 90.0);
     float gh = hash12(gc);
     vec3 gN = normalize(vec3(hash12(gc + 3.0) - 0.5, 1.2, hash12(gc + 7.0) - 0.5));
-    float glint = step(0.993, gh) * pow(max(dot(reflect(-MOON, gN), -rd), 0.0), 60.0) * smoothstep(5.0, 1.5, t);
+    vec2 gf = fract(p.xz * 90.0) - 0.5;
+    float glint = step(0.99, gh) * exp(-dot(gf, gf) / 0.03) * pow(max(dot(reflect(-MOON, gN), -rd), 0.0), 60.0) * smoothstep(4.0, 1.2, t);
     col += vec3(0.7, 0.8, 1.0) * glint * 1.5 * uMoon;
     // silver sheen toward the moon: the ripples' crests catch it (forward scattering off the grains)
     float sheen = pow(max(dot(reflect(rd, N), MOON), 0.0), 10.0);
     col += vec3(0.55, 0.62, 0.85) * sheen * 0.09 * uMoon * (0.4 + 0.6 * smoothstep(400.0, 20.0, t));
     // wider, fainter sparkle further out
     vec2 gc2 = floor(p.xz * 30.0);
-    col += vec3(0.6, 0.7, 1.0) * step(0.997, hash12(gc2 + 5.0)) * smoothstep(25.0, 6.0, t) * smoothstep(1.5, 4.0, t) * sheen * 1.2;
+
     // the stars lying on the sand: their light on the sand, and themselves
     if (length(p.xz) < 6.0) {
       vec3 light = vec3(0.0), em = vec3(0.0);
@@ -202,6 +229,7 @@ void main() {
         if (st.w <= 0.001) continue;
         vec2 dq = p.xz - st.xy;
         float d2 = dot(dq, dq);
+        if (d2 > 1.5) continue;
         light += sc.rgb * st.w * (0.0016 / (0.002 + d2) + 0.25 * exp(-d2 / 0.006));
         if (d2 < st.z * st.z * 4.0) {
           vec2 lq = rot2(sc.w) * dq;
@@ -217,6 +245,8 @@ void main() {
         if (i >= nSeg) break;
         vec2 k = uSegK[i];
         if (k.y <= 0.001 || k.x <= 0.0) continue;
+        vec4 sg = uSeg[i];
+        if (p.x < min(sg.x, sg.z) - 0.4 || p.x > max(sg.x, sg.z) + 0.4 || p.z < min(sg.y, sg.w) - 0.4 || p.z > max(sg.y, sg.w) + 0.4) continue;
         float d = segD(p.xz, uSeg[i].xy, uSeg[i].zw, k.x);
         tr += vec3(0.62, 1.0, 0.45) * k.y * (exp(-d / 0.006) * 1.2 + exp(-d / 0.05) * 0.15);
       }
@@ -264,6 +294,10 @@ export default class CosmosEnding extends Scene {
   scene = new THREE.Scene();
   cam = new THREE.PerspectiveCamera(62, W / H, 0.001, 4000);
   sand!: FSPass;
+  sandLow!: FSPass;
+  /** the dunes are painted at 3/4 resolution (they are soft; the stars on them are lights) and scaled up */
+  midRT = makeRT(W * 0.75, H * 0.75);
+  lowRT = makeRT(W / 4, H / 4, { pxScale: 1, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
   cloud!: FSPass;
   stars: Star[] = [];
   byKey = new Map<string, Star>();
@@ -298,13 +332,17 @@ export default class CosmosEnding extends Scene {
     this.bgPts = new THREE.Points(g, new THREE.PointsMaterial({ size: 1.6, sizeAttenuation: false, vertexColors: true, depthWrite: false }));
     this.scene.add(this.bgPts);
 
-    this.sand = new FSPass(SAND, {
+    const sandU = () => ({
       cPos: { value: new THREE.Vector3() }, cR: { value: new THREE.Vector3() }, cU: { value: new THREE.Vector3() }, cF: { value: new THREE.Vector3() }, tanY: { value: 0.5 },
       uS: { value: Array.from({ length: 64 }, () => new THREE.Vector4()) }, uSC: { value: Array.from({ length: 64 }, () => new THREE.Vector4()) }, nS: { value: 0 },
       uSeg: { value: Array.from({ length: 32 }, () => new THREE.Vector4()) }, uSegK: { value: Array.from({ length: 32 }, () => new THREE.Vector2()) }, nSeg: { value: 0 },
       uJoin: { value: new THREE.Vector4() }, uJoinK: { value: new THREE.Vector2() },
       uT: { value: 0 }, uMoon: { value: 1 }, uSky: { value: 1 },
+      uLow: { value: this.lowRT.texture }, uLowPx: { value: new THREE.Vector2(4 / W, 4 / H) },
     });
+    this.sandLow = new FSPass('#define PASS 0\n' + SAND, sandU());
+    this.sand = new FSPass('#define PASS 1\n' + SAND, sandU());
+    this.sandLow.u.uLow!.value = null;
     this.cloud = new FSPass(CLOUD, { uK: { value: 0 }, uZ: { value: 0 }, uT: { value: 0 } }, { blending: THREE.CustomBlending, transparent: true });
     const cm = this.cloud.mat;
     cm.blendSrc = THREE.OneFactor; cm.blendDst = THREE.OneMinusSrcAlphaFactor; cm.blendEquation = THREE.AddEquation;
@@ -499,7 +537,11 @@ export default class CosmosEnding extends Scene {
       const [hx, hz] = sandXZ(...J.aHaR!), [gx, gz] = sandXZ(...J.bHaL!);
       (U.uJoin!.value as THREE.Vector4).set(hx, hz, gx, gz);
       (U.uJoinK!.value as THREE.Vector2).set(prog(t, this.tHand, this.tHand + 0.7), (1.2 + 1.5 * pulse(t, this.tHand + 0.7, 0.4)) * (1 - prog(t, this.beatT(22), this.beatT(26))));
-      this.sand.render(r, out);
+      // the terrain's distances at quarter resolution first, then the full-resolution pass refines from them
+      for (const k of Object.keys(U)) if (k !== 'uLow') this.sandLow.u[k]!.value = U[k]!.value;
+      this.sandLow.render(r, this.lowRT);
+      this.sand.render(r, this.midRT);
+      this.ctx.comp.draw(r, this.midRT.texture, out, { mode: 'replace' });
     }
     // the cloud deck between the two
     const ck = smoothstep(216.05, 216.45, t) * (1 - smoothstep(216.62, 216.95, t));
