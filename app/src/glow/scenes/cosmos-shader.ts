@@ -96,6 +96,7 @@ uniform vec3 cShock;
 uniform vec4 uFlow, uFlowN;  // screen flow (uv -> uv a shutter earlier: mat2 rows), of the disk and of the near layer
 uniform vec2 uFlowC, uFlowNC;
 uniform vec2 uNC; uniform float uNZ; // the near layer's camera
+uniform float uMir;         // -1: the frame mirrored (the disk seen from its other side)
 
 float hash12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 vec2 hash22(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973)); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.xx + p3.yz) * p3.zy); }
@@ -135,6 +136,7 @@ vec2 capLen(vec2 v, float L) { float l = length(v); return l > L ? v * (L / l) :
 
 void main() {
   vec2 uv = vUv;
+  uv.x *= uMir;
   // the motion of this pixel's point over the shutter, in px
   vec2 mot = (uv - (mat2(uFlow.x, uFlow.z, uFlow.y, uFlow.w) * uv + uFlowC)) * uRes.y * 0.5;
   vec2 motN = (uv - (mat2(uFlowN.x, uFlowN.z, uFlowN.y, uFlowN.w) * uv + uFlowNC)) * uRes.y * 0.5;
@@ -417,7 +419,7 @@ export function galaxyMaterial(look: Look) {
       uShock: { value: new THREE.Vector4(0, 0, 0, 0) }, cShock: { value: C(look.shock) },
       uFlow: { value: new THREE.Vector4(1, 0, 0, 1) }, uFlowC: { value: new THREE.Vector2() },
       uFlowN: { value: new THREE.Vector4(1, 0, 0, 1) }, uFlowNC: { value: new THREE.Vector2() },
-      uNC: { value: new THREE.Vector2() }, uNZ: { value: 1 },
+      uNC: { value: new THREE.Vector2() }, uNZ: { value: 1 }, uMir: { value: 1 },
     },
   });
 }

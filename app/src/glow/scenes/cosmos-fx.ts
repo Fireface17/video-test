@@ -37,6 +37,11 @@ uniform vec3 cS[2];
 uniform vec4 uJ;          // join: xy, age, on
 uniform vec4 uJs;         // merged star: size, strength, rotation, glow
 uniform vec3 cJ, cHot, cTint;
+// the words: a line set in light (R crisp glyphs, G near glow, B wide glow; zero at the texture's borders)
+uniform sampler2D uTx; uniform vec2 uTC, uTS; uniform float uTOn;
+uniform vec4 uTW[4];      // per word: x0, x1 (texture u), reveal 0..1, brightness
+uniform float uTH[4];     // per word: heat (1 while sung)
+uniform vec3 cTxt, cTxtGlow;
 
 float hash11(float p) { p = fract(p * .1031); p *= p + 33.33; p *= p + p; return fract(p); }
 vec2 rot2(vec2 p, float a) { float c = cos(a), s = sin(a); return vec2(c * p.x - s * p.y, s * p.x + c * p.y); }
@@ -151,6 +156,26 @@ void main() {
     col += cJ * kk * exp(-ad * ad / (sw * sw)) * rad * smoothstep(sw, 2.5 * sw, edgeD) * 1.6;
     if (uJs.y > 0.0) col += softStar(p, uJ.xy, uJs.x, uJs.z, cJ, uJs.y, uJs.w);
   }
+  if (uTOn > 0.0) {
+    vec2 tu = (p - uTC) / uTS + 0.5;
+    if (tu.x > 0.0 && tu.x < 1.0 && tu.y > 0.0 && tu.y < 1.0) {
+      vec3 g = texture2D(uTx, tu).rgb;
+      vec3 add = vec3(0.0);
+      for (int i = 0; i < 4; i++) {
+        vec4 w = uTW[i];
+        if (w.w <= 0.0) continue;
+        float pad = 0.03;
+        float inW = smoothstep(w.x - pad, w.x, tu.x) * (1.0 - smoothstep(w.y, w.y + pad, tu.x));
+        // written in light, left to right, with a hot edge
+        float edge = mix(w.x - pad, w.y + pad, w.z);
+        float rev = 1.0 - smoothstep(edge - 0.012, edge, tu.x);
+        float spark = exp(-pow((tu.x - edge) / 0.01, 2.0)) * step(w.z, 0.999);
+        vec3 core = mix(cTxt, vec3(1.0), 0.35 + 0.5 * uTH[i]);
+        add += inW * w.w * (rev * (g.r * core * (1.3 + 0.9 * uTH[i]) + g.g * cTxtGlow * (0.55 + 0.5 * uTH[i]) + g.b * cTxtGlow * 0.25) + spark * (g.g + g.b) * vec3(1.0) * 1.2);
+      }
+      col += add * uTOn;
+    }
+  }
   gl_FragColor = vec4(col, 1.0);
 }`;
 
@@ -160,7 +185,41 @@ const bez = (a: V2, c: V2, b: V2, u: number): V2 => {
   return [v * v * a[0] + 2 * v * u * c[0] + u * u * b[0], v * v * a[1] + 2 * v * u * c[1] + u * u * b[1]];
 };
 
+const TW = 2048, TH = 384;
+interface TxtLine { tex: THREE.DataTexture; words: { x0: number; x1: number; start: number; end: number }[]; t0: number; t1: number }
+
+/** a line of words set in Tilt Neon, as three channels: crisp, near glow, wide glow (borders left empty) */
+function lineTexture(words: string[], font: string): { tex: THREE.DataTexture; xs: [number, number][] } {
+  const size = 190, gap = size * 0.32;
+  const mk = () => { const c = document.createElement('canvas'); c.width = TW; c.height = TH; return c.getContext('2d')!; };
+  const m = mk();
+  m.font = `${size}px "${font}"`;
+  const ws = words.map((w) => m.measureText(w).width);
+  const total = ws.reduce((a, b) => a + b, 0) + gap * (words.length - 1);
+  let x = (TW - total) / 2;
+  const xs: [number, number][] = ws.map((w) => { const r: [number, number] = [x / TW, (x + w) / TW]; x += w + gap; return r; });
+  const layer = (blur: number) => {
+    const c = mk();
+    c.font = `${size}px "${font}"`; c.textBaseline = 'middle'; c.fillStyle = '#fff';
+    if (blur) c.filter = `blur(${blur}px)`;
+    words.forEach((w, i) => c.fillText(w, xs[i]![0] * TW, TH * 0.52));
+    return c.getImageData(0, 0, TW, TH).data;
+  };
+  const a = layer(0), b = layer(9), g = layer(30);
+  const data = new Uint8Array(TW * TH * 4);
+  for (let y = 0; y < TH; y++) for (let xx = 0; xx < TW; xx++) {
+    const i = (y * TW + xx) * 4, o = ((TH - 1 - y) * TW + xx) * 4; // (flipped: row 0 at the bottom)
+    data[o] = a[i + 3]!; data[o + 1] = b[i + 3]!; data[o + 2] = g[i + 3]!; data[o + 3] = 255;
+  }
+  const tex = new THREE.DataTexture(data, TW, TH, THREE.RGBAFormat);
+  tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false;
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.needsUpdate = true;
+  return { tex, xs };
+}
+
 export class CosmosFx {
+  private lines: TxtLine[] = [];
   mesh: THREE.Mesh;
   mat: THREE.ShaderMaterial;
   constructor(asp: number, hot: THREE.Color, tint: THREE.Color, private rate: number) {
@@ -174,6 +233,8 @@ export class CosmosFx {
         cS: { value: [new THREE.Color(), new THREE.Color()] },
         uJ: { value: new THREE.Vector4() }, uJs: { value: new THREE.Vector4() },
         cJ: { value: new THREE.Color() }, cHot: { value: hot }, cTint: { value: tint },
+        uTx: { value: null }, uTC: { value: new THREE.Vector2(0, -0.45) }, uTS: { value: new THREE.Vector2(2.3, 2.3 * TH / TW) }, uTOn: { value: 0 },
+        uTW: { value: v4(4) }, uTH: { value: [0, 0, 0, 0] }, cTxt: { value: new THREE.Color('#BFF4FF') }, cTxtGlow: { value: new THREE.Color('#2FB8FF') },
       },
     });
     this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(2 * asp, 2), this.mat);
@@ -253,5 +314,35 @@ export class CosmosFx {
     (U.cJ!.value as THREE.Color).copy(ev.cJ);
   }
 
-  dispose() { this.mat.dispose(); this.mesh.geometry.dispose(); }
+  /** the lines to write (each word lights as it is sung), set once fonts are loaded */
+  setLines(ls: { words: { w: string; start: number; end: number }[] }[], font: string) {
+    ls.forEach((l, i) => {
+      const { tex, xs } = lineTexture(l.words.map((w) => w.w), font);
+      const next = ls[i + 1];
+      const end = l.words[l.words.length - 1]!.end;
+      this.lines.push({ tex, words: l.words.map((w, j) => ({ x0: xs[j]![0], x1: xs[j]![1], start: w.start, end: w.end })), t0: l.words[0]!.start, t1: Math.min(end + 1.1, next ? next.words[0]!.start - 0.1 : 1e9) });
+    });
+  }
+  textures() { return this.lines.map((l) => l.tex); }
+
+  /** the line on screen at t */
+  text(t: number, kick: number) {
+    const U = this.mat.uniforms;
+    const L = this.lines.find((l) => t > l.t0 - 0.1 && t < l.t1 + 0.4);
+    U.uTOn!.value = 0;
+    if (!L) return;
+    U.uTx!.value = L.tex;
+    U.uTOn!.value = 1 - smoothstep(L.t1, L.t1 + 0.4, t);
+    const tw = U.uTW!.value as THREE.Vector4[], th = U.uTH!.value as number[];
+    for (let i = 0; i < 4; i++) {
+      const w = L.words[i];
+      if (!w || t < w.start - 0.02) { tw[i]!.set(0, 0, 0, 0); th[i] = 0; continue; }
+      const age = t - (w.start - 0.02);
+      const sung = t < w.end + 0.05;
+      th[i] = sung ? 1 : Math.exp(-(t - w.end - 0.05) / 0.35);
+      tw[i]!.set(w.x0, w.x1, clamp(age / Math.min(0.22, Math.max(0.1, (w.end - w.start) * 0.6))), (0.9 + 0.25 * kick * th[i]!) * smoothstep(0, 0.06, age));
+    }
+  }
+
+  dispose() { this.mat.dispose(); this.mesh.geometry.dispose(); for (const l of this.lines) l.tex.dispose(); }
 }

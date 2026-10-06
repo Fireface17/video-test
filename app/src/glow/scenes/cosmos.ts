@@ -20,6 +20,9 @@ import { col } from '../lib/palette';
 import { armAt, clusterNear, galaxyMaterial, type Cfg, type Look } from './cosmos-shader';
 import { CosmosFx, type Fx, type Join } from './cosmos-fx';
 import { NovaFx } from './cosmos-nova';
+import { loadPhosphorFont, PHOS_FONT } from '../lib/phosphor';
+import { prewarm } from '../lib/prewarm';
+import { armPhase } from './cosmos-shader';
 
 const ASP = 16 / 9;
 const quint = (x: number) => { x = clamp(x); return x * x * x * (x * (x * 6 - 15) + 10); };
@@ -98,12 +101,49 @@ export default class Cosmos extends Scene {
     this.scene.add(this.fx.mesh, this.snFx.mesh);
     this.kicks = ctx.audio.events('kick', this.t0 - 1, this.t1 + 1);
     this.buildShots();
+    this.matchSpiral();
     this.punchUp();
     this.buildNovae();
   }
 
   /** downbeat bar k of the drop (bar 0 = the downbeat at the section start) */
   private bar(k: number) { return this.bars[k] ?? this.bars[this.bars.length - 1]! + (k - this.bars.length + 1) * 1.58; }
+
+  override async init() {
+    // "Take my hand", written in light under the two stars (the drop's only words)
+    await loadPhosphorFont();
+    const hands = this.ctx.lyrics.linesIn(this.t0, this.t1).filter((l) => /take my hand/i.test(l.text));
+    this.fx.setLines(hands, PHOS_FONT);
+    // (compiled and uploaded now: the preview must not stall on the drop's first frame)
+    this.mat.uniforms.uRes!.value.set(8, 8);
+    prewarm(this.ctx.renderer, [{ scene: this.scene, cam: this.cam }], this.fx.textures());
+  }
+
+  /** the arms' phase offset at t: at the drop's first frame the arms lie exactly on the star-dust spiral that
+   *  phos-drop (drop1a) closes on, and turn on with it, easing back to the galaxy's own pattern by bar 1 */
+  private patAt(t: number) {
+    const B0 = this.bar(0), B1 = this.bar(1);
+    if (t >= B1) return 0;
+    const x = clamp((t - B0) / (B1 - B0));
+    const h00 = 2 * x * x * x - 3 * x * x + 1, h10 = x * x * x - 2 * x * x + x;
+    return this.d0 * h00 + this.m0 * (B1 - B0) * h10;
+  }
+  d0 = 0; m0 = 0;
+
+  /** match the spiral of phos-drop's last frame (screen: x = CX + sr cos th * 1.05, y = CY + sr sin th * 0.62, px,
+   *  y down; post zoom 1.06) on the disk: tilt so that cos(tilt) = 0.62 / 1.05, mirrored, the radius scale z */
+  private matchSpiral() {
+    const au = this.ctx.audio, B0 = this.bar(0);
+    const tSp = [...au.downbeats].filter((d) => d < B0 - 0.3).pop() ?? B0 - 1.6;
+    const sr = 300, th = 3.3 * Math.log(1 + sr / 70) + 0.6 * (B0 - tSp) / Math.sqrt(sr / 120 + 0.6);
+    const z = this.keys[0]!.z, r = z * 1.06 * 1.05 * sr / 540, a = th + Math.PI;
+    const ph = armPhase(this.look.cfg, r * Math.cos(a), r * Math.sin(a));
+    // the arms lie where the phase is a multiple of pi: the offset that puts one here, turning the right way
+    let d = -ph; d = ((d % Math.PI) + Math.PI) % Math.PI;
+    if (d < 0.3) d += Math.PI;
+    this.d0 = d;
+    this.m0 = -0.6 / Math.sqrt(sr / 120 + 0.6); // the spiral's own turn (rad/s), continued
+  }
 
   private buildShots() {
     const au = this.ctx.audio;
@@ -121,8 +161,9 @@ export default class Cosmos extends Scene {
     if (this.n === 1) {
       const A = onArm(0.58, 0, 0.3), Bm = onArm(0.4, 1, -0.35);
       this.keys = [
-        { t: B(0), c: [0, 0], z: 0.12, rot: 0.3, tilt: 0.15, fl: 0, dz: 0.15 },
-        { t: B(1), c: [0, 0.02], z: 1.0, rot: -0.4, tilt: 0.5, fl: 1.45, dz: -0.1, dr: 0.18 },
+        // the star-dust spiral the drop opens on, matched (see matchSpiral): then into the core on bar 1
+        { t: B(0), c: [0, 0], z: 0.95, rot: 0, tilt: Math.acos(0.62 / 1.05), fl: 0, dz: -0.3 },
+        { t: B(1), c: [0, 0], z: 0.12, rot: 0.3, tilt: 0.15, fl: 0.9, dz: 0.15 },
         { t: B(3), c: A.c, z: 0.15, rot: A.rot, tilt: 0.3, fl: 1.55, dz: -0.1, dr: -0.05 },
         { t: B(5), c: Bm.c, z: 0.11, rot: Bm.rot, tilt: 0.25, fl: 1.0, dz: -0.1, dr: 0.05 },
         { t: B(7), c: [0, 0], z: 0.06, rot: Bm.rot + 1.3, tilt: 0.1, fl: 1.3, dz: -0.5, dr: 0.3 },
@@ -187,7 +228,12 @@ export default class Cosmos extends Scene {
   /** the camera at song time t, with the kicks' surges */
   private camAt(t: number): Cam {
     const c = this.camBase(t);
-    return { ...c, z: c.z * Math.exp(-0.13 * this.surge(t)), rot: c.rot + 0.03 * this.surge(t - 0.04) };
+    // (gentler while the spiral is still dissolving into the galaxy: the handover must read as one motion)
+    const f = this.calm(t);
+    return { ...c, z: c.z * Math.exp(-0.13 * f * this.surge(t)), rot: c.rot + 0.03 * f * this.surge(t - 0.04) };
+  }
+
+  private calm(t: number) { return 0.3 + 0.7 * smoothstep(this.bar(0) + 0.3, this.bar(0) + 0.9, t);
   }
 
   /** the camera at song time t (the shot list) */
@@ -232,6 +278,8 @@ export default class Cosmos extends Scene {
     U.uC!.value.set(cam.c[0], cam.c[1]);
     U.uZ!.value = cam.z; U.uRot!.value = cam.rot; U.uCt!.value = Math.cos(cam.tilt);
     U.uT!.value = t;
+    U.uMir!.value = -1;
+    U.uPat!.value = this.look.cfg.pat + this.patAt(t);
     U.uT0!.value = this.t0 - 2.0;
     U.uKick!.value = kick;
     U.uPulseR!.value = age * 0.9;
@@ -266,19 +314,20 @@ export default class Cosmos extends Scene {
     const fx: Fx = { sun: [0, 0, 0, 1], shock: [0, 0, 0, 0] };
     this.fx.begin();
     for (const j of this.joins) this.fx.join(j.ev, t, fx);
+    this.fx.text(t, kick);
     U.uSun!.value.set(fx.sun[0], fx.sun[1], fx.sun[2], fx.sun[3]);
     U.uShock!.value.set(fx.shock[0], fx.shock[1], fx.shock[2], fx.shock[3]);
 
     // punch: every kick pushes in and shakes; every new framing lands with a slam and a flash; snares strobe
     let since = 9;
-    for (const k of this.keys) if (k.t <= t) since = t - k.t;
+    for (const [i, k] of this.keys.entries()) if (i > 0 && k.t <= t) since = t - k.t;
     const slam = Math.exp(-since / 0.14);
     const snare = Math.min(1, f.a.snare);
-    const fi = frameIdx(t), sh = 6 * kick + 10 * slam;
+    const fi = frameIdx(t), sh = 6 * kick * this.calm(t) + 10 * slam;
     const boom = snA >= 0 ? Math.exp(-snA / 0.12) : 0;
     const sh2 = sh + 22 * boom;
     const post = {
-      zoom: 1 + 0.04 * kick + 0.07 * slam + 0.09 * boom,
+      zoom: 1 + 0.04 * kick * this.calm(t) + 0.07 * slam + 0.09 * boom,
       shake: [(hash(fi, 1) - 0.5) * 2 * sh2, (hash(fi, 2) - 0.5) * 2 * sh2] as [number, number],
       flash: 0.012 * slam * (1 + snare) + 0.3 * (snA >= 0 ? Math.exp(-snA / 0.045) : 0),
       ca: 0.8 + 3 * boom,
@@ -295,7 +344,8 @@ export default class Cosmos extends Scene {
   private projUV(c: Cam, w: [number, number]): [number, number] {
     const px = w[0] - c.c[0], py = (w[1] - c.c[1]) * Math.cos(c.tilt);
     const cs = Math.cos(-c.rot), sn = Math.sin(-c.rot);
-    return [(cs * px - sn * py) / c.z, (sn * px + cs * py) / c.z];
+    // (the frame is mirrored: uMir = -1)
+    return [-(cs * px - sn * py) / c.z, (sn * px + cs * py) / c.z];
   }
 
   override dispose() {

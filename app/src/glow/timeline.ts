@@ -64,7 +64,8 @@ export function makeTimeline(ly: Lyrics, au: AudioData): TimelineEntry[] {
     // the drop hits: punch through the chorus's flash into the living city (people dance on balconies and roofs)
     E('drop1a', 'phos-drop', b.drop1, b.drop1mid), // point to point: chorus 1 collapses into the point the drop bursts from
     // the people's lights stream up into the sky: punch up through them into the galaxy they make
-    E('drop1', 'cosmos', b.drop1mid, b.verse2, { params: { n: 1 }, ...X('zoom', 0.7, { centre: [0.5, 0.55], color: lin('cyan', 1.2) }) }),
+    // the star-dust spiral becomes the galaxy: the same spiral, turning on, matched frame to frame and dissolved
+    E('drop1', 'cosmos', b.drop1mid, b.verse2, { params: { n: 1 }, ...X('crossfade', 0.5) }),
     // verse 2 and the build: a night train of ghosts on their phones; they light up and pour out into the street
     E('verse2', 'phos-verse', b.verse2, b.pre2, X('crossfade', 0.7)),
     E('pre2', 'phos-pre', b.pre2, b.chorus2, { params: { n: 2 }, ...X('crossfade', 0.4) }),
