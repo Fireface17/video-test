@@ -87,7 +87,7 @@ export default class PhosFinal extends Scene {
     // 1
     const s1 = this.fit(A.words.slice(0, 3), STAMP(), 1640, 190);
     this.l1a = [...this.row(A.words.slice(0, 3), STAMP(), s1, 480), ...this.row(A.words.slice(3, 5), STAMP(), s1, 480 + s1 * 1.08)];
-    const sd = this.fit([A.words[6]!], WIDE(), 1700, 420);
+    const sd = this.fit([A.words[6]!], WIDE(), 1480, 400);
     this.l1dance = [...this.row([A.words[5]!], STAMP(), 92, 330), ...this.row([A.words[6]!], WIDE(), sd, 640 + sd * 0.32)];
     // 2
     const s2 = this.fit(B.words.slice(0, 6), PHOS_FONT, 1700, 130, false, 0.3);
@@ -360,7 +360,7 @@ export default class PhosFinal extends Scene {
     else {
       for (const s of this.shards) {
         const dx = s.c[0] - ix, dy = s.c[1] - iy, dl = Math.hypot(dx, dy) || 1;
-        const d = (7 + 9 * s.ring) * apart;
+        const d = (10 + 16 * s.ring) * apart;
         c.save();
         c.translate(dx / dl * d, dy / dl * d);
         c.translate(s.c[0], s.c[1]); c.rotate(s.rot * apart); c.translate(-s.c[0], -s.c[1]);
@@ -402,8 +402,8 @@ export default class PhosFinal extends Scene {
       if (gold > 0) {
         const p = path(reach);
         const hot = Math.exp(-Math.max(0, t - tBe - 0.5) / 0.6) + 1.2 * star * Math.exp(-(t - tSt) / 0.4);
-        c.strokeStyle = css(AMBER, 0.9); c.lineWidth = 9; c.stroke(p);
-        c.strokeStyle = css(GOLD, 1); c.lineWidth = 5; c.stroke(p);
+        c.strokeStyle = css(AMBER, 0.9); c.lineWidth = 12; c.stroke(p);
+        c.strokeStyle = css(GOLD, 1); c.lineWidth = 6.5; c.stroke(p);
         c.strokeStyle = css(HOT, clamp(0.4 + 0.6 * hot)); c.lineWidth = 2; c.stroke(p);
       }
       c.restore();
@@ -412,8 +412,17 @@ export default class PhosFinal extends Scene {
     for (const b of this.l3b) if (t >= b.w.start - 0.01) this.word(c, b, this.sheen(c, t, this.heat(b.w, t, 0.3)), this.slam(b.w, t, 0.12));
     if (star) {
       const a = t - tSt;
-      const R = 105 * ease.outCubic(clamp(a / 0.16));
-      const sy = lerp(iy, 170, ease.outCubic(clamp(a / 0.32)));
+      const R = 140 * ease.outCubic(clamp(a / 0.16));
+      const sy = lerp(iy, 150, ease.outCubic(clamp(a / 0.32)));
+      // a burst of rays from the new star
+      c.save(); c.translate(ix, sy);
+      for (let i = 0; i < 10; i++) {
+        const ra = (i * TAU) / 10 - Math.PI / 2 + a * 0.15, rl = 900 * (0.6 + 0.4 * ((i % 2) ? 0.6 : 1));
+        const rg = c.createLinearGradient(0, 0, Math.cos(ra) * rl, Math.sin(ra) * rl);
+        rg.addColorStop(0, css(HOT, 0.5 * Math.exp(-a / 0.8) + 0.12)); rg.addColorStop(1, css(GOLD, 0));
+        c.fillStyle = rg; c.beginPath(); c.moveTo(0, 0); c.lineTo(Math.cos(ra - 0.02) * rl, Math.sin(ra - 0.02) * rl); c.lineTo(Math.cos(ra + 0.02) * rl, Math.sin(ra + 0.02) * rl); c.closePath(); c.fill();
+      }
+      c.restore();
       this.glowDot(c, ix, sy, 650, GOLD, 0.55 * Math.exp(-a / 0.5) + 0.2);
       // the seam it rose along
       c.fillStyle = css(HOT, 0.8 * Math.exp(-a / 0.4)); c.fillRect(ix - 1.5, sy, 3, Math.max(0, iy - sy - R * 0.4));
@@ -568,10 +577,17 @@ export default class PhosFinal extends Scene {
     if (li === 0 && t >= Lc.words[5]!.start) {
       const dbs = au.downbeats.filter((d) => d > Lc.words[5]!.start && d < Lc.end);
       z = 1 + 0.02 * prog(t, Lc.words[5]!.start, Lc.end);
-      for (const d of dbs) z *= 1 + 0.06 * ease.outCubic(prog(t, d, d + 0.1));
+      for (const d of dbs) z *= 1 + 0.045 * ease.outCubic(prog(t, d, d + 0.1));
     }
     if (li === 0 && t >= Lc.words[3]!.start && t < Lc.words[5]!.start) for (const w of Lc.words.slice(3, 5)) z *= 1 + 0.045 * ease.outCubic(prog(t, w.start, w.start + 0.09));
-    if (li !== 4) { c.translate(CX, 540); c.scale(z, z); c.translate(-CX, -540); }
+    let fx = CX, fy = 540;
+    if (li === 2) {
+      // in on the impact when it breaks, back out as the gold runs
+      const w3 = Lc.words;
+      const zin = ease.outCubic(prog(t, w3[1]!.start, w3[1]!.start + 0.06)) * (1 - ease.inOutCubic(prog(t, w3[3]!.start, w3[3]!.start + 0.6)));
+      z *= 1 + 0.15 * zin; fy = lerp(540, this.imp[1], zin);
+    }
+    if (li !== 4) { c.translate(fx, fy); c.scale(z, z); c.translate(-fx, -fy); }
     if (li === 0) this.line1(c, t, Ls[0]!);
     else if (li === 1) this.line2(c, t, Ls[1]!);
     else if (li === 2) this.line3(c, t, Ls[2]!);
