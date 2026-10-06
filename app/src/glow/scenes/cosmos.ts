@@ -19,6 +19,7 @@ import { clamp, hash, smoothstep, frameIdx } from '../../engine/util';
 import { col } from '../lib/palette';
 import { armAt, clusterNear, galaxyMaterial, type Cfg, type Look } from './cosmos-shader';
 import { StarText } from './cosmos-text';
+import { Details, type Nova } from './cosmos-details';
 import { Motif, type Fx, type Join } from './cosmos-motif';
 
 const ASP = 16 / 9;
@@ -54,6 +55,9 @@ export default class Cosmos extends Scene {
   cam = new THREE.OrthographicCamera(-ASP, ASP, 1, -1, 0.1, 10);
   text!: StarText;
   motif = new Motif();
+  details!: Details;
+  novae: Nova[] = [];
+  pulsar: [number, number] = [0.8, 0.5];
   keys: Key[] = [];
   joins: { ev: Join; slot: number }[] = [];
   bars: number[] = [];
@@ -76,9 +80,11 @@ export default class Cosmos extends Scene {
     const tint = this.n === 1 ? col('#BFEFFF') : col('#FFE6A8');
     const hot = this.n === 1 ? col('#FFFFFF') : col('#FFF4D8');
     this.text = new StarText(ctx.lyrics, this.t0, this.t1, tint, hot);
-    this.scene.add(this.text.group, this.motif.group);
+    this.details = new Details(ctx.audio.beats, this.t0, this.t1, tint, hot, this.n === 3 ? 0.55 : 0.3);
+    this.scene.add(this.details.pts, this.text.group, this.motif.group);
     this.buildShots();
     this.punchUp();
+    this.buildNovae();
   }
 
   override async init() { await this.text.init(); }
@@ -159,6 +165,18 @@ export default class Cosmos extends Scene {
     this.keys = out.filter((k, i) => i === 0 || k.t > out[i - 1]!.t + 0.2);
   }
 
+  private buildNovae() {
+    const cfg = this.look.cfg, B = (k: number) => this.bar(k);
+    const at = (r: number, k: number): [number, number] => { const a = armAt(cfg, r, k), c = clusterNear(a.x, a.y, 0.12); return c ? [c.x, c.y] : [a.x, a.y]; };
+    if (this.n === 1) this.novae = [{ t: B(4) + 0.02, at: at(0.5, 1), scale: 1 }];
+    else this.novae = [
+      { t: B(5) + 0.02, at: at(0.55, 0), scale: 1 }, { t: B(8) + 0.02, at: at(0.7, 1), scale: 1.2 },
+      { t: B(10) + 0.02, at: at(0.3, 0), scale: 1.2 }, { t: B(12) + 0.02, at: [0.35, 0.2], scale: 2.2 },
+    ];
+    const a = armAt(cfg, 0.8, 1);
+    this.pulsar = [a.x + 0.05, a.y + 0.05];
+  }
+
   /** the camera at song time t */
   private camAt(t: number): Cam {
     const ks = this.keys;
@@ -215,6 +233,12 @@ export default class Cosmos extends Scene {
     U.uScrim!.value.set(0, this.text.y, tx.hw + 0.25, 0.32);
     U.uScrimK!.value = 0.62 * tx.k;
 
+    // the small life
+    const cs = Math.cos(-cam.rot), sn = Math.sin(-cam.rot), ct = Math.cos(cam.tilt);
+    this.details.update(t, f.beatPhase, kick, {
+      z: cam.z,
+      uv: (x, y) => { const px = x - cam.c[0], py = (y - cam.c[1]) * ct; return [(cs * px - sn * py) / cam.z, (sn * px + cs * py) / cam.z]; },
+    }, this.novae, this.pulsar);
     // events
     const fx: Fx = { sun: [0, 0, 0, 1], shock: [0, 0, 0, 0] };
     this.motif.begin();
@@ -242,9 +266,9 @@ export default class Cosmos extends Scene {
     const snare = Math.min(1, f.a.snare);
     const fi = frameIdx(t), sh = 6 * kick + 10 * slam;
     const post = {
-      zoom: 1 + 0.05 * kick + 0.07 * slam,
+      zoom: 1 + (this.n === 3 ? 0.07 : 0.05) * kick + 0.07 * slam,
       shake: [(hash(fi, 1) - 0.5) * 2 * sh, (hash(fi, 2) - 0.5) * 2 * sh] as [number, number],
-      flash: 0.1 * snare + 0.12 * slam + 0.05 * kick,
+      flash: 0.012 * slam * (1 + snare),
     };
     const r = this.ctx.renderer;
     r.setRenderTarget(out);
