@@ -9,6 +9,7 @@ import type { Line, Word } from '../../engine/lyrics';
 import { W, H } from '../../engine/gl';
 import { layout, type TextLayout } from '../../engine/type';
 import { clamp, ease, hash, lerp, prog, smoothstep, TAU } from '../../engine/util';
+import { cam, camXf, useXf, type Cam } from '../lib/phos-cut';
 import { hitFx, PhosphorStage, StickerWord, glowAt, uvEvents, uvPulse, drawWord, loadPhosphorFont, mixTone, phosphorCss, PHOS_FONT, type Charge, type Tone } from '../lib/phosphor';
 
 const CX = W / 2, CY = H / 2;
@@ -86,6 +87,33 @@ export default class PhosDrop extends Scene {
     return { x: CX + b.u * Math.cos(th) * 1.05, y: CY + b.u * Math.sin(th) * 0.64, r: b.u, th };
   }
 
+  ink = false;
+  private cuts: number[] | null = null;
+  /** the gap's framings: one per kick, cycling through wide / close-ups / tilted / inverted */
+  private gapCam(t: number): { cam: Cam; inv: string | null } | null {
+    const [A, B] = this.lines;
+    if (!A || !B || t < A.end || t >= B.start - 0.12) return null;
+    if (!this.cuts) {
+      const ks = this.ctx.audio.events('kick', A.end + 0.12, B.start - 0.3).filter(([, s]) => s >= 0.8).map(([k]) => k);
+      this.cuts = [A.end, ...ks];
+    }
+    let i = 0;
+    this.cuts.forEach((k, j) => { if (t >= k) i = j; });
+    const t0 = this.cuts[i]!, u = t - t0;
+    const r0 = CY - 66 + SIZE * 0.34 - SIZE * 0.35, r1 = CY + 170 + SIZE * 0.34 - SIZE * 0.35;
+    const F: [Cam, string | null][] = [
+      [cam(CX, CY + 40, 0.92, 0), null],
+      [cam(CX - 170, r0, 2.7, -0.07), null],
+      [cam(CX + 40, r1, 1.7, 0.06), null],
+      [cam(CX, CY + 40, 1.05, 0), 'rgb(112,186,34)'],
+      [cam(CX + 470, r0, 2.3, 0.09), null],
+      [cam(CX + 260, r1, 2.5, -0.04), 'rgb(196,124,18)'],
+      [cam(CX - 420, r0, 2.0, 0.05), null],
+    ];
+    const [k, inv] = F[i % F.length]!;
+    return { cam: { ...k, z: k.z * (1 + 0.05 * u) }, inv: u < 0.42 ? inv : null };
+  }
+
   /** width of word group at time t (glyph stretch) and per-glyph x offsets */
   private glyphX(g: Group, t: number) {
     const xs: number[] = [], ss: number[] = [];
@@ -106,8 +134,11 @@ export default class PhosDrop extends Scene {
     const burst = (b: { k: number }) => ease.outExpo(prog(t, start + 0.3 + 0.2 * b.k, start + 1.6));
     const rot = 0.5;
     const A = this.lines[0], B = this.lines[1];
-    const storm = A && B ? smoothstep(A.end - 0.2, A.end + 0.5, t) * (1 - smoothstep(B.start - 0.25, B.start + 0.02, t)) * prog(t, A.end, B.start, ease.inQuad) * 0.7 + (A && B && t > A.end && t < B.start ? 0.25 : 0) : 0;
+    const storm = 0; // (no warp storm of stickers any more: the gap is cut on the kicks instead)
     for (const b of this.bg) {
+      // few stickers: a sparse field (a few hundred, dim) until bar 8, when all of them gather into the spiral
+      const gt0 = clamp(g * 1.25 - 0.25 * b.k);
+      if (b.u > 0 && hash(b.r * 100, 77) > 0.09 && gt0 <= 0) continue;
       const q = burst(b);
       let x = (b.x + b.vx * t + W * 40) % W, y = (b.y + b.vy * t + H * 40) % H;
       x = lerp(CX, x, q); y = lerp(CY, y, q);
@@ -140,12 +171,22 @@ export default class PhosDrop extends Scene {
     }
 
     // ---- the lettering
+    // the gap between the phrases: the phrase stays and the CAMERA cuts on every kick between radically different
+    // framings of it (wide, extreme close-ups of the stretched vowels, the second row tilted, inversions)
+    const gapCam = this.gapCam(t);
+    if (gapCam) {
+      if (gapCam.inv) { c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.fillStyle = gapCam.inv; c.fillRect(-4, -4, W + 8, H + 8); c.restore(); }
+      useXf(c, camXf(gapCam.cam));
+      this.ink = !!gapCam.inv;
+    }
     this.lines.forEach((l, li) => {
       const next = this.lines[li + 1];
-      const gone = next ? Math.max(smoothstep(next.start - 0.15, next.start + 0.35, t), smoothstep(l.end - 0.1, l.end + 0.5, t)) : 0;
+      const gone = next ? Math.max(smoothstep(next.start - 0.15, next.start + 0.02, t), li === 0 ? 0 : smoothstep(l.end - 0.1, l.end + 0.5, t)) : 0;
       if (t < l.start - 0.1 || gone >= 1) return;
-      idx = this.line(l, this.groups[li]!, li, t, idx, gone, g);
+      idx = this.line(l, this.groups[li]!, li, t, idx, gone, g, !!gapCam);
     });
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    this.ink = false;
 
     // ---- the core of the spiral
     if (g > 0.001) {
@@ -154,21 +195,7 @@ export default class PhosDrop extends Scene {
       gr.addColorStop(0, `rgba(255,248,225,${a})`); gr.addColorStop(0.18, `rgba(255,214,140,${a * 0.55})`); gr.addColorStop(1, 'rgba(255,200,120,0)');
       c.save(); c.scale(1, 0.64); c.translate(0, CY / 0.64 - CY); c.fillStyle = gr; c.fillRect(CX - r, CY - r, r * 2, r * 2); c.restore();
     }
-    // chop bursts and the strobe that builds through the gap
-    if (A && B && t > A.end - 0.1 && t < B.start + 0.1) {
-      for (const [ct, cs] of this.chops) {
-        const age = t - ct;
-        if (ct < A.end - 0.1 || ct > B.start || age < 0 || age > 0.7) continue;
-        const R = 40 + 900 * ease.outCubic(age / 0.7);
-        c.save(); c.lineWidth = 8 * (1 - age / 0.7) + 1; c.strokeStyle = phosphorCss({ level: cs * Math.exp(-age / 0.3), flash: 0.5 * Math.exp(-age / 0.1) }, age < 0.1 ? 'white' : 'cyan');
-        c.beginPath(); c.arc(CX, CY, R, 0, TAU); c.stroke(); c.restore();
-        for (let s2 = 0; s2 < 18; s2++) {
-          const a = TAU * hash(ct * 100, s2, 1), d = R * (0.4 + 0.7 * hash(ct * 100, s2, 2)), lv = cs * Math.exp(-age / 0.3);
-          if (lv > 0.03) st.stars.set(idx++, CX + Math.cos(a) * d * 1.2, CY + Math.sin(a) * d * 0.8, 10 + 8 * hash(ct * 100, s2, 3), a + age * 5, { level: lv, flash: 0 }, s2 % 2 ? 'gold' : 'white', 0);
-        }
-      }
-    }
-    st.stars.commit(idx);
+    st.stars.commit(gapCam?.inv ? 0 : idx);
 
     // the drop's hit (a white UV flash at the first chop), a flash on every strong kick
     const hit = Math.pow(0.5, Math.max(0, t - (start - 0.04)) / 0.16);
@@ -178,15 +205,17 @@ export default class PhosDrop extends Scene {
       const u = prog(t, A.end, B.start), rate = u < 0.4 ? 1 : u < 0.75 ? 2 : 4, ph = audio.beatAt(t) * rate;
       strobe = Math.pow(1 - (ph - Math.floor(ph)), 3) * (0.35 + 0.5 * u);
     }
-    const uv = Math.max(uvPulse(audio, t, { thr: 0.75 }) * 0.45, hit * 0.9, strobe);
+    const uv = gapCam?.inv ? 0 : uvPulse(audio, t, { thr: 0.75 }) * 0.14;
     const o = st.end(out, { gain: 1.55, uv, uvColor: [0.4, 0.28, 1] });
     const fx = hitFx(audio, t, { zoom: 0.07, shake: 12, flash: 0.22, k: 1 + 0.6 * storm });
     const bar = audio.barAt(t), bp = bar - Math.floor(bar);
     const ramp = 1 + 0.05 * Math.pow(bp, 3) + 0.2 * storm * storm; // speed ramp into every downbeat, into the storm
-    return { ...o, zoom: (fx.zoom as number) * ramp * (1 + 0.1 * hit), shake: fx.shake, flash: Math.max(o.flash ?? 0, fx.flash as number, strobe * 0.2) };
+    const post: PostOverrides = { ...o, zoom: (fx.zoom as number) * ramp * (1 + 0.1 * hit), shake: fx.shake, flash: Math.max(fx.flash as number, strobe * 0.12, 0.35 * Math.pow(0.5, Math.max(0, t - start) / 0.035)), bloom: 0.6, bloomThreshold: 0.68, halation: 0.07 };
+    if (gapCam?.inv) { post.bloom = 0.22; post.flash = 0; }
+    return post;
   }
 
-  private line(l: Line, gs: Group[], li: number, t: number, idx: number, gone: number, gather: number): number {
+  private line(l: Line, gs: Group[], li: number, t: number, idx: number, gone: number, gather: number, cut = false): number {
     const st = this.st, c = st.L.ctx;
     // rows: the stretched width of each row decides where its words sit
     const rowW = [0, 0], gap = SIZE * 0.26;
@@ -215,11 +244,12 @@ export default class PhosDrop extends Scene {
         c.translate(x0 + X.xs[i]!, y0);
         const slam = 1 + 0.8 * Math.exp(-age / 0.08);
         c.translate(X.ss[i]! * gl.w * 0.5, -SIZE * 0.3); c.scale(X.ss[i]! * k * slam, k * slam); c.translate(-gl.w * 0.5, SIZE * 0.3);
-        drawWord(c, gl.ch, 0, 0, SIZE, { level: gg.level * 0.9 * fade, flash: gg.flash * fade }, mixTone('green', 'white', 0.15 * Math.pow(0.5, age / 0.2)));
+        if (this.ink) { c.font = `${SIZE}px "${PHOS_FONT}"`; c.textBaseline = 'alphabetic'; c.fillStyle = '#000'; c.fillText(gl.ch, 0, 0); }
+        else drawWord(c, gl.ch, 0, 0, SIZE, { level: Math.max(gg.level * 0.9, cut ? 0.7 : 0) * fade, flash: gg.flash * fade }, mixTone('green', 'white', 0.15 * Math.pow(0.5, age / 0.2)));
         c.restore();
       });
       // stickers on the letters: sparkle, and in the last bar the dust that leaves for the spiral
-      for (let p = 0; p < g.sw.pts.length; p++) {
+      for (let p = 0; p < (cut ? 0 : g.sw.pts.length); p++) {
         const pt = g.sw.pts[p]!, gi = g.gOf[p]!, tr = g.rev[gi]!;
         if (t < tr || g.lay.glyphs[gi]!.ch === ' ') continue;
         const lx = pt.x - g.lay.glyphs[gi]!.x;
@@ -243,7 +273,7 @@ export default class PhosDrop extends Scene {
         st.stars.set(idx++, x, y, size, pt.a * TAU + age * (pt.b - 0.5), { level, flash }, tone, 0);
       }
       // a spray of stars on every chop onset of the word
-      g.onsets.forEach((to, oi) => {
+      if (false) g.onsets.forEach((to, oi) => {
         const age = t - to;
         if (age < 0 || age > 1.0 || gone > 0.5) return;
         const gi = Math.min(g.lay.glyphs.length - 1, Math.floor((oi * g.lay.glyphs.length) / g.onsets.length));
