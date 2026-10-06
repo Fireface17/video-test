@@ -130,12 +130,13 @@ export default class PhosFinal extends Scene {
     let qt = this.tGlow + 0.6, qv = 9;
     for (let x = this.tGlow + 0.3; x < this.tDark - 1; x += 0.05) { const v = audio.env('bass', x); if (v < qv) { qv = v; qt = x; } }
     this.tOut = audio.events('kick', this.tGlow, qt).length ? Math.max(this.tGlow + 0.35, qt - 0.5) : qt - 0.5;
-    this.hits = dedupe(kicks(qt + 0.1, this.tDark - 0.05, 0.95), 0.12);
+    this.hits = dedupe(kicks(qt + 0.1, on(4, /^in$/i) - 0.06, 0.95), 0.12);
     this.tBack = this.hits[0] ?? qt + 0.6;
     this.tLast = kicks(this.tDark + 0.1, end + 0.05, 0.9)[0] ?? end - 0.03;
     sh.push(S(L[4]!.start, this.tGlow, cam(CX, 420, 1.15, 0.02), cam(CX, 425, 1.2, 0.02)));
     sh.push(S(this.tGlow, this.tBack, cam(CX, 600, 0.98, 0), cam(CX, 600, 1.16, 0), ease.inOutQuad));
-    const crops = [cam(this.glX + this.glow.width * 0.22, 590, 1.9, -0.06), cam(this.glX + this.glow.width * 0.8, 590, 1.9, 0.06), cam(CX, 600, 1.35, 0), cam(CX, 610, 0.95, -0.02)];
+    // (every framing keeps the whole of GLOWING readable: it is being sung)
+    const crops = [cam(CX, 610, 1.12, -0.05), cam(CX, 600, 0.96, 0.05), cam(CX, 620, 1.2, 0), cam(CX, 610, 1.04, -0.03)];
     this.hits.forEach((h, i) => { const a = crops[i % crops.length]!; sh.push(S(h, this.tDark, a, { ...a, z: a.z * 1.05 })); });
     const tIn = on(4, /^in$/i);
     sh.push(S(tIn, this.tDark, cam(CX, 640, 0.9, 0), cam(CX, 640, 0.95, 0)));

@@ -43,7 +43,9 @@ export default class PhosBreak extends Scene {
       this.ghosts.push({ x: clamp(CX + Math.cos(a) * rx, hw, W - hw), y: CY + 20 + Math.sin(a) * ry, size: size0, rot: (rnd() - 0.5) * 0.16, text, pk: i % 3 });
     });
     this.beats = audio.downbeats.filter((d) => d >= start - 0.1 && d < end + 0.1);
-    this.tFall = end - 1.6;
+    // the fall starts on the strong kick nearest 1.6 s before the bridge (on the beat, not between)
+    const fk = audio.events('kick', end - 2.1, end - 1.0).filter(([, k]) => k >= 0.8).map(([k]) => k);
+    this.tFall = fk.length ? fk.reduce((b, k) => (Math.abs(k - (end - 1.6)) < Math.abs(b - (end - 1.6)) ? k : b)) : end - 1.6;
     this.kicks = audio.events('kick', start + 0.5, this.tFall).filter(([, k]) => k >= 0.7);
     // the band drops out for a beat before the last bars: find the quietest moment, and the hit after it
     let qt = this.tFall - 1.5, qv = 9;
@@ -53,7 +55,8 @@ export default class PhosBreak extends Scene {
     this.tIn = (audio.events('kick', qt, this.tFall).filter(([, k]) => k >= 0.8)[0]?.[0]) ?? qt + 0.5;
     // the recharges: the star's own emergence, then every second bar, then the last one before it lets go
     const bars = this.beats.filter((d) => d > start + 3.2 && d < this.tFall - 1.4);
-    this.charges = [start + 1.3, ...bars.filter((_, i) => i % 2 === 1), this.tFall - 0.05];
+    const first = audio.events('kick', start + 0.9, start + 2.0).filter(([, k]) => k >= 0.85)[0]?.[0] ?? start + 1.3;
+    this.charges = [first, ...bars.filter((_, i) => i % 2 === 1), this.tFall - 0.05];
   }
 
   private Q(t: number) {
@@ -92,7 +95,7 @@ export default class PhosBreak extends Scene {
   private ceiling(c: CanvasRenderingContext2D, t: number) {
     if (!this.pieces.length) this.build();
     const out = t > this.tOut && t < this.tIn;
-    const gather = ease.inOutCubic(prog(t, this.tIn + 0.35, this.tFall - 0.1));
+    const gather = ease.inOutCubic(prog(t, this.tIn + 0.1, this.tFall));
     const blaze = t >= this.tIn ? Math.exp(-(t - this.tIn) / 0.6) : 0;
     const kick = this.kicks.reduce((v, [k, sK]) => Math.max(v, t >= k ? sK * Math.pow(0.5, (t - k) / 0.12) : 0), 0);
     for (const p of this.pieces) {
@@ -211,7 +214,7 @@ export default class PhosBreak extends Scene {
     // --- the star's charge and the rings of light it sends out
     const Q = this.Q(t);
     const tSt = this.charges[0]!;
-    const emerge = ease.outCubic(prog(t, this.tFall - 0.45, this.tFall - 0.05)); void tSt;
+    const emerge = ease.outCubic(prog(t, this.tFall - 0.22, this.tFall)); void tSt;
     const beatNear = this.beats.reduce((m, b) => Math.max(m, Math.exp(-Math.pow((t - b - 0.02) / 0.09, 2))), 0);
     const fall = ease.inCubic(prog(t, this.tFall, this.ctx.end + 0.05));
     const shiver = smoothstep(this.tFall - 0.5, this.tFall, t) * (1 - fall);
@@ -262,6 +265,10 @@ export default class PhosBreak extends Scene {
     }
     c.restore();
     g.present(renderer, comp, out, { glow: 1.0 + 0.4 * Q });
-    return { bloom: 0.95, bloomThreshold: 0.7, bloomRadius: 0.85, vignette: 0.55, grain: 0.06, ca: 0.4, halation: 0.12 };
+    // light shakes and punches on the beat (kicks; snares a little less), none once the star falls
+    const kk = audio.hit('kick', t, 0.07), sn = audio.hit('snare', t, 0.06) * 0.5, hk = Math.max(kk, sn) * (1 - fall) * smoothstep(0.6, 1.2, lt);
+    const ph = Math.round(t * 60), jx = Math.sin(ph * 12.9898) * 43758.5453, jy = Math.sin(ph * 78.233) * 12543.31;
+    const shake: [number, number] = [((jx - Math.floor(jx)) * 2 - 1) * 7 * hk, ((jy - Math.floor(jy)) * 2 - 1) * 5 * hk];
+    return { bloom: 0.95, bloomThreshold: 0.7, bloomRadius: 0.85, vignette: 0.55, grain: 0.06, ca: 0.4, halation: 0.12, shake, zoom: 1 + 0.018 * kk * (1 - fall) };
   }
 }
