@@ -170,9 +170,9 @@ export default class Highway extends Scene {
     const w1 = L1.words;
     const specs = [
       // (each smile is painted while its board is in view, and starts to wear off before we leave it)
-      { day: 'MONDAY', date: '13', words: [[0], [1]], smileAt: [w1[0]!.start + 0.12, w1[1]!.start + 0.05] as [number, number], side: 1, focus: [T.l1, nearestBeat(w1[2]!.start)] as [number, number], D: 40 },
-      { day: 'TUESDAY', date: '14', words: [[2, 3], [4, 5]], smileAt: [w1[2]!.start + 0.05, w1[4]!.start + 0.02] as [number, number], side: -1, focus: [nearestBeat(w1[2]!.start), nearestBeat(w1[6]!.start)] as [number, number], D: 33 },
-      { day: 'WEDNESDAY', date: '15', words: [[6, 7]], smileAt: [w1[7]!.start + 0.04, w1[7]!.start + 0.42] as [number, number], side: 1, focus: [nearestBeat(w1[6]!.start), T.l2 + 0.3] as [number, number], D: 44 },
+      // two boards, not three: each holds long enough to read (the pans between three were too quick)
+      { day: 'MONDAY', date: '13', words: [[0, 1], [2, 3, 4]], smileAt: [w1[0]!.start + 0.12, w1[1]!.start + 0.25] as [number, number], side: 1, focus: [T.l1, nearestBeat(w1[5]!.start)] as [number, number], D: 85 },
+      { day: 'TUESDAY', date: '14', words: [[5, 6], [7]], smileAt: [w1[6]!.start + 0.04, w1[7]!.start + 0.42] as [number, number], side: -1, focus: [nearestBeat(w1[5]!.start), T.l2 + 0.3] as [number, number], D: 80 },
     ];
     specs.forEach((s, i) => {
       const lines = s.words.map((row) => row.map((wi) => ({ text: w1[wi]!.w, t0: w1[wi]!.start, t1: Math.min(w1[wi]!.end, w1[wi]!.start + 0.38) })));
@@ -281,11 +281,10 @@ export default class Highway extends Scene {
     const lx = ROAD.laneX;
     if (t < T.l1) return lx(1);
     if (t < T.l2) {
-      const bTue = this.boards[1], bWed = this.boards[2];
-      if (!bTue || !bWed) return lx(2);
+      const bTue = this.boards[1];
+      if (!bTue) return lx(2);
       const toL = prog(t, bTue.focus[0] - 0.75, bTue.focus[0] + 0.45, ease.inOutCubic);
-      const toM = prog(t, bWed.focus[0] - 0.55, bWed.focus[0] + 0.6, ease.inOutCubic);
-      return lerp(lerp(lx(2), lx(0), toL), lx(1), toM);
+      return lerp(lx(2), lx(0), toL);
     }
     if (t < T.l3) return lx(1);
     const toR = prog(t, T.l3 + 0.05, T.pylon + 0.3, ease.inOutCubic);
