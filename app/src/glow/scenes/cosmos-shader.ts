@@ -242,7 +242,7 @@ void main() {
   float sd = dens * ab * (1.0 + 10.0 * cl);
   vec3 stars = vec3(0.0);
   float i0s = max(0.0, ceil(log(0.3 / (1000.0 * pxw)) / log(3.0)));
-  if (sd > 0.002) for (int k = 0; k < 5; k++) {
+  if (sd > 0.002) for (int k = 0; k < 4; k++) {
     float i = i0s + float(k);
     float cell = 0.3 * pow(0.3333333, i);
     float cpx = cell / pxw;

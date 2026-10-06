@@ -145,8 +145,8 @@ void main() {
   float T = 1.0;
   float j = hash12(gl_FragCoord.xy + fract(uT * 7.13) * 91.0);
   float tt = 0.4 + 0.4 * j;
-  for (int i = 0; i < 40; i++) {
-    float st = 0.35 + tt * 0.07;
+  for (int i = 0; i < 34; i++) {
+    float st = 0.4 + tt * 0.08;
     vec3 p = uRo + rd * tt;
     float n; float d = dens(p, n);
     if (d > 0.001) {
@@ -228,12 +228,13 @@ void main() {
   vec3 col = vec3(0.0);
   float a = 0.0, rmin = 1e9;
   bool hor = false;
-  for (int i = 0; i < 110; i++) {
+  for (int i = 0; i < 80; i++) {
     float r = length(x);
     rmin = min(rmin, r);
-    float dt = clamp(0.09 * r * r / (r + 2.0), 0.02, 2.5);
+    float dt = clamp(0.15 * r * r / (r + 2.5), 0.025, 4.0);
     vec3 xn = x + v * dt;
-    v += -1.5 * h2 * x / pow(r, 5.0) * dt;
+    float r2 = r * r;
+    v += -1.5 * h2 * x / (r2 * r2 * r) * dt;
     if (x.y * xn.y < 0.0) {
       vec3 pc = mix(x, xn, x.y / (x.y - xn.y));
       float rc = length(pc.xz);
@@ -289,6 +290,8 @@ function noiseTex(N = 64) {
 export default class CosmosDeck extends Scene {
   private warp: FSPass; private neb: FSPass; private nebC: FSPass; private hole: FSPass;
   private volRT = makeRT(W / 2, H / 2, { depthBuffer: false });
+  /** the black hole is marched at 3/4 resolution (its rays are the costly part), then scaled up */
+  private holeRT = makeRT(W * 0.75, H * 0.75, { depthBuffer: false });
   private tex = noiseTex();
   private shots: Shot[] = [];
   private kicks: [number, number][] = [];
@@ -342,7 +345,7 @@ export default class CosmosDeck extends Scene {
       { t: B(14), w: 'hole', seed: 5, d0: 11, d1: 2.0, el: 3, az: 100, daz: 40, roll: 0.0 },
       // inside: the roll is a warp, slowing into a calm field of stars
       { t: B(15), w: 'warp', seed: 3, v: 60, rr: 0.5 },
-      { t: B(15) + 0.95, w: 'calm', seed: 4, v: 0 },
+      { t: B(15) + 0.7, w: 'calm', seed: 4, v: 0 },
     ];
   }
 
@@ -387,13 +390,13 @@ export default class CosmosDeck extends Scene {
       let glow = 0.9 + 0.8 * kick, gas = 1.0, dim = 1;
       if (sh.w === 'calm') {
         // the warp has slowed to stillness: stars only, drifting; the gas and the glow gone
-        const e = smoothstep(0, 0.5, age);
+        const e = smoothstep(0, 0.35, age);
         trav = 1700 + 3 * age; speed = 6 * (1 - e) + 0.5; glow = 0.4 * (1 - e); gas = 0.5 * (1 - e);
         this.warp.u.uSky!.value = e; this.warp.u.uSkyA!.value = 0.04 * age;
-        expo = 1; shake = 0; zoom = 1; flash = 0.15 * Math.exp(-age / 0.15);
+        expo = 1; shake = 0; zoom = 1; flash = 0;
       } else if (sh.seed === 3) {
         // the roll inside the hole: hits on every roll step, then it slows
-        speed = v * (1 - 0.8 * smoothstep(sh.t + 0.4, sh.t + 0.95, t)) + 40 * kick;
+        speed = v * (1 - 0.85 * smoothstep(sh.t + 0.25, sh.t + 0.7, t)) + 40 * kick;
         dim = smoothstep(sh.t, sh.t + 0.15, t);
       }
       U.uTrav!.value = trav; U.uSpeed!.value = speed; U.uRoll!.value = (sh.rr ?? 0) * age + sh.seed;
@@ -434,11 +437,12 @@ export default class CosmosDeck extends Scene {
       const off = new THREE.Vector3(-Math.sin(az), 0, Math.cos(az)).multiplyScalar((fall ? 0.4 : 0.25) * d * 0.25);
       const fw = off.sub(ro).normalize();
       (U.uRo!.value as THREE.Vector3).copy(ro); (U.uFw!.value as THREE.Vector3).copy(fw);
-      U.uRoll!.value = (sh.roll ?? 0) + (fall ? 0.6 * u * u : 0.05 * u); U.uT!.value = t; U.uPx!.value = px; U.uExpo!.value = expo;
+      U.uRoll!.value = (sh.roll ?? 0) + (fall ? 0.6 * u * u : 0.05 * u); U.uT!.value = t; U.uPx!.value = px / 0.75; U.uExpo!.value = expo;
       U.uDisk!.value = 1.0 + 1.3 * kick; U.uRing!.value = 1 + 2 * kick;
       U.uInside!.value = 0; U.uTrav!.value = 0; U.uSpeed!.value = 0;
       if (fall) zoom += 0.04 * u;
-      this.hole.render(r, out);
+      this.hole.render(r, this.holeRT);
+      this.ctx.comp.draw(r, this.holeRT.texture, out, { mode: 'replace' });
     }
     return {
       zoom,
@@ -451,6 +455,6 @@ export default class CosmosDeck extends Scene {
 
   override dispose() {
     for (const p of [this.warp, this.neb, this.nebC, this.hole]) p.mat.dispose();
-    this.volRT.dispose(); this.tex.dispose();
+    this.volRT.dispose(); this.holeRT.dispose(); this.tex.dispose();
   }
 }
