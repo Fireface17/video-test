@@ -37,7 +37,7 @@ const sandXZ = (u: number, v: number): [number, number] => [u * S, -v * S];
 /** The landing site: the Namib's coast (dunes meeting the Atlantic), at night. */
 const SITE = (() => { const lat = -24.6 * Math.PI / 180, lon = 14.9 * Math.PI / 180; const th = Math.PI / 2 - lat, ph = lon + Math.PI; return new THREE.Vector3(-Math.cos(ph) * Math.sin(th), Math.cos(th), Math.sin(ph) * Math.sin(th)); })();
 /** altitude above the site (Earth radii are 6.371 units: 1 unit = 1000 km) through the fall: log-space keys */
-const ALT: [number, number][] = [[211.6, 900], [212.6, 160], [213.6, 34], [214.6, 9], [215.6, 1.6], [216.3, 0.12], [216.75, 0.01]];
+const ALT: [number, number][] = [[211.4, 500], [212.6, 70], [213.6, 22], [214.6, 7], [215.6, 1.6], [216.3, 0.12], [216.75, 0.01]];
 function altAt(t: number) {
   if (t <= ALT[0]![0]) return ALT[0]![1];
   for (let i = 1; i < ALT.length; i++) if (t <= ALT[i]![0]) {
@@ -46,7 +46,7 @@ function altAt(t: number) {
   }
   return ALT[ALT.length - 1]![1];
 }
-const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _v = new THREE.Vector3();
+const _v = new THREE.Vector3();
 /** Put the Earth in front of `cam` so that the landing site faces it, at the fall's altitude for t (drop 3's last
  *  seconds and the ending share this, so the cut between them is seamless). */
 export const EARTH_END = {
@@ -54,10 +54,14 @@ export const EARTH_END = {
     const R = earth.radius, alt = altAt(t);
     const fwd = _v.set(0, 0, -1).applyQuaternion(cam.quaternion);
     earth.position.copy(cam.position).addScaledVector(fwd, R + alt);
-    // the site's direction (object space) turned toward the camera (-fwd), with a slow spin about that axis
-    _q.setFromUnitVectors(SITE, fwd.clone().negate());
-    _q2.setFromAxisAngle(fwd, 0.4 + 0.03 * (t - 213));
-    earth.quaternion.copy(_q2.multiply(_q));
+    // the site (object space) faces the camera, the Earth's north toward the frame's top (turned by a slow spin):
+    // fixed to the camera's own frame, so any camera (drop 3's or ours) sees the same Earth
+    const n0 = new THREE.Vector3(0, 1, 0).addScaledVector(SITE, -SITE.y).normalize();
+    const mObj = new THREE.Matrix4().makeBasis(new THREE.Vector3().crossVectors(n0, SITE), n0, SITE);
+    const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.quaternion).applyAxisAngle(fwd, -(0.5 + 0.03 * (t - 213)));
+    const back = fwd.clone().negate();
+    const mW = new THREE.Matrix4().makeBasis(new THREE.Vector3().crossVectors(camUp, back), camUp, back);
+    earth.quaternion.setFromRotationMatrix(mW.multiply(mObj.transpose()));
     earth.scale.setScalar(1);
     earth.time = t;
     const u = earth.surface.material.uniforms;
@@ -65,6 +69,12 @@ export const EARTH_END = {
     earth.clouds.material.uniforms.k!.value = k;
     earth.clouds.material.uniforms.moonK!.value = 0.45 * k;
     earth.air.material.uniforms.k!.value = k;
+    // a sunrise on the far limb while we are still out in space (gold, like the drop): gone before we reach the site
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.quaternion), up = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
+    const sun = right.multiplyScalar(0.62).addScaledVector(up, 0.42).addScaledVector(fwd, 0.66).normalize();
+    const dawn = k * (1 - smoothstep(214.9, 215.7, t));
+    (u.sun!.value as THREE.Vector3).copy(sun); u.dawn!.value = dawn;
+    (earth.air.material.uniforms.sun!.value as THREE.Vector3).copy(sun); earth.air.material.uniforms.dawn!.value = dawn;
   },
 };
 

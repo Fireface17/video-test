@@ -303,7 +303,8 @@ export default class CosmosDeck extends Scene {
     // jumps: a leap, a flash, a radial streak
     let jump = 0;
     for (const j of this.jumps) if (t >= j) jump = Math.max(jump, Math.exp(-(t - j) / 0.12));
-    cam.fov = 62 + 6 * kick + 14 * jump + clamp((v - 50) / 200, 0, 1) * 10;
+    const eonF = smoothstep(this.tEnd - 1.6, this.tEnd - 0.4, t);
+    cam.fov = 62 + (6 * kick + 14 * jump + clamp((v - 50) / 200, 0, 1) * 10) * (1 - eonF);
     cam.updateProjectionMatrix();
 
     // the objects: billboards facing us; fade in from far, out as we go through them (or as they pass)

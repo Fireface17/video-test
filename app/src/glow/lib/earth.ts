@@ -82,7 +82,7 @@ export class Earth extends THREE.Group {
           vec3 Ns = normalize(N0 + close * 0.04 * vec3(evn(vUv * 9000.0) - 0.5, evn(vUv * 9000.0 + 7.0) - 0.5, 0.0));
           vec3 hv = normalize(moon + V);
           float gl = max(dot(Ns, hv), 0.0);
-          c += (vec3(0.11, 0.14, 0.24) * pow(gl, 900.0) * 1.2 + vec3(0.006, 0.009, 0.02) * pow(gl, 60.0)) * (1.0 - land) * moonK;
+          c += (vec3(0.11, 0.14, 0.24) * pow(gl, 1500.0) * 0.7 + vec3(0.004, 0.006, 0.014) * pow(gl, 80.0)) * (1.0 - land) * moonK;
           // the cities: Black Marble in its own colours; a soft glow of light pollution; close up, single lights
           vec3 L = pow(texture2D(night, vUv).rgb, vec3(2.0));
           vec3 Lglow = pow(texture2D(night, vUv, 3.0).rgb, vec3(2.0));
@@ -101,7 +101,7 @@ export class Earth extends THREE.Group {
           float sl = dot(N0, normalize(sun));
           c = mix(c, d * vec3(1.0, 0.8, 0.62) * (0.2 + 0.8 * max(dot(N, normalize(sun)), 0.0)), smoothstep(-0.04, 0.2, sl) * dawn);
           float sq = sl / 0.06;
-          c += vec3(1.0, 0.42, 0.12) * exp(-sq * sq) * 0.3 * dawn;
+          c += vec3(1.0, 0.42, 0.12) * exp(-sq * sq) * 0.7 * dawn;
           // looking through more air toward the limb: a blue veil
           float mu = max(dot(N0, V), 0.0);
           c = mix(c, vec3(0.01, 0.025, 0.08) * moonK + c * 0.6, (1.0 - smoothstep(0.0, 0.35, mu)) * 0.55);
@@ -155,7 +155,7 @@ export class Earth extends THREE.Group {
             c += vec3(0.25, 0.9, 0.35) * exp(-pow((h - 0.0155) / 0.0006, 2.0)) * 0.16 * glowK;
             vec3 p = ro + rd * tc;
             float s = dot(normalize(p - ctr), normalize(sun));
-            c += vec3(1.0, 0.5, 0.18) * exp(-h / 0.006) * smoothstep(-0.2, 0.3, s) * dawn * 2.0;
+            c += vec3(1.0, 0.5, 0.18) * (exp(-h / 0.004) * 3.0 + exp(-h / 0.02) * 0.6) * smoothstep(-0.25, 0.3, s) * dawn;
           } else {
             // over the disc, toward the limb: the haze over the ground thickens
             vec3 pg = ro + rd * (tc - sqrt(max(R * R - dmin * dmin, 0.0)));
