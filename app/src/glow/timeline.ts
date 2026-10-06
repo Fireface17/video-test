@@ -77,6 +77,7 @@ export function makeTimeline(ly: Lyrics, au: AudioData): TimelineEntry[] {
     E('bridge', 'phos-fall', b.bridge, b.chorus3, X('crossfade', 0.5)),
     // the bridge ends in warm gold and the final chorus opens on the very same gold (a hard cut), which drains to its afterglow
     E('chorus3', 'phos-final', b.chorus3, b.drop3),
+    // the wall of the song's words burns to gold: a flash of light into the deck of cosmic plates, cut on the kicks
     E('drop3', 'cosmos-deck', b.drop3, b.outro, X('light', 0.3, { color: lin('gold', 1.4) })),
     // stars to stars
     E('outro', 'ceiling', b.outro, b.end, { params: { mode: 'outro' }, ...X('crossfade', 1.2) }),

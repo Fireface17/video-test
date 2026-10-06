@@ -162,7 +162,8 @@ export default class PhosFinal extends Scene {
       const sp = this.meas(' ', PHOS_FONT, size) * 1.25;
       const rows: { w: string; x: number; gi: number }[][] = [[]];
       let x = 0;
-      for (const wd of all) {
+      for (const wd0 of all) {
+        const wd = { w: wd0.w.replace(/[()]/g, ''), gi: wd0.gi };
         const wi = this.meas(wd.w, PHOS_FONT, size);
         const brk = wd.gi === first || wd.gi === last + 1;
         if ((x + wi > 1840 || brk) && rows[rows.length - 1]!.length) { rows.push([]); x = 0; }

@@ -226,7 +226,7 @@ export default class CosmosDeck extends Scene {
         const age = t - p.t;
         if (age < -0.02) continue;
         const a = clamp(age / 0.03 + 1) * out;
-        const slam = 1 + 0.22 * Math.pow(1 - clamp(age / 0.16), 3);
+        const slam = 1 + 0.3 * Math.pow(1 - clamp(age / 0.14), 3);
         const hot = Math.exp(-Math.max(age, 0) / 0.22);
         L.save();
         L.font = `${row.size}px "${PHOS_FONT}"`;
@@ -234,7 +234,7 @@ export default class CosmosDeck extends Scene {
         // the syllable scales about its own centre (letters never move once set)
         const wdt = L.measureText(p.text).width;
         const cx = W / 2 + p.x + wdt / 2, cy = row.y - row.size * 0.33;
-        L.translate(cx, cy); L.scale(slam, slam); L.translate(-cx, -cy);
+        L.translate(cx, cy); L.scale(1, slam); L.translate(-cx, -cy);   // (vertical only: pieces touch, they must never overlap)
         L.globalAlpha = a;
         L.shadowColor = `rgba(255,170,50,${0.9})`;
         L.shadowBlur = 28 + 30 * hot;

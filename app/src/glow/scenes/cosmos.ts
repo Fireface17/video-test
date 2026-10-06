@@ -9,7 +9,8 @@
 // ten octaves to the whole galaxy, fly down an arm into a cluster; "Take my hand" (1): two stars trailing
 // streams of light curve in from the sides and join on "hand" (cosmos-motif.ts); across a dust lane to the
 // next cluster, "Take my hand" (2): the same from the corners; then a dive into the core, white, for the cut.
-// Drop 3 (gold, the finale): core punch, the golden galaxy at full power, an arm, a nebula, an oblique view,
+// Drop 3 is now cosmos-deck.ts (a deck of painted plates cut on the kicks); the n = 3 path below is kept but unused.
+// (Formerly) Drop 3 (gold, the finale): core punch, the golden galaxy at full power, an arm, a nebula, an oblique view,
 // a dust lane, a huge pull-back that makes the galaxy a small spiral in a field of stars, a push to the core
 // where two stars (gold and phosphor) join into a sun with a shockwave, then everything converges into one
 // star (the outro starts from stars).
