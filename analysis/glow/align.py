@@ -105,8 +105,6 @@ TEMPLATE = {42: (15, "drop1", "drop3"), 22: (4, "chorus1", "chorus2"), 23: (5, "
 DROP1 = [
     ("drop1", "chop", "Glo-o-owing in the dark",
      [("Glo-o-owing", 70.74, 72.54), ("in", 72.94, 73.34), ("the", 73.34, 74.01), ("dark", 74.01, 74.6)]),
-    ("drop1", "chop", "Da-a-ance, da-a-ance",
-     [("Da-a-ance,", 75.94, 77.30), ("da-a-ance", 77.38, 78.9)]),
     ("drop1", "chop", "Glo-o-owing in the dark",
      [("Glo-o-owing", 79.16, 80.83), ("in", 80.83, 81.56), ("the", 81.56, 82.14), ("dark", 82.14, 83.2)]),
 ]
@@ -115,8 +113,6 @@ DROP1 = [
 DROP3 = [
     ("drop3", "chop", "Glo-o-owing in the dark",
      [("Glo-o-owing", 188.68, 190.48), ("in", 190.87, 191.25), ("the", 191.25, 191.85), ("dark", 191.85, 192.6)]),
-    ("drop3", "chop", "Da-a-ance, da-a-ance",
-     [("Da-a-ance,", 194.72, 196.2), ("da-a-ance", 196.3, 197.6)]),
     ("drop3", "chop", "Glo-o-owing in the dark",
      [("Glo-o-owing", 197.82, 199.4), ("in", 199.4, 200.22), ("the", 200.22, 200.73), ("dark", 200.73, 201.9)]),
 ]

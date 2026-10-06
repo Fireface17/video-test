@@ -886,28 +886,6 @@
    "i": 19,
    "section": "drop1",
    "kind": "chop",
-   "text": "Da-a-ance, da-a-ance",
-   "start": 75.94,
-   "end": 78.9,
-   "words": [
-    {
-     "w": "Da-a-ance,",
-     "start": 75.94,
-     "end": 77.3,
-     "conf": 0.5
-    },
-    {
-     "w": "da-a-ance",
-     "start": 77.38,
-     "end": 78.9,
-     "conf": 0.5
-    }
-   ]
-  },
-  {
-   "i": 20,
-   "section": "drop1",
-   "kind": "chop",
    "text": "Glo-o-owing in the dark",
    "start": 79.16,
    "end": 83.2,
@@ -939,7 +917,7 @@
    ]
   },
   {
-   "i": 21,
+   "i": 20,
    "section": "drop1",
    "text": "Take my hand",
    "start": 88.64,
@@ -966,7 +944,7 @@
    ]
   },
   {
-   "i": 22,
+   "i": 21,
    "section": "drop1",
    "text": "Take my hand",
    "start": 91.84,
@@ -993,7 +971,7 @@
    ]
   },
   {
-   "i": 23,
+   "i": 22,
    "section": "verse2",
    "text": "We've been ghosts in a crowded room",
    "start": 95.44,
@@ -1044,7 +1022,7 @@
    ]
   },
   {
-   "i": 24,
+   "i": 23,
    "section": "verse2",
    "text": "Holding on to the friends that we've got",
    "start": 98.54,
@@ -1101,7 +1079,7 @@
    ]
   },
   {
-   "i": 25,
+   "i": 24,
    "section": "verse2",
    "text": "If the night's gonna swallow the moon",
    "start": 101.805,
@@ -1152,7 +1130,7 @@
    ]
   },
   {
-   "i": 26,
+   "i": 25,
    "section": "verse2",
    "text": "Then we'll light up the spot",
    "start": 104.88,
@@ -1197,7 +1175,7 @@
    ]
   },
   {
-   "i": 27,
+   "i": 26,
    "section": "pre2",
    "text": "Put your hands up if you've ever felt low",
    "start": 107.708,
@@ -1260,7 +1238,7 @@
    ]
   },
   {
-   "i": 28,
+   "i": 27,
    "section": "pre2",
    "kind": "echo",
    "text": "(felt low)",
@@ -1282,7 +1260,7 @@
    ]
   },
   {
-   "i": 29,
+   "i": 28,
    "section": "pre2",
    "text": "Tonight we let it all go",
    "start": 111.478,
@@ -1327,7 +1305,7 @@
    ]
   },
   {
-   "i": 30,
+   "i": 29,
    "section": "pre2",
    "kind": "echo",
    "text": "(all go)",
@@ -1349,7 +1327,7 @@
    ]
   },
   {
-   "i": 31,
+   "i": 30,
    "section": "pre2",
    "text": "Turn the pain into gold, oh",
    "start": 114.456,
@@ -1394,7 +1372,7 @@
    ]
   },
   {
-   "i": 32,
+   "i": 31,
    "section": "pre2",
    "text": "Here we go, here we go",
    "start": 117.91,
@@ -1439,7 +1417,7 @@
    ]
   },
   {
-   "i": 33,
+   "i": 32,
    "section": "chorus2",
    "text": "We don't gotta be okay to dance",
    "start": 120.53,
@@ -1490,7 +1468,7 @@
    ]
   },
   {
-   "i": 34,
+   "i": 33,
    "section": "chorus2",
    "text": "We'll be glowing in the dark, take my hand",
    "start": 124.2,
@@ -1553,7 +1531,7 @@
    ]
   },
   {
-   "i": 35,
+   "i": 34,
    "section": "chorus2",
    "text": "Every broken piece becomes a star",
    "start": 127.47,
@@ -1598,7 +1576,7 @@
    ]
   },
   {
-   "i": 36,
+   "i": 35,
    "section": "chorus2",
    "text": "Look how beautiful we are",
    "start": 130.37,
@@ -1637,7 +1615,7 @@
    ]
   },
   {
-   "i": 37,
+   "i": 36,
    "section": "chorus2",
    "text": "So sing it like we're never coming down",
    "start": 133.985,
@@ -1694,7 +1672,7 @@
    ]
   },
   {
-   "i": 38,
+   "i": 37,
    "section": "chorus2",
    "text": "Loud enough to wake the whole town",
    "start": 137.19,
@@ -1745,7 +1723,7 @@
    ]
   },
   {
-   "i": 39,
+   "i": 38,
    "section": "chorus2",
    "text": "We don't gotta be okay to dance",
    "start": 140.205,
@@ -1796,7 +1774,7 @@
    ]
   },
   {
-   "i": 40,
+   "i": 39,
    "section": "chorus2",
    "text": "We'll be glo-glo-glo-glowing in the dark",
    "start": 143.4,
@@ -1841,7 +1819,7 @@
    ]
   },
   {
-   "i": 41,
+   "i": 40,
    "section": "bridge",
    "text": "And if you fall, I'll fall with you",
    "start": 159.12,
@@ -1898,7 +1876,7 @@
    ]
   },
   {
-   "i": 42,
+   "i": 41,
    "section": "bridge",
    "text": "Through the colors and the blue",
    "start": 162.32,
@@ -1943,7 +1921,7 @@
    ]
   },
   {
-   "i": 43,
+   "i": 42,
    "section": "bridge",
    "text": "We'll be golden, me and you",
    "start": 165.695,
@@ -1988,7 +1966,7 @@
    ]
   },
   {
-   "i": 44,
+   "i": 43,
    "section": "bridge",
    "text": "We'll be golden, me and you",
    "start": 168.855,
@@ -2033,7 +2011,7 @@
    ]
   },
   {
-   "i": 45,
+   "i": 44,
    "section": "chorus3",
    "text": "We don't gotta be okay to dance",
    "start": 171.73,
@@ -2084,7 +2062,7 @@
    ]
   },
   {
-   "i": 46,
+   "i": 45,
    "section": "chorus3",
    "text": "We'll be glowing in the dark, take my hand",
    "start": 175.28,
@@ -2147,7 +2125,7 @@
    ]
   },
   {
-   "i": 47,
+   "i": 46,
    "section": "chorus3",
    "text": "Every broken piece becomes a star",
    "start": 178.47,
@@ -2192,7 +2170,7 @@
    ]
   },
   {
-   "i": 48,
+   "i": 47,
    "section": "chorus3",
    "text": "Look how beautiful we are",
    "start": 181.425,
@@ -2231,7 +2209,7 @@
    ]
   },
   {
-   "i": 49,
+   "i": 48,
    "section": "chorus3",
    "text": "We'll be glowing in the dark!",
    "start": 184.631,
@@ -2276,7 +2254,7 @@
    ]
   },
   {
-   "i": 50,
+   "i": 49,
    "section": "drop3",
    "kind": "chop",
    "text": "Glo-o-owing in the dark",
@@ -2310,29 +2288,7 @@
    ]
   },
   {
-   "i": 51,
-   "section": "drop3",
-   "kind": "chop",
-   "text": "Da-a-ance, da-a-ance",
-   "start": 194.72,
-   "end": 197.6,
-   "words": [
-    {
-     "w": "Da-a-ance,",
-     "start": 194.72,
-     "end": 196.2,
-     "conf": 0.5
-    },
-    {
-     "w": "da-a-ance",
-     "start": 196.3,
-     "end": 197.6,
-     "conf": 0.5
-    }
-   ]
-  },
-  {
-   "i": 52,
+   "i": 50,
    "section": "drop3",
    "kind": "chop",
    "text": "Glo-o-owing in the dark",
@@ -2366,7 +2322,7 @@
    ]
   },
   {
-   "i": 53,
+   "i": 51,
    "section": "outro",
    "text": "Take my hand",
    "start": 218.87,
@@ -2393,7 +2349,7 @@
    ]
   },
   {
-   "i": 54,
+   "i": 52,
    "section": "outro",
    "kind": "chop",
    "text": "Glo-o-owing in the dark",
@@ -2427,7 +2383,7 @@
    ]
   },
   {
-   "i": 55,
+   "i": 53,
    "section": "outro",
    "kind": "chop",
    "text": "Ta-ake my hand",
