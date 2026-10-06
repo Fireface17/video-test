@@ -173,7 +173,7 @@ export default class PhosFinal extends Scene {
     this.L.clear('#000');
     const Ls = this.lines;
     if (Ls.length < 5) { clearRT(renderer, out); return; }
-    const fs = Math.exp(-lt / 0.45), fe = smoothstep(this.ctx.end - 0.95, this.ctx.end - 0.03, t) ** 1.6;
+    const fs = Math.exp(-lt / 0.45), fe = smoothstep(this.ctx.end - 0.52, this.ctx.end - 0.02, t) ** 1.4;
     const flare = Math.max(fs * smoothstep(-0.02, 0.0, 1), fe);
     const G = 1 - flare;
     const kick = f.a.kick;
@@ -390,8 +390,8 @@ export default class PhosFinal extends Scene {
       if (a > 0) {
         P.save();
         P.font = this.wallFont; P.textBaseline = 'alphabetic';
-        const charge = smoothstep(L4.start - 0.4, tD, t);
-        const lit = smoothstep(tD - 0.02, tD + 0.25, t);
+        const charge = smoothstep(L4.start + 0.3, tD - 0.1, t);
+        const lit = smoothstep(tD - 0.02, tD + 0.1, t);
         const lastGi = this.ctx.lyrics.words.length;
         for (const w of this.wall) {
           const wave = clamp(charge * 1.5 - 0.5 * (w.gi / lastGi) * 0 - Math.abs(w.x - CX) / 2400);
@@ -412,6 +412,8 @@ export default class PhosFinal extends Scene {
           P.save(); P.globalAlpha = 0; P.restore();
           Lc.font = this.wallFont; Lc.textBaseline = 'alphabetic';
           for (const w of this.wall) { Lc.fillStyle = rgba(GOLD, 0.42 * lit * a * (0.6 + 0.4 * Math.exp(-(t - tD) / 0.6))); Lc.fillText(w.w, w.x, w.y); }
+          const rr2 = (t - tD) * 3600;
+          Lc.lineWidth = 22; Lc.strokeStyle = rgba(GOLD, 0.5 * Math.exp(-(t - tD) / 0.3)); Lc.beginPath(); Lc.arc(CX, 610, rr2, 0, TAU); Lc.stroke();
           radial(Lc, CX, CY, 1500, GOLD, 0.5 * lit * (0.6 + 0.4 * Math.exp(-(t - tD) / 0.5)));
         }
         const ox0 = CX;
@@ -421,7 +423,8 @@ export default class PhosFinal extends Scene {
             if (t < wr.w.start - 0.02) return;
             const pop = ease.outBack(prog(t, wr.w.start, wr.w.start + 0.3));
             const big = wr.w === L4.words[5] ? 1 + 0.12 * Math.exp(-(t - tD) / 0.4) : 1;
-            this.drawWord(Lc, wr, ox, row.y, row.size * big, heatOf(wr.w), GOLD, a, () => ({ dx: 0, dy: 0, rot: 0, s: pop }));
+            const live = wr.w === L4.words[2] ? 1 : 0;
+            this.drawWord(Lc, wr, ox, row.y, row.size * big, heatOf(wr.w) + live * 0.25 * (0.5 + 0.5 * Math.sin(t * 6)), GOLD, a, (gi) => ({ dx: 0, dy: live * Math.sin(t * 5 - gi * 0.8) * 9, rot: live * Math.sin(t * 4 + gi) * 0.03, s: pop }));
           });
         });
         Lc.restore();

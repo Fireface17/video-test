@@ -119,7 +119,7 @@ export default class PhosChorus extends Scene {
   private makeConstellation(l: Line) {
     const text = l.words.map((w) => w.w).join(' ');
     let st = strokeText(text, 'readable', 190);
-    if (st.width > 1640) st = strokeText(text, 'readable', 190 * 1640 / st.width);
+    st = strokeText(text, 'readable', Math.min(420, 190 * 1640 / st.width));
     const ox = CX - st.width / 2, oy = CY + st.capHeight * 0.5;
     const stars: { x: number; y: number; s: number; len: number; stroke: number }[] = [];
     st.strokes.forEach((pts, si) => {
@@ -127,7 +127,7 @@ export default class PhosChorus extends Scene {
       pts.forEach((p, k) => {
         if (k) run += Math.hypot(p.x - pts[k - 1]!.x, p.y - pts[k - 1]!.y);
         const end = k === 0 || k === pts.length - 1;
-        if (end || run - last > 34) { last = run; stars.push({ x: ox + p.x, y: oy + p.y, s: 4 + 7 * hash(si, k, 6) + (end ? 2 : 0), len: st.startLen[si]! + run, stroke: si }); }
+        if (end || run - last > 34) { last = run; stars.push({ x: ox + p.x, y: oy + p.y, s: 6 + 8 * hash(si, k, 6) + (end ? 3 : 0), len: st.startLen[si]! + run, stroke: si }); }
       });
     });
     this.con = { st, stars, ct: charTimes(st, l, 0.5), ox, oy };
@@ -360,7 +360,7 @@ export default class PhosChorus extends Scene {
     c.restore();
     for (const s of con.stars) {
       if (s.len > len + 4) continue;
-      const age = t - this.penTime(con, s.len);
+      const age = Math.max(0, t - this.penTime(con, s.len));
       const lv = (0.85 * Math.exp(-age / 3.2) + 0.25) * fd, fl = Math.pow(0.5, age / 0.12) * 0.9 * fd;
       st.stars.set(idx++, s.x, s.y, s.s * (1 + 0.5 * Math.pow(0.5, age / 0.2)), s.x * 0.01, { level: lv, flash: fl * 0.5 }, 'white', 0);
     }

@@ -142,7 +142,7 @@ void main() {
 
   // dust lanes along the inner edge of the arms
   float lane = pow(0.5 + 0.5 * cos(2.0 * ph - 0.9), 5.0);
-  float dFine = fbm5(q * 20.0 + uSeed * 3.0);
+  float dFine = fbm3(q * 20.0 + uSeed * 3.0);
   float dust = lane * clamp((dFine - 0.22) * 2.6, 0.0, 1.0) * smoothstep(0.06, 0.22, r) * edge;
   if (deep > 0.0) dust *= mix(1.0, 0.25 + 1.5 * fbm5(q * 170.0 + 5.0), deep);
   float ab = exp(-2.8 * dust);
@@ -162,11 +162,11 @@ void main() {
   cl *= smoothstep(0.25, 0.6, arm) * edge * smoothstep(0.08, 0.2, r) * uGalaxy;
 
   // gas and nebulae
-  float gas = fbm5(q * 7.0 + uSeed * 2.0);
-  float neb = pow(arm, 1.5) * smoothstep(0.5, 0.85, gas) * (1.0 - 0.85 * dust) * smoothstep(0.1, 0.3, r) * (1.0 - smoothstep(0.7, 1.0, r));
+  float gas = fbm3(q * 7.0 + uSeed * 2.0);
+  float neb = pow(arm, 1.5) * smoothstep(0.45, 0.8, gas) * (1.0 - 0.85 * dust) * smoothstep(0.1, 0.3, r) * (1.0 - smoothstep(0.7, 1.0, r));
   if (deep > 0.0) neb *= mix(1.0, 0.3 + 1.5 * fbm5(q * 75.0 + 11.0), deep);
   neb *= uGalaxy;
-  float hue = fbm3(q * 3.0 + 9.0);
+  float hue = noise(q * 3.0 + 9.0);
 
   vec3 diff = vec3(0.0);
   vec3 diskCol = mix(cCore * 0.8, cArm, smoothstep(0.04, 0.45, r));
