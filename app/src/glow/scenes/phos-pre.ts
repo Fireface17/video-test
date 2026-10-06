@@ -175,7 +175,7 @@ export default class PhosPre extends Scene {
     sh.push(S(tIf, P[8]!.start, cam(CX, yA2 - 120, 1.0, 0.03), cam(CX, yA2 - 100, 1.06, 0.03)));
     sh.push(S(P[8]!.start, tE, cam(CX, yA2 + 160, 1.0, -0.02), cam(CX, yA2 + 170, 1.05, -0.02)));
     // the dive after the falling echo
-    sh.push({ t: tE, cam: (t) => { const tt = Math.max(0, t - tE); return cam(CX, yA2 + 170 + 0.4 * this.fall(tt), 1.05 - 0.1 * clamp(tt / 0.7), -0.02 + 0.03 * clamp(tt / 0.7)); } });
+    sh.push({ t: tE, cam: (t) => { const tt = Math.max(0, t - tE); return cam(CX, yA2 + 170 + 0.3 * this.fall(tt), 1.05 - 0.1 * clamp(tt / 0.7), -0.02 + 0.03 * clamp(tt / 0.7)); } });
     // ---- TONIGHT / WE LET IT ALL / GO
     const tT = this.ton.start, tWe = T[1]!.start;
     const sT = fit('TONIGHT', 1500, 460);
@@ -184,7 +184,7 @@ export default class PhosPre extends Scene {
     const lr = layoutWords(T.slice(1, 5).map((w) => UP(w.w)), 190, { maxW: 1800 });
     T.slice(1, 5).forEach((w, i) => it(lr.boxes[i]!.text, CX + lr.boxes[i]!.x + lr.boxes[i]!.w / 2, 330, 190, w.start, this.turn.start, this.v.base));
     const go = it('GO', CX, 880, 600, T[5]!.start, this.turn.start, mixTone(this.v.base, 'white', 0.35));
-    this.eGo = { text: 'ALL GO', x: CX, y: go.y - 40, size: 300 };
+    this.eGo = { text: 'ALL GO', x: CX, y: go.y, size: 330 };
     const kAll = audio.events('kick', T[4]!.start - 0.15, T[4]!.start + 0.1).filter(([, s]) => s > 0.75).map(([t]) => t)[0] ?? T[4]!.start;
     sh.push(S(tWe, kAll, cam(CX, 420, 1.3, -0.03), cam(CX, 430, 1.38, -0.03)));
     sh.push(S(kAll, this.turn.start, cam(CX, 600, 1.0, 0), cam(CX, 520, 0.9, 0), ease.outQuad));
@@ -343,12 +343,15 @@ export default class PhosPre extends Scene {
     c.setTransform(1, 0, 0, 1, 0, 0);
     st.stars.commit(inv ? 0 : idx);
     const pulse = uvPulse(audio, t, { thr: this.v.uvThr });
-    const o = st.end(out, { gain: 1.5, uv: inv ? 0 : pulse * (this.n === 2 ? 0.16 : 0.1), uvColor: this.n === 2 ? [0.4, 0.25, 1] : undefined });
+    const crushing = this.n === 1 && t >= this.here.words[5]!.start;
+    const o = st.end(out, { gain: 1.5, uv: inv || crushing ? 0 : pulse * (this.n === 2 ? 0.16 : 0.1), uvColor: this.n === 2 ? [0.4, 0.25, 1] : undefined });
     const fx = hitFx(audio, t, { zoom: 0, shake: this.n === 2 ? 5 : 3, flash: 0.06, k: inHere ? 1.6 : 1 });
     const post: PostOverrides = { ...o, zoom: 1, shake: fx.shake, flash: Math.max(o.flash ?? 0, fx.flash as number) };
     if (inv || this.pressInv) { post.bloom = 0.22; post.halation = 0.04; post.flash = 0; }
+    // the crush: the point is the only light (no wash, no flash)
+    if (this.n === 1 && t >= this.here.words[5]!.start) { post.flash = 0; this.st.stars; }
     // pre 2 ends in the light inside the last O (chorus 2 comes in on a light transition)
-    if (this.n === 2) { const [, b] = this.tDive; const u = prog(t, b![0] + (b![1] - b![0]) * 0.55, b![1]); post.flash = Math.max(post.flash ?? 0, 1.2 * u * u); }
+    if (this.n === 2) { const [, b] = this.tDive; const u = prog(t, b![0] + (b![1] - b![0]) * 0.55, b![1]); post.flash = Math.max(post.flash ?? 0, 0.8 * u * u); }
     return post;
   }
   pressInv = false;
@@ -496,7 +499,9 @@ export default class PhosPre extends Scene {
     if (t < this.here.start) {
       for (const it of this.items) {
         if (t < it.show || t >= it.hide) continue;
-        if (this.echoGo && t >= this.echoGo.start && it.y < 400 && it.on > this.ton.start && it.on < this.turn.start) continue;
+        // the echoed words become their echo: the original leaves with it
+        if (this.echoGo && t >= this.echoGo.start && it.on > this.ton.start && it.on < this.turn.start) continue;
+        if (this.echoLow && t >= this.echoLow.start && it.text === 'LOW') continue;
         const isUp = it.text === 'UP' && t >= this.tUpWhip;
         if (isUp) {
           // thrown: up out of the frame, stretched by its speed

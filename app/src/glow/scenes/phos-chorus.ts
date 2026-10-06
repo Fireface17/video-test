@@ -311,7 +311,7 @@ export default class PhosChorus extends Scene {
     shake = fx.shake as [number, number];
     const hard = Math.max(pulses(t, [this.l6[0]!.on], 0.09), pulses(t, [this.tShatter], 0.08) * 0.8);
     if (hard > 0.01) { const ph = Math.round(t * 60); shake = [shake[0] + 26 * hard * Math.sin(ph * 2.1), shake[1] + 20 * hard * Math.cos(ph * 1.7)]; }
-    const flash = Math.max(o.flash ?? 0, fx.flash as number, det * 0.7 * (t >= start ? 1 : 0), bigUV * 0.25);
+    const flash = Math.max(o.flash ?? 0, fx.flash as number, 0, bigUV * 0.25);
     const post: PostOverrides = { ...o, zoom: 1, shake, flash };
     if (inverted) { post.bloom = 0.25; post.halation = 0.04; post.flash = 0; }
     // the collapse into drop 1's point
@@ -369,8 +369,8 @@ export default class PhosChorus extends Scene {
       st.stars.set(idx++, CX + Math.cos(a) * d * 1.25, CY + Math.sin(a) * d * 0.85, sz, a * 3 + tt * (hash(i, 6, 31) - 0.5) * 8, { level: lv, flash: Math.pow(0.5, tt / 0.06) }, tone, 0);
     }
     // the core: one white-gold star that blows up and is gone in a few frames
-    const q = prog(tt, 0, 0.12);
-    if (q < 1) st.stars.set(idx++, CX, CY, lerp(60, 340, ease.outExpo(q)), 0, { level: 1.3 * (1 - q) * (1 - q), flash: (1 - q) * (1 - q) }, mixTone('gold', 'white', 1 - q), 0);
+    const q = prog(tt, 0, 0.1);
+    if (q < 0.7) st.stars.set(idx++, CX, CY, lerp(60, 340, ease.outExpo(q)), 0, { level: 1.3 * (1 - q) * (1 - q), flash: (1 - q) * (1 - q) }, mixTone('gold', 'white', 1 - q), 0);
     return idx;
   }
 
@@ -390,7 +390,7 @@ export default class PhosChorus extends Scene {
     P.forEach((it, i) => { if (!crops || i >= 5) this.say(c, it, t, i === 6 ? mixTone('green', 'gold', 0.55) : 'green', { sus: 0.6 }); });
     // OKAY struck through on the snare: a neon slash, left to right in 70 ms
     const ok = P[4]!, u = prog(t, this.strike1, this.strike1 + 0.07, ease.outCubic);
-    if (u > 0) {
+    if (u > 0 && !crops) {
       const x0 = ok.x - ok.w / 2 - 50, x1 = ok.x + ok.w / 2 + 50, y0 = ok.y - ok.size * 0.24, y1 = ok.y - ok.size * 0.4;
       const g = { level: 0.75 + 0.5 * Math.exp(-(t - this.strike1) / 0.25), flash: 0.8 * Math.pow(0.5, (t - this.strike1) / 0.06) };
       c.save(); c.lineCap = 'round'; c.lineWidth = 26; c.strokeStyle = phosphorCss(g, 'pink');
@@ -550,7 +550,7 @@ export default class PhosChorus extends Scene {
     const tone: Tone = i === n - 1 ? mixTone('green', 'gold', 0.5) : i % 4 === 1 ? 'gold' : 'green';
     if (inv) {
       const t0 = inDance ? this.dance7[hitN]! : x.on;
-      flood(c, { level: 0.85, flash: 0.35 * Math.pow(0.5, (t - t0) / 0.05) }, tone);
+      flood(c, { level: 0.85, flash: 0.35 * Math.pow(0.5, (t - t0) / 0.05) }, typeof tone === 'string' ? tone : 'gold');
       const k = slamK(t, x.on, { from: 1.5, tau: 0.04 });
       c.save();
       c.translate(x.x, x.y - x.size * 0.36); c.scale(k, k);
