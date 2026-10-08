@@ -4,9 +4,10 @@
 Пояснения в тегах `[Тег | ...]` — практика сообщества: если Suno их игнорирует, делаем A/B с голыми тегами.
 
 ```
-[Intro | soft sad piano motif alone, airy pads, no drums, no vocal]
+[Instrumental Intro]
+[piano motif alone, no vocal, eight bars]
 
-[Verse 1 | soft airy female vocal, filtered beat, no kick]
+[Verse 1 | soft airy female vocal, quiet, filtered beat, no kick]
 cold light on the window
 your coat is on the chair
 i talk into the silence
@@ -16,7 +17,7 @@ like you are standing there
 i keep the porch light burning
 all through the night
 
-[Chorus | jumpstyle drop, hard kick and deep 808 on beat one, piano motif unchanged]
+[Chorus | powerful belted female vocal, emotional, jumpstyle drop, hard kick and deep 808]
 you said forever
 then you were gone
 you said forever
@@ -32,7 +33,7 @@ but i'm not that strong
 i keep the porch light burning
 all through the night
 
-[Chorus | jumpstyle drop, hard kick and deep 808, piano motif unchanged]
+[Chorus | powerful belted female vocal, emotional, jumpstyle drop, hard kick and deep 808]
 you said forever
 then you were gone
 you said forever
@@ -44,7 +45,7 @@ leave it open wide
 i still hear you
 in an empty room
 
-[Final Chorus | loudest, full arrangement, piano motif one octave up, same female vocal]
+[Final Chorus | most powerful belted female vocal, loudest, piano motif one octave up]
 you said forever
 then you were gone
 you said forever
@@ -73,3 +74,9 @@ then you were gone
 
 Почему здесь есть `[Verse]` и `[Chorus]`: в montagem-флоу они запрещены, потому что тянут модель в песенный режим.
 Нам он и нужен — это полноценная песня, эдиторы сами вырежут припев.
+
+## v2 правки (после первой генерации)
+
+- Вокал начинался сразу → интро теперь отдельной голой строкой `[Instrumental Intro]` + описание без вокала.
+- Голос в припеве слишком спокойный → в тегах припева `powerful belted female vocal, emotional`; куплеты остаются тихими.
+- Если интро всё равно съедено — в REAPER ставим перед треком первые ~16 с из loop A2 (там чистое пианино без кика, тот же темп и тональность).
