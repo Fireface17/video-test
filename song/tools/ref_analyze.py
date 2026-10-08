@@ -224,6 +224,29 @@ def load(path):
     return np.frombuffer(subprocess.run(cmd, capture_output=True, check=True).stdout, dtype=np.float32).copy()
 
 
+def contrast(y, tempo):
+    """Drop power: loudest 10% of bars vs quietest 25% (full mix, sub < 80 Hz, 1-4 kHz)."""
+    bar = 240 / tempo
+    rows = []
+    for i in range(int(len(y) / SR / bar)):
+        seg = y[int(i * bar * SR):int((i + 1) * bar * SR)]
+        S = np.abs(librosa.stft(seg, n_fft=2048))
+        f = librosa.fft_frequencies(sr=SR, n_fft=2048)
+        rows.append((20 * np.log10(np.sqrt(np.mean(seg ** 2)) + 1e-9),
+                     20 * np.log10(S[f < 80].mean() + 1e-9),
+                     20 * np.log10(S[(f > 1000) & (f < 4000)].mean() + 1e-9)))
+    if len(rows) < 8:
+        return None
+    r = np.array(rows)
+    lo, hi = r[r[:, 0] <= np.percentile(r[:, 0], 25)], r[r[:, 0] >= np.percentile(r[:, 0], 90)]
+    jump = hi.mean(axis=0) - lo.mean(axis=0)
+    d = np.diff(r[:, 0])
+    k = int(np.argmax(d))
+    return {"mix_db": round(float(jump[0]), 1), "sub_db": round(float(jump[1]), 1),
+            "mid_1k4k_db": round(float(jump[2]), 1),
+            "biggest_jump_db": round(float(d[k]), 1), "biggest_jump_at_s": round((k + 1) * bar, 2)}
+
+
 def analyze(path):
     y = load(path)
     duration = len(y) / SR
@@ -245,6 +268,7 @@ def analyze(path):
         "bands_db_rel_total": band_balance(y),
         "loudness": loudness(path),
         "sections": sections(y, bt),
+        "drop_contrast": contrast(y, tempo),
     }
     OUT.mkdir(parents=True, exist_ok=True)
     stem = path.stem
@@ -268,6 +292,11 @@ def report(r):
     print("bands   " + "  ".join(f"{k} {v}" for k, v in b.items() if k != "phone_survives_pct")
           + f"  | phone speaker keeps {b['phone_survives_pct']}%")
     print(f"loud    {ld['lufs_i']} LUFS-I, TP {ld['true_peak_dbtp']} dBTP, LRA {ld['lra']} LU")
+    c = r.get("drop_contrast")
+    if c:
+        print(f"drop    loud vs quiet bars: mix +{c['mix_db']} dB, sub +{c['sub_db']} dB, 1-4k +{c['mid_1k4k_db']} dB;"
+              f" biggest jump +{c['biggest_jump_db']} dB at {fmt_t(c['biggest_jump_at_s'])}"
+              "  (refs: mix +8..14, sub +20..30)")
     if r["sections"]:
         print("sects   " + ", ".join(f"bar {s['bar']} @{fmt_t(s['time'])} {s['change']}" for s in r["sections"]))
 

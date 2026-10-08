@@ -160,5 +160,12 @@
       "time": 89.745,
       "change": "louder"
     }
-  ]
+  ],
+  "drop_contrast": {
+    "mix_db": 14.2,
+    "sub_db": 24.4,
+    "mid_1k4k_db": 15.4,
+    "biggest_jump_db": 6.8,
+    "biggest_jump_at_s": 14.4
+  }
 }
