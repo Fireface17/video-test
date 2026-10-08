@@ -217,8 +217,15 @@ def plot(path, y, bt, rep, name):
     plt.close(fig)
 
 
+def load(path):
+    """Decode anything ffmpeg reads (m4a/aac/opus too) to mono float32 at SR."""
+    cmd = ["ffmpeg", "-v", "error", "-i", str(path), "-map", "0:a:0", "-ac", "1", "-ar", str(SR),
+           "-f", "f32le", "-"]
+    return np.frombuffer(subprocess.run(cmd, capture_output=True, check=True).stdout, dtype=np.float32).copy()
+
+
 def analyze(path):
-    y, _ = librosa.load(path, sr=SR, mono=True)
+    y = load(path)
     duration = len(y) / SR
     onset_env = librosa.onset.onset_strength(y=y, sr=SR, hop_length=HOP)
     tempo, bt, drift = tempo_grid(y, onset_env)
