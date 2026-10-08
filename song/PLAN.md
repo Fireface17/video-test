@@ -6,7 +6,8 @@
 - Темп оригинала: быстрый → **145 BPM**. Slowed ×0.8 = **116 BPM** — ровно темп референса.
 - Вокал: **женский, воздушный, английский**, короткий текст-хук. Тема: **потеря, «ты ушла»**.
 - Настроение: меланхоличное. Эдиты: **аниме / игры**, TikTok/Reels.
-- Инструменты: Suno Pro/Premier (v6).
+- Инструменты: Suno Pro/Premier, **только модель v6** (без mini и wild).
+- Хук: **вариант A** — «you said forever / then you were gone».
 
 ## Отличия от базового montagem-флоу
 
@@ -40,6 +41,8 @@ Slowed ×0.8: всё × 1.25 → дроп 2 на 0:20.690, конец 1:43.448.
 
 ## Фаза 1 — поиск лупа (Custom, Instrumental ON, v6)
 
+Пошагово с каждой кнопкой — `STEPS.md`.
+
 Style — по одному варианту за прогон:
 ```
 melancholic jumpstyle phonk, 145 BPM, E minor, sad piano hook, punchy jumpstyle kick, deep 808
@@ -52,14 +55,14 @@ slowed sad jumpstyle, 145 BPM, E minor, 4-note piano motif, hard kick, deep sub,
 ```
 Exclude: `guitar, rap, orchestral strings`
 
-| Контрол | v6 | v6-wild (поиск мотива) |
-|---|---|---|
-| Style Influence | 80 | 80 |
-| Weirdness | 45 | 45 |
-| Variety | **0** | **0** |
-| Max Mode | off | off |
-| Длина | ~45 с | ~45 с |
-| Генераций | 4–6 | 2–3 |
+| Контрол | v6 |
+|---|---|
+| Style Influence | 80 |
+| Weirdness | 45 |
+| Variety | **0** |
+| Max Mode | off |
+| Длина | ~45 с |
+| Генераций | 6 (по 2 на промпт) |
 
 Отбраковка по первым 8 с — критерии 1–8 флоу. Годный луп скачать или сразу вести в Cover.
 
