@@ -4,16 +4,23 @@
 и чувствует себя спутником, который всё ещё кружит вокруг того, кого больше нет.
 Небо — частота, по которой она пытается его поймать. Боль без точки: не отпустила, не упала, просто кружит.
 
+Интро и пост-корус — мелодичные «ooooh / oh-oh-oh» (свой приём по образцу референса: длинная нота на такт и короткая пауза; мелодию Suno сочинит свою).
+
 Хук на долгих гласных (YOU / NIGHT) — удобно тянуть на крике.
 
 Style (для обоих текстов):
-`melancholic jumpstyle phonk, 145 BPM, E minor, sad piano hook, jumpstyle kick, deep 808, female vocal, instrumental piano intro, whispered verses, powerful belted chorus`
+`melancholic jumpstyle phonk, 145 BPM, E minor, sad piano hook, jumpstyle kick, deep 808, female vocal, melodic female oh-oh vocal intro, whispered verses, powerful belted chorus`
 
 ## A — по гайдам, без режиссуры
 
 ```
 [Intro]
-[Instrumental]
+[Soft]
+[Echo]
+ooooh
+oh-oh-oh
+ooooh
+oh-oh-oh
 
 [Verse 1]
 [Whispered]
@@ -35,6 +42,11 @@ LIKE A SATELLITE
 I'M STILL ORBITING YOU
 THROUGH THE ENDLESS NIGHT
 
+[Post-Chorus]
+[Echo]
+ooooh
+oh-oh-oh
+
 [Verse 2]
 [Soft]
 your hoodie lost its warmth by now
@@ -55,6 +67,11 @@ LIKE A SATELLITE
 I'M STILL ORBITING YOU
 THROUGH THE ENDLESS NIGHT
 
+[Post-Chorus]
+[Echo]
+ooooh
+oh-oh-oh
+
 [Bridge]
 [Soft]
 [Breathy]
@@ -71,6 +88,11 @@ LIKE A SATELLITE
 I'M STILL ORBITING YOU
 THROUGH THE ENDLESS NIGHT
 
+[Post-Chorus]
+[Echo]
+ooooh
+oh-oh-oh
+
 [Outro]
 [Whispered]
 like a satellite
@@ -82,8 +104,13 @@ like a satellite
 
 ```
 [Intro]
-[Instrumental]
-[sad felt piano plays a simple four-note motif alone, soft reverb, night atmosphere, no vocal, no drums]
+[Soft]
+[Echo]
+[airy female vocalise, long held melodic oh notes, one per bar, short silence between them, soft piano under it, no drums]
+ooooh
+oh-oh-oh
+ooooh
+oh-oh-oh
 
 [Verse 1]
 [Whispered]
@@ -108,6 +135,12 @@ LIKE A SATELLITE
 I'M STILL ORBITING YOU
 THROUGH THE ENDLESS NIGHT
 
+[Post-Chorus]
+[Echo]
+[the oh melody from the intro returns over the beat]
+ooooh
+oh-oh-oh
+
 [Verse 2]
 [Soft]
 [intimate female voice, half-time beat, 808 slides, more empty space]
@@ -131,6 +164,12 @@ LIKE A SATELLITE
 I'M STILL ORBITING YOU
 THROUGH THE ENDLESS NIGHT
 
+[Post-Chorus]
+[Echo]
+[the oh melody from the intro returns over the beat]
+ooooh
+oh-oh-oh
+
 [Bridge]
 [Soft]
 [Breathy]
@@ -148,6 +187,12 @@ I'M STILL ORBITING YOU
 LIKE A SATELLITE
 I'M STILL ORBITING YOU
 THROUGH THE ENDLESS NIGHT
+
+[Post-Chorus]
+[Echo]
+[the oh melody from the intro returns over the beat]
+ooooh
+oh-oh-oh
 
 [Outro]
 [Whispered]
