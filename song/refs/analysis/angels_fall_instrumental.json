@@ -1,0 +1,131 @@
+{
+  "file": "angels_fall_instrumental.wav",
+  "duration_s": 79.3,
+  "tempo_bpm": 150.01,
+  "tempo_drift_bpm": 0.0,
+  "bar_s": 1.6,
+  "key": "E minor",
+  "key_confidence": 0.748,
+  "key_runner_up": "E major",
+  "sub_root": [
+    43.1,
+    "F1"
+  ],
+  "first_2s": {
+    "first_attack_ms": 7.1,
+    "half_level_ms": 17.4,
+    "fade_in": false,
+    "silence_holes_s": []
+  },
+  "repetition": {
+    "lag2_median": 0.779,
+    "lag4_median": 0.832,
+    "lag2_first8bars": [
+      -0.47,
+      0.03,
+      0.74,
+      0.87,
+      0.61,
+      0.75,
+      0.67,
+      0.85
+    ],
+    "bar_times": [
+      6.432,
+      8.057,
+      9.636,
+      11.238,
+      12.841,
+      14.443,
+      16.045,
+      17.647,
+      19.249,
+      20.852,
+      22.43,
+      24.033,
+      25.635,
+      27.237,
+      28.839,
+      30.441,
+      32.044,
+      33.646,
+      35.248,
+      36.85,
+      38.452,
+      40.031,
+      41.633,
+      43.259,
+      44.838,
+      46.44,
+      48.042,
+      49.644,
+      51.246,
+      52.849,
+      54.451,
+      56.053,
+      57.632,
+      59.234,
+      60.836,
+      62.438,
+      64.041,
+      65.643,
+      67.245,
+      68.847
+    ]
+  },
+  "onsets": {
+    "onsets_per_bar": 7.6,
+    "strongest_hits_s": [
+      9.636,
+      10.844,
+      13.839,
+      15.232,
+      18.437,
+      23.638,
+      25.24,
+      26.842,
+      53.638,
+      54.033,
+      55.635,
+      57.237
+    ]
+  },
+  "bands_db_rel_total": {
+    "sub_20_60": -5.4,
+    "low_60_250": -11.5,
+    "lowmid_250_1k": -2.7,
+    "lead_1k_3k": -10.6,
+    "presence_3k_6k": -18.4,
+    "air_6k_plus": -23.7,
+    "phone_survives_pct": 54.7
+  },
+  "loudness": {
+    "lufs_i": -10.6,
+    "lra": 4.2,
+    "true_peak_dbtp": -0.7
+  },
+  "sections": [
+    {
+      "bar": 2,
+      "time": 8.057,
+      "change": "timbre"
+    },
+    {
+      "bar": 19,
+      "time": 35.248,
+      "change": "quieter"
+    },
+    {
+      "bar": 23,
+      "time": 41.633,
+      "change": "quieter"
+    }
+  ],
+  "drop_contrast": {
+    "mix_db": 7.0,
+    "sub_db": 47.7,
+    "mid_1k4k_db": 3.3,
+    "biggest_jump_db": 7.2,
+    "biggest_jump_at_s": 44.8
+  }
+}

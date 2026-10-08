@@ -13,3 +13,4 @@ analysis/stems/
 analysis/work/
 analysis/qa/
 song/work/
+song/renders/*.wav
