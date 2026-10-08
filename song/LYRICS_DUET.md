@@ -8,19 +8,16 @@
 - он (низко): эхо в припеве, куплет 2, бридж, последнее слово трека.
 
 Style:
-`melancholic jumpstyle phonk, 145 BPM, E minor, duet, female lead vocal and deep low male vocal, melodic oh-oh vocal intro, whispered verses with no bass, explosive belted chorus, massive jumpstyle drop, hard kick, deep 808, sad piano hook`
+`melancholic jumpstyle phonk, 145 BPM, E minor, duet, female lead vocal and deep low male vocal, short melodic oh-oh vocal intro, whispered verses with no bass, explosive belted chorus, massive jumpstyle drop, hard kick, deep 808, sad piano hook`
 
 Exclude: `rap, guitar` (male vocals больше не исключаем)
 
 ## A — теги
 
 ```
-[Intro]
+[Short Intro]
 [Female Vocal]
-[Soft]
 [Echo]
-ooooh
-oh-oh-oh
 ooooh
 oh-oh-oh
 
@@ -143,13 +140,10 @@ goodnight
 ## B — теги + режиссура
 
 ```
-[Intro]
+[Short Intro]
 [Female Vocal]
-[Soft]
 [Echo]
-[airy female vocalise, long held melodic oh notes, one per bar, short silence between them, soft piano, no drums, no bass]
-ooooh
-oh-oh-oh
+[two bars only, airy female oh notes over soft piano, then straight into the verse]
 ooooh
 oh-oh-oh
 
@@ -285,3 +279,6 @@ goodnight
 
 [End]
 ```
+
+## Правка: длинное вступление
+Интро сокращено до одной пары «ooooh / oh-oh-oh», тег `[Short Intro]`, в Style `short ... intro`.
