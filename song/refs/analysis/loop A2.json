@@ -1,0 +1,105 @@
+{
+  "file": "loop A2.wav",
+  "duration_s": 46.56,
+  "tempo_bpm": 145.5,
+  "tempo_drift_bpm": 0.0,
+  "bar_s": 1.649,
+  "key": "E minor",
+  "key_confidence": 0.802,
+  "key_runner_up": "G major",
+  "sub_root": [
+    43.1,
+    "F1"
+  ],
+  "first_2s": {
+    "first_attack_ms": 3.3,
+    "half_level_ms": 5.8,
+    "fade_in": false,
+    "silence_holes_s": []
+  },
+  "repetition": {
+    "lag2_median": -0.082,
+    "lag4_median": 0.574,
+    "lag2_first8bars": [
+      0.07,
+      0.07,
+      -0.07,
+      0.16,
+      -0.25,
+      -0.08,
+      -0.27,
+      -0.12
+    ],
+    "bar_times": [
+      0.441,
+      2.09,
+      3.762,
+      5.41,
+      7.059,
+      8.707,
+      10.356,
+      12.028,
+      13.677,
+      15.325,
+      16.974,
+      18.622,
+      20.271,
+      21.92,
+      23.568,
+      25.217,
+      26.865,
+      28.514,
+      30.163,
+      31.811,
+      33.46,
+      35.109,
+      36.757,
+      38.406,
+      40.031,
+      41.68
+    ]
+  },
+  "onsets": {
+    "onsets_per_bar": 8.0,
+    "strongest_hits_s": [
+      15.116,
+      16.974,
+      18.831,
+      20.271,
+      26.865,
+      27.074,
+      37.57,
+      38.801,
+      39.219,
+      40.449,
+      40.867,
+      42.098
+    ]
+  },
+  "bands_db_rel_total": {
+    "sub_20_60": -3.2,
+    "low_60_250": -6.3,
+    "lowmid_250_1k": -7.3,
+    "lead_1k_3k": -11.0,
+    "presence_3k_6k": -18.2,
+    "air_6k_plus": -24.3,
+    "phone_survives_pct": 25.6
+  },
+  "loudness": {
+    "lufs_i": -15.6,
+    "lra": 5.5,
+    "true_peak_dbtp": -6.1
+  },
+  "sections": [
+    {
+      "bar": 2,
+      "time": 2.09,
+      "change": "louder"
+    },
+    {
+      "bar": 10,
+      "time": 15.325,
+      "change": "louder"
+    }
+  ]
+}
