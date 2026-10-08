@@ -24,3 +24,12 @@ Exclude `rap, male vocals, guitar` · Style Influence 75 · Weirdness 30 · Vari
 
 ## 5. Скачать
 ⋯ → Download → WAV (или MP3) → прислать в `song/refs/` на проверку.
+
+## Вариант «оставить loop A2» (Cover)
+Мотив A2 в Cover сохранялся — ломались только интро и сила припева. Не пробовали: Cover + текст v6 + Style без `airy`.
+1. Library → loop A2 → ⋯ → Cover · v6 · Instrumental OFF.
+2. Style и Lyrics из `LYRICS_V6_FRESH.md`.
+3. Exclude `rap, male vocals, guitar` · Style Influence 60 · Audio Influence 60 · Weirdness 30 · Variety 0 · Max Mode ON · ~2:30.
+4. 2 нажатия Create = 4 дубля.
+5. Голос всё равно с первой секунды → на дубле ⋯ → Edit → Replace Section на первых ~10 с: `piano motif only, no vocal, no drums`.
+6. Припев спокойный → ⋯ → Edit → правка секции на припеве: `belted, powerful, emotional`.
