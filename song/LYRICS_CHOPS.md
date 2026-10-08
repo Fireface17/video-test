@@ -1,4 +1,4 @@
-# ANGELS FALL v3 — хук в дропе из рубленого вокала
+# ANGELS FALL v3 — хук в дропе из рубленого вокала (только женский вокал)
 
 ## Почему v2 не цеплял (замер дропа test.mp3)
 - Ровный поющийся голос — только ~9% времени дропа: дроп не поют.
@@ -12,10 +12,10 @@
 Слова и мелодия свои; от референса взят только приём.
 
 ## Style
-`jumpstyle phonk, 150 BPM, hard distorted jumpstyle kick on every beat, rolling offbeat bass, phonk cowbell, syncopated chopped female vocal lead in the drop, stutter vocal chops, E minor, airy female vocal, deep male vocal, short intro`
+`jumpstyle phonk, 150 BPM, hard distorted jumpstyle kick on every beat, rolling offbeat bass, phonk cowbell, syncopated chopped female vocal lead in the drop, stutter vocal chops, E minor, airy female vocal only, short intro`
 
-Exclude: `rap, guitar, ballad`
-Style Influence 80 · Weirdness 40 · Variety 0 · Max Mode ON · ~2:00 · Voice: твой
+Exclude: `rap, guitar, ballad, male vocals`
+Style Influence 80 · Weirdness 40 · Variety 0 · Max Mode ON · ~2:00 · Voice: не выбирать
 
 ## Текст
 
@@ -45,8 +45,8 @@ fall-fall fall-fall
 an-an-angels fall
 
 [Break]
-[Male Vocal]
-[Spoken]
+[Female Vocal]
+[Whispered]
 can you hear me
 
 [Hook]
@@ -69,8 +69,8 @@ fall-fall fall-fall
 an-an-angels fall
 
 [Break]
-[Male Vocal]
-[Spoken]
+[Female Vocal]
+[Whispered]
 i'm still here
 
 [Final Drop]
@@ -82,8 +82,8 @@ fall-fall fall-fall
 an-an-angels fall
 
 [Outro]
-[Male Vocal]
-[Deep]
+[Female Vocal]
+[Whispered]
 angels fall
 
 [End]
