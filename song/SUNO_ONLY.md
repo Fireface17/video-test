@@ -3,7 +3,7 @@
 Всё делается кнопками Suno. Шаги REAPER из STEPS.md/PLAN.md больше не нужны.
 
 ## 1. Песня
-Create → Custom → v6 → Instrumental OFF → Style и Lyrics из `LYRICS_V6_FRESH.md`.
+Create → Custom → v6 → Instrumental OFF → Style и Lyrics из `LYRICS_ORBIT.md` (A — без режиссуры, B — с режиссурой).
 Exclude `rap, male vocals, guitar` · Style Influence 75 · Weirdness 30 · Variety 0 · Max Mode ON · ~2:30.
 3 нажатия Create = 6 дублей, выбрать лучший.
 
